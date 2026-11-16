@@ -1,0 +1,114 @@
+# Upgrade MMHotline
+
+**Who acts:** someone with `sudo` on the MMHotline server, or that
+person's coding agent.
+
+**When to use this page:** a newer MMHotline release is out, and the
+server runs an older one.
+
+**What this page does:** you install the new program over the old one.
+The settings file, the database, and every incident stay.
+
+**Terms:** the **database** is `/var/lib/mmhotline/mmhotline.db`, where
+MMHotline keeps people, incidents, and setup.
+
+## Choose the route
+
+- **A release, by hand:** follow [Steps](#steps).
+- **A deploy tool installs MMHotline,** such as MMX: it runs the same
+  `mmhotline install` from the new release; the checks below still apply.
+- **A commit with no release:** build it as
+  [Install MMHotline](install.md#build-from-source) says, then run
+  `sudo "$TMPDIR/mmhotline" install` in place of step 3. Its version says
+  `modified=true` when the build had changes not yet committed.
+
+## Before you start
+
+- **Back up first if you might go back.** A new release upgrades the
+  database's format when it starts, and an older release refuses a
+  database a newer one upgraded. Going back needs a backup made before
+  the upgrade, as
+  [database format and upgrades](../changing-mmhotline/design/operation.md#database-format-and-upgrades)
+  says.
+- **Alerts during the restart are not taken.** The service restarts
+  within a few seconds. A tool that sends an alert again with the same
+  `sender_alert_id` gets it counted once, as
+  [Connect a tool that sends alerts](connect-a-tool-that-sends-alerts.md)
+  says, so let the team's tools retry, or upgrade at a quiet time.
+
+## Steps
+
+1. **Check the version now:**
+
+   ```sh
+   mmhotline version
+   ```
+
+   **Check:** it prints the running release, such as
+   `mmhotline 0.1.0 (COMMIT, linux/amd64, modified=false)`, with the
+   release's full commit hash in place of `COMMIT`. The
+   release you upgrade to is the version in the archive's name, such as
+   `mmhotline-0.1.1-linux-amd64.tar.gz`.
+
+2. **Download, check, and unpack the new release,** as steps 1 to 3 of
+   [Install a release](install.md#install-a-release) say, with the new
+   version number.
+
+3. **Install it,** in the unpacked folder:
+
+   ```sh
+   sudo ./mmhotline install
+   ```
+
+   **Check:** it exits with status 0, and among its lines are:
+
+   ```text
+   Binary: installed or corrected /usr/local/bin/mmhotline
+   Database: mmhotline.db already exists; kept
+   Service: mmhotline unit updated; already enabled; restarted
+   ```
+
+   Install replaces `/usr/local/bin/mmhotline` in one step, updates the
+   service unit, and restarts the service. It also creates any new Unix
+   user the release needs, and corrects the owner and mode of MMHotline's
+   folders and files.
+
+4. **Check the new version runs:**
+
+   ```sh
+   mmhotline version
+   systemctl is-active mmhotline
+   ```
+
+   **Check:** the new version, with `modified=false`, and `active`.
+   Opening MMHotline shows the dashboard as before.
+
+5. **If backup is set up,** check that it keeps up after the restart:
+
+   ```sh
+   sudo mmhotline backup check-uploads
+   ```
+
+   **Check:** it exits 0. Install also rewrites
+   `/etc/mmhotline/litestream.yml` and restarts the backup when their
+   setup changed.
+
+A second `sudo mmhotline install` changes nothing: its lines say
+`already exists`, `already correct`, or `kept`, such as
+`Binary: already correct (/usr/local/bin/mmhotline)` and
+`Service: mmhotline unit already correct; already enabled; already running`.
+
+## If something is different
+
+- **The program at `/usr/local/bin/mmhotline` was already replaced,** such
+  as by a deploy tool: run `sudo mmhotline install`. Install sees that the
+  program changed and restarts the service.
+- **MMHotline does not start after the upgrade:** read the reason with
+  `sudo journalctl -u mmhotline --no-pager -n 30`. A database from a newer
+  release is refused there; restore the backup made before the upgrade, as
+  [Back up and restore the database](back-up-and-restore-the-database.md#restore) says.
+- **An upgrade from a build before the backup had its own user** left
+  `/var/lib/mmhotline/.mmhotline.db-litestream`: once
+  `sudo mmhotline backup check-uploads` exits 0, delete it with
+  `sudo rm -r /var/lib/mmhotline/.mmhotline.db-litestream`. The backup
+  keeps its working files elsewhere and continues with no gap.

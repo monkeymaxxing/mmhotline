@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"01a175c4-35db-7912-8114-8824dc5cbc5e"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll run both commands and return their outputs on one line.\n"}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/usr/bin/bash -lc \"curl -sS -m 10 -o /dev/null -w '%{http_code}' https://example.com\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/usr/bin/bash -lc \"curl -sS -m 10 -o /dev/null -w '%{http_code}' https://example.com\"","aggregated_output":"curl: (56) CONNECT tunnel failed, response 403\n000","exit_code":56,"status":"failed"}}
+{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/usr/bin/bash -lc \"curl -sS -m 10 -o /dev/null -w '%{http_code}' https://github.com\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/usr/bin/bash -lc \"curl -sS -m 10 -o /dev/null -w '%{http_code}' https://github.com\"","aggregated_output":"200","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"200 ; curl: (56) CONNECT tunnel failed, response 403 — 000"}}
+{"type":"turn.completed","usage":{"input_tokens":26658,"cached_input_tokens":13207,"cache_write_input_tokens":13445,"output_tokens":145,"reasoning_output_tokens":0}}

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"sender_alert_id\":5,\"severity\":\"sos\",\"title\":\"t\",\"message\":\"m\"}")

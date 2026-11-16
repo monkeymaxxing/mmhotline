@@ -1,0 +1,38 @@
+// Output for people, an HTTP response to a client that may have gone, or a message signature into a hash, which never fails: no state depends on the write.
+fmt.Fprint
+// Output for people, an HTTP response to a client that may have gone, or a message signature into a hash, which never fails: no state depends on the write.
+fmt.Fprintf
+// Output for people, an HTTP response to a client that may have gone, or a message signature into a hash, which never fails: no state depends on the write.
+fmt.Fprintln
+// A failed HTTP response write means the client went away; MMHotline has nothing left to do for it.
+(net/http.ResponseWriter).Write
+// Every query that MMHotline reads rows from only reads; rows.Err reports a failed read, and closing only releases the statement.
+(*database/sql.Rows).Close
+// A deferred rollback after Commit returns ErrTxDone; after a failure, that failure is what the operation returns.
+(*database/sql.Tx).Rollback
+// Closes after a failed open or check commit nothing; the open's own error is returned.
+(*database/sql.DB).Close
+// serve closes the store as it exits, after every change is committed; SQLite replays a write-ahead log a failed close leaves at the next open.
+(*mmhotline/internal/app.Store).Close
+// Response bodies are read-only; closing one commits nothing.
+(io.ReadCloser).Close
+// Ignored file closes release read handles, lock files, and empty reserved files, or repeat a close already checked before the file was used.
+(*os.File).Close
+// Ignored removals clean temporary files after a rename or an already reported failure; a failure only leaves an unused file.
+os.Remove
+// Ignored recursive removals clean a run's temporary home directory; a failure only leaves unused files in the run's private /tmp.
+os.RemoveAll
+// Closing a connection only releases it; the reads and writes on it report their own failures.
+(net.Conn).Close
+// Closing a listener only stops new connections; it commits nothing.
+(net.Listener).Close
+// Closing a WebSocket connection without a handshake only releases it; reads and writes report their own failures.
+(*github.com/coder/websocket.Conn).CloseNow
+// A deadline on a closed connection fails, and the next read or write on it reports that.
+(net.Conn).SetReadDeadline
+// A deadline on a closed connection fails, and the next read or write on it reports that.
+(net.Conn).SetWriteDeadline
+// Closing serve's HTTP servers as it exits only drops their connections; every change is already committed.
+(*net/http.Server).Close
+// The mail server's acceptance is read from its reply to DATA before the client closes; closing only releases the connection.
+(*net/smtp.Client).Close

@@ -1,0 +1,78 @@
+name: Tests and release builds
+
+on:
+  push:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  tests:
+    name: Go tests on ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        env:
+          GOTOOLCHAIN: auto # Read the toolchain directive, even if the runner sets local.
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Confirm the pinned Go toolchain
+        shell: bash
+        run: test "$(go env GOVERSION)" = "$(awk '$1 == "toolchain" {print $2}' go.mod)"
+      # The MMHotline-down alarm's Worker tests, which go test runs, need
+      # Node.js 22.15 or later.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      # internal/app runs its tests one after another, longer than go test's
+      # default 10-minute limit on a slow machine; the testing guide gives
+      # the measurements.
+      - run: go test -timeout 30m ./...
+      - if: runner.os == 'Linux'
+        run: go vet ./...
+      - if: runner.os == 'Linux'
+        name: Check formatting of MMHotline's Go code
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l cmd internal)
+          if [ -n "$unformatted" ]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+
+  release-builds:
+    name: Build and check the release archives
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        env:
+          GOTOOLCHAIN: auto # Read the toolchain directive, even if the runner sets local.
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Confirm the pinned Go toolchain
+        shell: bash
+        run: test "$(go env GOVERSION)" = "$(awk '$1 == "toolchain" {print $2}' go.mod)"
+      - name: Build the four archives with the development version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^var version = "\(.*\)"$/\1/p' cmd/mmhotline/main.go)
+          python3 scripts/build-release-archives.py --version "$version" --commit "$GITHUB_SHA" --output-dir "$RUNNER_TEMP/mmhotline-release"
+      - name: Check the archives against SHA256SUMS
+        working-directory: ${{ runner.temp }}/mmhotline-release
+        run: sha256sum --check SHA256SUMS

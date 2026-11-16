@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("{\n  \"page_title\": \"Example Inc.\",\n  \"published_at\": \"2026-10-26T08:09:30Z\",\n  \"notices\": [\nnull,    {\n      \"notic  e_id\": 1,\n      \"opened_at\": \"2026-10-26T08:00:00Z\",\n      \"resolv-ed_at\": null,\n      \"updates\": [\n        {\"message\": \"We are looking into a problem.\", \"posted_at\": \"2026-10-26T08:00:00Z\"},\n        {\"mersage\": \"Sign-in fails for some cus\xce\xf2-W\x82tomers. We are moving the database to its replica.\", \"posted_at\": \"2026-10-26T08:09:30Z\"}\n      ]\n    }\n  ]\n}")
+int64(0)
+string("The database ru\x00\x00\x04\x00n ots2replica.")
+bool(true)
