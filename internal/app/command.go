@@ -47,6 +47,7 @@ type CommandResult struct {
 	SendingServiceSetups                  []SendingServiceSetup   `json:"sending_service_setups,omitempty"`
 	ContactMethods                        []CommandContactMethod  `json:"contact_methods,omitempty"`
 	PushoverGroupKeyWarning               string                  `json:"pushover_group_key_warning,omitempty"`
+	PushoverPhoneNotProvedWarning         string                  `json:"pushover_phone_not_proved_warning,omitempty"`
 	AlertSources                          []CommandAlertSource    `json:"alert_sources,omitempty"`
 	AlertIntakeAddress                    string                  `json:"alert_intake_address,omitempty"`
 	OutgoingWebhookSigningSecretID        string                  `json:"outgoing_webhook_signing_secret_id,omitempty"`
@@ -199,6 +200,9 @@ func (r CommandResult) Text() string {
 			}
 		}
 		lines = append(lines, fmt.Sprintf("Contact method %s belongs to %s.\nContact method type: %s. Sends to: %s. Alert severities: %s.\nSend while unavailable or muted: %t. Last test message: %s.", c.ContactMethodID, owner, c.ContactMethodType, c.SendsTo, strings.Join(c.AlertSeverities, ","), c.SendWhileUnavailableOrMuted, test))
+		if c.PushoverEmergencyTest != nil {
+			lines = append(lines, c.PushoverEmergencyTest.Explanation)
+		}
 		if c.PushoverAcknowledgementProblem != "" {
 			lines = append(lines, "Problem: "+c.PushoverAcknowledgementProblem)
 		}

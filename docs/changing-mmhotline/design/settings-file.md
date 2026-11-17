@@ -285,7 +285,7 @@ three kinds:
 - **A next step,** when a sending service's section successfully configures
   the service for the first time, or again after the section was left out.
   For example:
-  "Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends an emergency test alert."
+  "Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification."
 - **What MMHotline lists by itself,** which `settings show` reads from
   MMHotline's state each time, never from the file: under
   `triage_agent.listed_hosts`, the hosts that the latest triage agent run

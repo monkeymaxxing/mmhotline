@@ -33,7 +33,13 @@ func waitForTestSOSClaim(socket, unixUser string, result app.CommandResult, wait
 		return result, commandError{fmt.Errorf("mmhotline serve did not return the test SOS's incident ID")}
 	}
 	test.WaitedForClaimMinutes = int(wait / time.Minute)
-	say(asJSON, fmt.Sprintf("MMHotline sent a test SOS to the person on call. Waiting up to %s for someone to acknowledge it on the phone.", minutesText(test.WaitedForClaimMinutes)))
+	// A test for one person goes to them alone, though they may not be on call.
+	sentTo, keepsTrying := "to the person on call", "the person on call"
+	if test.SentOnlyToName != "" {
+		sentTo = fmt.Sprintf("only to %s (%s), whether or not they are on call", test.SentOnlyToName, test.SentOnlyToSignInEmailAddress)
+		keepsTrying = test.SentOnlyToName
+	}
+	say(asJSON, fmt.Sprintf("MMHotline sent a test SOS %s. Waiting up to %s for someone to acknowledge it on the phone.", sentTo, minutesText(test.WaitedForClaimMinutes)))
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	for {
@@ -53,7 +59,7 @@ func waitForTestSOSClaim(socket, unixUser string, result app.CommandResult, wait
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			result.Message = fmt.Sprintf("Nobody acknowledged the test SOS within %s. The incident is still open, so MMHotline keeps trying to reach the person on call. %s", minutesText(test.WaitedForClaimMinutes), testSOSNotClaimedAdvice)
+			result.Message = fmt.Sprintf("Nobody acknowledged the test SOS within %s. The incident is still open, so MMHotline keeps trying to reach %s. %s", minutesText(test.WaitedForClaimMinutes), keepsTrying, testSOSNotClaimedAdvice)
 			return result, checkAnswer{exitCode: 1}
 		case <-timer.C:
 		}

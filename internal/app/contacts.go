@@ -28,6 +28,11 @@ type ContactMethod struct {
 	// PushoverGroupKey is set only in the result of adding a Pushover contact
 	// method whose key Pushover says is a delivery-group key.
 	PushoverGroupKey bool
+	// OwnerSignInEmailAddress is the owner's, empty for a shared contact method.
+	// EmergencyTestAcknowledgedAt is set on a Pushover contact method that has
+	// proved it wakes its owner (pushoverEmergencyTestAcknowledgedAt).
+	OwnerSignInEmailAddress     string
+	EmergencyTestAcknowledgedAt time.Time
 }
 
 // ContactMethodInput is what a person saves. Fields holds the contact method type's own
@@ -112,6 +117,16 @@ func (a *App) ContactMethods(ctx context.Context, p Principal) ([]ContactMethod,
 			out[i].Subscriptions, err = subscriptions(ctx, tx, out[i].ID)
 			if err != nil {
 				return err
+			}
+			if out[i].MemberID != "" {
+				if err = tx.QueryRowContext(ctx, `SELECT sign_in_email_address FROM members WHERE id=?`, out[i].MemberID).Scan(&out[i].OwnerSignInEmailAddress); err != nil {
+					return err
+				}
+			}
+			if out[i].ContactMethodType == "pushover_notification" {
+				if out[i].EmergencyTestAcknowledgedAt, err = pushoverEmergencyTestAcknowledgedAt(ctx, tx, out[i].ID); err != nil {
+					return err
+				}
 			}
 		}
 		return nil

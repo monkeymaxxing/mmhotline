@@ -243,7 +243,7 @@ for the first time:
 
 ```text
 sending_services.pushover: applied at 2026-11-15T03:54:04Z.
-  sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends an emergency test alert.
+  sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.
 ```
 
 ### MMHotline restarted

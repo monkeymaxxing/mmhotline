@@ -331,6 +331,11 @@ func admitAlert(ctx context.Context, tx *sql.Tx, sourceID, actor, replayKey, inc
 		}
 	}
 	newIncident := e.Severity == "sos" && e.IncidentID == ""
+	// An SOS that names recipients opens an incident for only them.
+	var sosRecipients []string
+	if newIncident {
+		sosRecipients = recipients
+	}
 	if newIncident {
 		e.IncidentID = NewID()
 	}
@@ -347,7 +352,7 @@ func admitAlert(ctx context.Context, tx *sql.Tx, sourceID, actor, replayKey, inc
 	}
 	switch {
 	case newIncident:
-		if _, err = createIncident(ctx, tx, e, actor, at); err != nil {
+		if _, err = createIncident(ctx, tx, e, actor, at, sosRecipients); err != nil {
 			return Alert{}, err
 		}
 	// An SOS that joined an open incident by its key contacts nobody again:

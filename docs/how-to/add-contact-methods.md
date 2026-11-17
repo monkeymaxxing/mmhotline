@@ -50,7 +50,13 @@ On **Contact methods**, each of your contact methods has a card:
   at first. For a contact method shared with the team, which nobody is
   away from, **Send even when the team is muted**.
 - **Send test** sends a test now; at most one a minute for each contact
-  method. A test opens no incident.
+  method. A test opens no incident. A Pushover test is a quiet
+  notification: it proves Pushover took the message, not that the phone
+  wakes you. A Pushover card also says **Emergency test: not yet
+  acknowledged** until you run
+  `sudo mmhotline incidents send-test-sos --sign-in-email-address EMAIL`
+  with your sign-in email address and acknowledge the alert. That works
+  for a new team member too, whether or not they are on call.
 - **Last test** shows how the latest test went; choose it to read the
   delivery outcome. **Remove** removes the contact method.
 

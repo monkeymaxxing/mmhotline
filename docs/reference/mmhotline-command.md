@@ -1398,6 +1398,11 @@ and:
 | `contact_methods[].last_test_message.delivery_state_explanation` | Why, such as an error, a wait, or the service's answer (`HTTP 200`) |
 | `contact_methods[].last_test_message.queued_at` | When the test was queued |
 | `contact_methods[].pushover_acknowledgement_problem` | Present when an acknowledgement in Pushover came from another Pushover user, so it did not claim an incident, such as when the key is a group key. It says the problem and the fix: remove the contact method and add it again with the person's own user key. `list` prints it as a `Problem:` line |
+| `contact_methods[].pushover_emergency_test` | A Pushover notification that belongs to a person only: whether an emergency from it has proved that it wakes the person. `list` prints its `explanation` as the `Emergency test:` line |
+| `contact_methods[].pushover_emergency_test.acknowledged` | `true` when the person acknowledged a test SOS from this contact method with their own Pushover user key, and that claimed the test. Also `true` for an emergency contact test the person acknowledged before contact method tests became quiet notifications |
+| `contact_methods[].pushover_emergency_test.acknowledged_at` | When the test SOS was claimed. For an old emergency contact test, when MMHotline sent it, because it stored no acknowledgement time. Absent when `acknowledged` is `false` |
+| `contact_methods[].pushover_emergency_test.explanation` | The line `list` prints: `Emergency test: acknowledged at TIME.`, or `Emergency test: not yet acknowledged. Run `sudo mmhotline incidents send-test-sos --sign-in-email-address ADDRESS` to check that an SOS wakes this phone.` |
+| `pushover_phone_not_proved_warning` | `add` of a Pushover method for a person only: the capitals line `THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: sudo mmhotline incidents send-test-sos --sign-in-email-address ADDRESS`, which the command prints on its own line |
 | `pushover_group_key_warning` | `add` of a Pushover method only, when Pushover says the key is a group key: the capitals warning, which the command prints on its own line. Absent when the key is a user key or Pushover did not answer |
 | `outgoing_webhook_signing_secret_id` | `add` of a webhook only: the new signing secret's ID |
 | `outgoing_webhook_signing_secret_shown_once` | `add` of a webhook only, without an output file: the new signing secret in hex |
@@ -1448,7 +1453,10 @@ Contact method saved. A test message for the contact method is queued. Inspect t
 - **The Pushover user key** never goes on the command line, where it
   would stay in the shell history and the list of running processes. The
   command request and the stored settings call it `pushover_user_key`;
-  results show it in `sends_to`. Saving queues an emergency test alert.
+  results show it in `sends_to`. Saving queues a quiet test notification
+  titled `MMHotline can reach this phone`. It needs no acknowledgement. Only
+  `incidents send-test-sos` proves the phone wakes the person, so the output
+  says so, as shown below.
 - **The webhook signing secret** is made once and shown once. The output
   file gets mode `0600` and holds only the secret, without a newline. The
   command writes a private temporary file in the same folder first, then
@@ -1490,7 +1498,11 @@ sudo mmhotline contact-methods remove --contact-method-id fe9d9b2757973d600bf014
 
 ## mmhotline contact-methods send-test
 
-Sends a contact method a test message now.
+Sends a contact method a test message now. For a Pushover notification the
+test is the quiet notification `MMHotline can reach this phone`: it proves
+only that Pushover took the message. To prove that the phone wakes the
+person, run [`incidents send-test-sos`](#mmhotline-incidents-send-test-sos)
+with `--sign-in-email-address`.
 
 ```sh
 sudo mmhotline contact-methods send-test --contact-method-id 2c35b3af0c71bc6da2ea6e1c9cd3ce59
@@ -1500,6 +1512,7 @@ sudo mmhotline contact-methods send-test --contact-method-id 2c35b3af0c71bc6da2e
 Contact method 2c35b3af0c71bc6da2ea6e1c9cd3ce59 belongs to barbara@example.com.
 Contact method type: pushover_notification. Sends to: FakePushoverPersonalUserKey001. Alert severities: info,sos,warn.
 Send while unavailable or muted: false. Last test message: queued (queued at 2026-11-15T05:08:44Z).
+Emergency test: not yet acknowledged. Run `sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com` to check that an SOS wakes this phone.
 Test message queued; inspect the last test result for delivery.
 ```
 
@@ -2084,11 +2097,25 @@ A claim or resolve with a note ends with the note, such as
 
 Has MMHotline send itself a test SOS, wakes the person on call as a real
 SOS does, and waits for someone to acknowledge it on the phone. Use it to
-prove that an SOS reaches a phone. It is the one command of this group that
-opens an incident.
+prove that an SOS wakes a phone, also in silent mode. It is the one command
+of this group that opens an incident.
 
 ```sh
 sudo mmhotline incidents send-test-sos
+```
+
+To test one person's phone, whether or not they are on call, name them:
+
+```sh
+sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
+```
+
+```text
+MMHotline sent a test SOS only to Barbara Example (barbara@example.com), whether or not they are on call. Waiting up to 10 minutes for someone to acknowledge it on the phone.
+Incident: https://ops.example.com/incidents/acc896d49ce5b2ef40cd2c944da4f08f
+Barbara Example claimed the test by acknowledging the alert in Pushover, at 2026-11-15T04:41:20Z.
+MMHotline resolved the test after the claim, at 2026-11-15T04:41:20Z.
+The test SOS worked: a person acknowledged it on the phone.
 ```
 
 ```text
@@ -2104,8 +2131,17 @@ What the test does:
 - It opens an SOS incident titled `Test of the alerts. Nothing is wrong:
   acknowledge this.` Its alert source ID is `mmhotline_test_sos`, which
   marks it as a test. Only a test resolves itself.
-- It pages whoever is on call exactly as a real SOS does: the same contact
-  methods, repeats, and backup timing.
+- Without `--sign-in-email-address`, it pages whoever is on call exactly as
+  a real SOS does: the same contact methods, repeats, and backup timing.
+- With `--sign-in-email-address`, it pages that one person's contact
+  methods now, whether or not they are on call, and repeats to them until
+  they claim it. There is no backup step and no escalation: nobody else is
+  contacted, also when that person becomes unavailable (the test then times
+  out). It refuses a person who is not on the team, who is unavailable now,
+  or who has no contact method that wakes people for SOS alerts.
+- Claiming the test from a Pushover notification with the person's own
+  Pushover user key is the proof that `contact-methods list` shows as
+  `Emergency test: acknowledged at TIME.`
 - It skips the triage agent. Nothing is wrong, so the agent has nothing to
   look into, and the test must not wait for it.
 - When someone claims the test, MMHotline resolves it at once and writes
@@ -2121,6 +2157,7 @@ What the test does:
 
 | Flag | Meaning |
 | --- | --- |
+| `--sign-in-email-address ADDRESS` | Optional. Send the test only to this person, now, whether or not they are on call. The JSON result then also has `test_sos.sent_only_to_name` and `test_sos.sent_only_to_sign_in_email_address` |
 | `--wait-for-claim-minutes N` | Optional. How long to wait for a claim. A whole number from 1 up. Default 10 |
 | Common flags | As above |
 

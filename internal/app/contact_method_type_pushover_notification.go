@@ -61,8 +61,8 @@ func (*PushoverNotificationContactMethodType) Setup() SendingServiceSetupDefinit
 		Guide: []SendingServiceSetupStep{
 			{Text: "Create a Pushover application named MMHotline.", URL: "https://pushover.net/apps/build", LinkLabel: "Create the application"},
 			{Text: "Put the MMHotline application's API token in the settings file, as shown below, and apply the settings file. MMHotline checks the token and the current month's message limit with Pushover before saving the token."},
-			{Text: "Each person adds a personal Pushover user key under Contact methods. Saving the Pushover contact method sends an emergency test alert."}},
-		NextStep:        "Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends an emergency test alert.",
+			{Text: "Each person adds a personal Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification."}},
+		NextStep:        "Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.",
 		IdentitySetting: "pushover_application_token", IdentitySecret: true, IdentityLabel: "Pushover application",
 		ReplacingKeepsContactMethods: true,
 		DescribeCheck: func(settings map[string]any) string {
@@ -216,9 +216,15 @@ func pushoverGroupKeyWarning(name string) string {
 // (Send), so subscribing to SOS alone would leave them unheard.
 func pushoverDefaultSubscriptions() []string { return []string{"sos", "warn", "info"} }
 
-func pushoverEmergency(purpose, severity string) bool {
-	return purpose == "contact_method_test" || severity == "sos"
-}
+// pushoverEmergency is true for an SOS only. A contact method test goes at
+// ordinary priority and needs no acknowledgement: only an SOS (the test SOS
+// of `incidents send-test-sos`) proves that a phone wakes its owner.
+func pushoverEmergency(severity string) bool { return severity == "sos" }
+
+// pushoverContactMethodTestTitle is the title of a contact method's test
+// notification. It says what the test proves and nothing more.
+const pushoverContactMethodTestTitle = "MMHotline can reach this phone"
+
 func (c *PushoverNotificationContactMethodType) Send(ctx context.Context, m ContactMethodSend) DeliveryResult {
 	key := settingValue(m.Settings, "pushover_user_key")
 	if !pushoverKeyPattern.MatchString(key) {
@@ -232,9 +238,12 @@ func (c *PushoverNotificationContactMethodType) Send(ctx context.Context, m Cont
 	if m.Severity == "warn" || m.ResolvesAnSOSThatWaitedForAServerReplacement {
 		priority = 0
 	}
-	emergency := pushoverEmergency(m.Purpose, m.Severity)
+	emergency := pushoverEmergency(m.Severity)
 	text := m.Text
 	subject := m.Subject
+	if m.Purpose == "contact_method_test" {
+		priority, subject = 0, pushoverContactMethodTestTitle
+	}
 	// The supplementary URL is separate from alert text, so shortening cannot
 	// remove the link. Emergency content lists only titles; the page has detail.
 	link := m.PublicURL
@@ -245,27 +254,21 @@ func (c *PushoverNotificationContactMethodType) Send(ctx context.Context, m Cont
 	}
 	if emergency {
 		priority = 2
-		if m.Purpose != "contact_method_test" {
-			subject = "[SOS] " + m.Title
-			if len(m.CombinedAlerts) > 1 {
-				subject = fmt.Sprintf("[SOS] %d incidents need you", len(m.CombinedAlerts))
-			}
+		subject = "[SOS] " + m.Title
+		if len(m.CombinedAlerts) > 1 {
+			subject = fmt.Sprintf("[SOS] %d incidents need you", len(m.CombinedAlerts))
 		}
 		instruction := "Acknowledging the alert also claims the incident for you: you become responsible for the incident, and MMHotline stops contacting additional people."
-		if m.Purpose == "contact_method_test" {
-			instruction = "Acknowledge this test. No incident will be claimed."
-		} else if len(m.CombinedAlerts) > 1 {
+		if len(m.CombinedAlerts) > 1 {
 			instruction = fmt.Sprintf("Acknowledging the alert also claims all %d incidents for you: you become responsible for the incidents, and MMHotline stops contacting additional people.", len(m.CombinedAlerts))
 		}
-		if m.Purpose != "contact_method_test" {
-			text = m.AlertMessage
-			if len(m.CombinedAlerts) > 1 {
-				var titles []string
-				for _, alert := range m.CombinedAlerts {
-					titles = append(titles, alert.Title)
-				}
-				text = linesWithin(titles, 1024-utf8.RuneCountInString(instruction)-2)
+		text = m.AlertMessage
+		if len(m.CombinedAlerts) > 1 {
+			var titles []string
+			for _, alert := range m.CombinedAlerts {
+				titles = append(titles, alert.Title)
 			}
+			text = linesWithin(titles, 1024-utf8.RuneCountInString(instruction)-2)
 		}
 		text = truncateRunes(text, 1024-utf8.RuneCountInString(instruction)-2)
 		if text != "" {
@@ -303,12 +306,8 @@ func (c *PushoverNotificationContactMethodType) Send(ctx context.Context, m Cont
 	}
 	fields := url.Values{"user": {key}, "title": {truncateRunes(subject, 250)}, "message": {text}, "priority": {strconv.Itoa(priority)}, "url": {link}, "url_title": {"Open in MMHotline"}}
 	if emergency {
-		expire := pushoverEmergencyExpirySeconds
-		if m.Purpose == "contact_method_test" {
-			expire = pushoverTestExpirySeconds
-		}
 		fields.Set("retry", "30")
-		fields.Set("expire", strconv.Itoa(expire))
+		fields.Set("expire", strconv.Itoa(pushoverEmergencyExpirySeconds))
 	}
 	answer, err := c.call(ctx, http.MethodPost, "messages", fields)
 	if err != nil {

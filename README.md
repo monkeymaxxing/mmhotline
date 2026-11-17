@@ -508,9 +508,9 @@ check before moving on.
 | --- | --- | --- |
 | 1 | The settings file exists, with the person as the first administrator. | `sudo ./mmhotline settings check --settings-file /etc/mmhotline/mmhotline_settings.yml`, run from the unpacked release directory, prints that the settings file has no problems. |
 | 2 | MMHotline is installed and runs. | `sudo ./mmhotline install` prints the web URL, and `mmhotline version` prints a version. |
-| 3 | The person's phone gets emergency alerts. | The person acknowledged the test message that MMHotline sent when the contact method was added. |
+| 3 | The person's phone gets notifications. | The person saw the quiet **MMHotline can reach this phone** notification that MMHotline sent when the contact method was added. `contact-methods list` still says `Emergency test: not yet acknowledged.` |
 | 4 | The person can open MMHotline. | The person opened the web URL and signed in through Cloudflare Access. |
-| 5 | An SOS reaches the person. | You sent a signed test SOS, the person's phone sounded, and the person claimed and resolved the incident. `sudo mmhotline incidents list` then lists no incident. |
+| 5 | An SOS wakes the person. | You ran `sudo mmhotline incidents send-test-sos --sign-in-email-address EMAIL`, the person's phone sounded, and the person acknowledged it. `contact-methods list` then says `Emergency test: acknowledged at TIME.`, and `sudo mmhotline incidents list` lists no incident. |
 
 - The person does the steps in Cloudflare and in the Pushover app. Say
   exactly what to create and where the value goes.

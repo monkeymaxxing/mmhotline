@@ -659,7 +659,7 @@ sending_services: {}
   token is refused while a Pushover emergency message is open.
 - When a service is newly set up, `settings apply` prints its next step
   under its part, such as
-  `sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends an emergency test alert.`
+  `sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.`
 
 ### sending_services.pushover
 

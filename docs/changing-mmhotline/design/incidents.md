@@ -450,7 +450,7 @@ the person sends or clears the note.
 
 ### The test SOS
 
-`mmhotline incidents send-test-sos` proves that an SOS reaches a phone,
+`mmhotline incidents send-test-sos` proves that an SOS wakes a phone,
 with one acknowledgement and nothing more to do. It opens an SOS incident
 from MMHotline itself, titled "Test of the alerts. Nothing is wrong:
 acknowledge this.". The reserved alert source ID `mmhotline_test_sos` marks
@@ -475,6 +475,15 @@ at least 1) and exits 0 with who claimed it, how, and when, or exits 1 and
 leaves the test open. Reason for 10 minutes: the person on call gets a whole
 step of the default time to claim (5 minutes) and the start of the backup's
 step; a phone that has not sounded by then has a setup problem.
+
+With `--sign-in-email-address`, the test goes to that one person, whether or
+not they are on call, and to nobody else. `createIncident` takes the named
+people and opens the incident at the `chosen_person` step with no time to
+claim, so there is no backup step; the reconcile loop does not move a test
+for one person on when that person becomes unavailable (the test then wakes
+nobody and times out). The command refuses a person who is not on the team,
+is unavailable, or has no contact method that wakes people for SOS alerts.
+This is how a new team member proves their phone without being on call.
 
 The test does not pass through MMWatchdog or any alert source. MMWatchdog's
 signed check-ins prove that path every minute, and MMHotline warns when they

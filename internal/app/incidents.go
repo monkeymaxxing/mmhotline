@@ -189,7 +189,12 @@ func (a *App) SetEscalateIfUnclaimedAfter(ctx context.Context, p Principal, minu
 		return err
 	})
 }
-func createIncident(ctx context.Context, tx *sql.Tx, e Alert, actor string, at time.Time) (Incident, error) {
+
+// createIncident opens the incident of an SOS. A non-empty chosen list names
+// the only people to contact: they are contacted now, whether or not they are
+// on call, and the SOS has no time to claim, backup, or escalation to anyone
+// else (the test SOS for one person is the one caller that names people).
+func createIncident(ctx context.Context, tx *sql.Tx, e Alert, actor string, at time.Time, chosen []string) (Incident, error) {
 	var active int
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM incidents WHERE status!='resolved'`).Scan(&active); err != nil {
 		return Incident{}, err
@@ -230,6 +235,10 @@ func createIncident(ctx context.Context, tx *sql.Tx, e Alert, actor string, at t
 		}
 	}
 	switch {
+	case len(chosen) > 0:
+		i.Step, i.TargetMemberIDs = "chosen_person", append([]string{}, chosen...)
+		setStepTimes(&i, window, at)
+		i.Deadline = time.Time{}
 	case waits && alreadyWokeFor == "":
 		// The first waking step waits for the triage agent; ReconcileIncidents
 		// starts it at the deadline, or the triage session sooner.
@@ -844,6 +853,11 @@ func reconcileIncident(ctx context.Context, tx *sql.Tx, i Incident, c Coverage, 
 		}
 	}
 	noCoverageChanged := i.IgnorePersonal && len(c.EligibleMemberIDs) > 0 || !i.IgnorePersonal && eligibleTargets == 0
+	// A test SOS for one person never goes on to anyone else, even when that
+	// person becomes unavailable: the test then wakes nobody and times out.
+	if i.SourceID == testAlertSourceID && i.Step == "chosen_person" {
+		noCoverageChanged = false
+	}
 	overdue := !i.Deadline.IsZero() && !i.Deadline.After(now)
 	transition := noCoverageChanged || overdue
 	if transition {
@@ -1057,6 +1071,10 @@ func incidentContactingText(ctx context.Context, tx *sql.Tx, i Incident, repeat 
 	case "chosen_person":
 		var actorName string
 		err := tx.QueryRowContext(ctx, `SELECT actor_name FROM incident_actions WHERE incident_id=? AND revision=? AND kind='escalated' ORDER BY id DESC LIMIT 1`, i.ID, i.Revision).Scan(&actorName)
+		if errors.Is(err, sql.ErrNoRows) {
+			// Nobody escalated it: it was opened for these people only.
+			return "Contacting " + names + " only", nil
+		}
 		if err != nil {
 			return "", err
 		}

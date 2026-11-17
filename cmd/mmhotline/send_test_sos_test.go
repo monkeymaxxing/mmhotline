@@ -31,6 +31,10 @@ func testSOSServer(t *testing.T, claimed bool) string {
 		switch request.Action {
 		case "send-test-sos":
 			result.TestSOS = &app.CommandTestSOS{IncidentID: "i1", IncidentPageURL: "https://hotline.example.com/incidents/i1"}
+			// Echo the person the command sent, so a test can see the flag arrive.
+			if request.Incidents.SignInEmailAddress != "" {
+				result.TestSOS.SentOnlyToName, result.TestSOS.SentOnlyToSignInEmailAddress = "Robin Example", request.Incidents.SignInEmailAddress
+			}
 		case "show":
 			if request.Incidents.IncidentID != "i1" {
 				t.Errorf("show asked for incident %q", request.Incidents.IncidentID)
@@ -125,5 +129,19 @@ func TestDownAlarmSendTestWarnsBeforeItSends(t *testing.T) {
 	var result map[string]any
 	if json.Unmarshal([]byte(stdout.String()), &result) != nil || !strings.Contains(stderr.String(), "THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.") {
 		t.Fatalf("--json: stdout %q, stderr %q", stdout.String(), stderr.String())
+	}
+}
+
+func TestSendTestSOSSignInEmailAddressFlagReachesTheServer(t *testing.T) {
+	socket := testSOSServer(t, true)
+	output, err := cliProcess(t, "incidents", "send-test-sos", "--command-socket", socket, "--json", "--sign-in-email-address", "robin@example.com").Output()
+	var result app.CommandResult
+	if err != nil || json.Unmarshal(output, &result) != nil || result.TestSOS == nil || result.TestSOS.SentOnlyToSignInEmailAddress != "robin@example.com" {
+		t.Fatalf("the flag did not reach the server: %s, %v", output, err)
+	}
+	// The text output says the test went to that one person.
+	text, err := cliProcess(t, "incidents", "send-test-sos", "--command-socket", socket, "--sign-in-email-address", "robin@example.com").CombinedOutput()
+	if want := "MMHotline sent a test SOS only to Robin Example (robin@example.com), whether or not they are on call. Waiting up to 10 minutes"; err != nil || !strings.Contains(string(text), want) {
+		t.Fatalf("the text output lacks the person (%q): %s, %v", want, text, err)
 	}
 }
