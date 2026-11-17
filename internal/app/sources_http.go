@@ -137,10 +137,17 @@ func (a *App) sourcesPage(w http.ResponseWriter, r *http.Request) {
 		v.RejectedTotal, v.RejectedReasons = a.rejected.last24Hours(s.ID, a.Now())
 		data.Sources = append(data.Sources, v)
 	}
-	RenderPage(w, 200, "Alert sources", sourcesBody, data)
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, 200, "Alert sources", frame, nil, sourcesPageBody(frame, data))
 }
 
-var sourcesBody = `{{$page := .}}<div class="stack alert-pages"><section class="panel"><div class="panel-head"><h2>Senders</h2></div>{{if .Sources}}<ul class="items">{{range .Sources}}<li><div class="what"><div class="row"><a class="title" href="/alert-sources/{{.ID}}">{{.Name}}</a><span class="tag {{.Tone}}">{{.Status}}</span></div>{{if .Active}}<p class="small muted">{{if eq .Kind "generic"}}Generic signed JSON{{else}}{{.Kind}}{{end}}</p>{{else}}<p class="small muted">The settings file no longer lists this source, so the source's signing secrets no longer work. Earlier alerts and check-ins stay.</p>{{end}}<p class="small"><a href="/alert-sources/{{.ID}}">Check-ins and planned downtime</a></p><p class="small {{if .RejectedTotal}}line-warn{{else}}faint{{end}}">Rejected requests in the last 24 hours: {{.RejectedTotal}}</p>{{if .RejectedReasons}}<ul class="bullets small">{{range .RejectedReasons}}<li>{{.Reason}}: {{.Count}}</li>{{end}}</ul>{{end}}
-<details class="fold"><summary>Connection details</summary><div class="source-connection"><dl class="kv"><dt>Alert intake address</dt><dd><code>{{$page.AlertIntakeAddress}}</code></dd><dt>Alert source ID</dt><dd><code>{{.ID}}</code></dd><dt>Intake URL</dt><dd><code>POST {{$page.AlertIntakeAddress}}/alert-intake/{{.ID}}</code></dd><dt>Check-in URL</dt><dd><code>POST {{$page.AlertIntakeAddress}}/check-in/{{.ID}}</code></dd></dl>{{if and .Active $page.Admin}}<p class="small faint">Signing secret IDs identify the configured secrets. Secret values are never shown.</p><ul class="bullets small">{{range .Secrets}}<li>Signing secret ID: <code>{{.ID}}</code>, added {{clock .CreatedAt}}</li>{{end}}</ul>{{end}}</div></details></div></li>{{end}}</ul>{{else}}<div class="panel-body"><p>No alert sources are set up.</p><p class="small muted">An administrator adds the sending tool or script under <code>alert_sources</code> in the settings file. Open “Where alert sources are set” for the file and apply command.</p></div>{{end}}</section>
-<details class="more"><summary>Where alert sources are set</summary><div class="body">` + settingsFileNotice("<code>alert_sources</code>") + `</div></details>
-<details class="more"><summary>Request format and signing</summary><div class="body"><p class="small muted">Send signed JSON to the source's Intake URL. The sender uses the signing secret from the team's vault.</p><pre>{"sender_alert_id":"alert-1","sender_incident_key":"backup","severity":"sos","title":"Backup failed","message":"Disk full"}</pre><p class="small"><code>Mmhotline-Signature: timestamp_unix_seconds=&lt;unix seconds&gt;,hmac_sha256_hex=&lt;hex HMAC-SHA256&gt;</code>. Decode the 64 hexadecimal characters of the signing secret into 32 bytes, and compute HMAC-SHA256 over the timestamp, a dot, and the exact JSON bytes. The timestamp must be within five minutes. Reuse a sender alert ID when retrying.</p><p class="small">An SOS is the urgent alert that wakes the person on call, even at night. A <code>resolved-sos</code> alert with the same sender incident key closes the matching unresolved SOS incident.</p><p class="small">A sender that checks in posts a signed message every 30 seconds to the Check-in URL. MMHotline starts watching for missing check-ins after the first check-in arrives.</p></div></details></div>`
+// sourceRejectedClass marks the refused-requests line when a source had refused requests.
+func sourceRejectedClass(rejectedTotal int64) string {
+	if rejectedTotal != 0 {
+		return "small line-warn"
+	}
+	return "small faint"
+}
