@@ -44,10 +44,13 @@ type CommandResult struct {
 	// check-whether-a-playbook-needs-a-person prints.
 	WhetherAPlaybookNeedsAPerson *CommandWhetherAPlaybookNeedsAPerson `json:"whether_a_playbook_needs_a_person,omitempty"`
 	PeopleCommandResult
-	SendingServiceSetups                  []SendingServiceSetup   `json:"sending_service_setups,omitempty"`
-	ContactMethods                        []CommandContactMethod  `json:"contact_methods,omitempty"`
-	PushoverGroupKeyWarning               string                  `json:"pushover_group_key_warning,omitempty"`
-	PushoverPhoneNotProvedWarning         string                  `json:"pushover_phone_not_proved_warning,omitempty"`
+	SendingServiceSetups          []SendingServiceSetup  `json:"sending_service_setups,omitempty"`
+	ContactMethods                []CommandContactMethod `json:"contact_methods,omitempty"`
+	PushoverGroupKeyWarning       string                 `json:"pushover_group_key_warning,omitempty"`
+	PushoverPhoneNotProvedWarning string                 `json:"pushover_phone_not_proved_warning,omitempty"`
+	// PushoverDeviceNames are the devices Pushover lists for a user key
+	// that connect-pushover checked.
+	PushoverDeviceNames                   []string                `json:"pushover_device_names,omitempty"`
 	AlertSources                          []CommandAlertSource    `json:"alert_sources,omitempty"`
 	AlertIntakeAddress                    string                  `json:"alert_intake_address,omitempty"`
 	OutgoingWebhookSigningSecretID        string                  `json:"outgoing_webhook_signing_secret_id,omitempty"`

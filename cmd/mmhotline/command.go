@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -290,8 +291,11 @@ func runManagementCommand(group string, args []string) error {
 // the clipboard. Every control character except the line feed and the tab is
 // printed as U+FFFD, so one rule covers every text command. The --json output
 // is escaped by encoding/json and does not pass through here.
-func printText(text string) {
-	fmt.Println(strings.Map(func(r rune) rune {
+func printText(text string) { writeText(os.Stdout, text) }
+
+// writeText is printText to out.
+func writeText(out io.Writer, text string) {
+	fmt.Fprintln(out, strings.Map(func(r rune) rune {
 		if r != '\n' && r != '\t' && unicode.IsControl(r) {
 			return '�'
 		}

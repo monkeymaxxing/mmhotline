@@ -39,8 +39,9 @@ sudo mmhotline settings set-secret sending_services.pushover.application_token -
 ```
 
 The command waits for the secret: paste it, then press Enter. Nothing
-shows as you paste. A coding agent pipes the secret in instead, from where
-the person put it. [The `mmhotline` command reference](../reference/mmhotline-command.md#mmhotline-settings-set-secret)
+shows as you paste. A coding agent never composes its own shell line for a
+secret: it gives you this command to run in your own terminal.
+[The `mmhotline` command reference](../reference/mmhotline-command.md#mmhotline-settings-set-secret)
 lists the secret keys.
 
 A TEAM WHOSE DEPLOY TOOL, SUCH AS MMX, WRITES THE FILE FROM A VAULT DOES NOT USE THIS COMMAND. THE NEXT DEPLOY OVERWRITES THE FILE AND LOSES THE CHANGE. SET THE SECRET IN THE VAULT INSTEAD.

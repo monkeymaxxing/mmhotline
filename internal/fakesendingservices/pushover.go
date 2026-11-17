@@ -19,6 +19,10 @@ const PushoverUserKey = "FakePushoverPersonalUserKey001"
 const PushoverOtherUserKey = "FakePushoverPersonalUserKey002"
 const PushoverThirdUserKey = "FakePushoverPersonalUserKey003"
 
+// PushoverOneDeviceUserKey is a user whose account has one device, phone;
+// the other user keys have two, phone and tablet.
+const PushoverOneDeviceUserKey = "FakePushoverOneDeviceUserKey01"
+
 // PushoverGroupKey is a delivery-group key: messages to it reach every user
 // in the group, and the validate call answers "group": 1 for it.
 const PushoverGroupKey = "FakePushoverGroupUserKey000001"
@@ -164,6 +168,8 @@ func (s *Server) pushoverValidateUser(w http.ResponseWriter, r *http.Request) {
 	switch r.Form.Get("user") {
 	case PushoverUserKey, PushoverOtherUserKey, PushoverThirdUserKey:
 		writeJSON(w, 200, map[string]any{"status": 1, "group": 0, "devices": []string{"phone", "tablet"}, "request": "fake-pushover-validate"})
+	case PushoverOneDeviceUserKey:
+		writeJSON(w, 200, map[string]any{"status": 1, "group": 0, "devices": []string{"phone"}, "request": "fake-pushover-validate"})
 	case PushoverGroupKey:
 		writeJSON(w, 200, map[string]any{"status": 1, "group": 1, "devices": []string{}, "request": "fake-pushover-validate"})
 	default:
@@ -182,7 +188,7 @@ func (s *Server) pushoverSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := r.Form.Get("user")
-	if key != PushoverUserKey && key != PushoverOtherUserKey && key != PushoverThirdUserKey && key != PushoverGroupKey {
+	if key != PushoverUserKey && key != PushoverOtherUserKey && key != PushoverThirdUserKey && key != PushoverGroupKey && key != PushoverOneDeviceUserKey {
 		pushoverRefuse(w, 400, "user identifier is invalid")
 		return
 	}

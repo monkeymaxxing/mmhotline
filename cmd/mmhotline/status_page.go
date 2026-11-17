@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,7 +27,7 @@ func readSecret(path, flagName string) (string, error) {
 	var raw []byte
 	var err error
 	if path == "-" {
-		raw, err = readSecretFromStandardInput(os.Stdin, os.Stderr, turnOffTerminalEcho)
+		raw, err = readSecretFromStandardInput(os.Stdin, os.Stderr, pasteTheValuePrompt, turnOffTerminalEcho)
 	} else {
 		var info os.FileInfo
 		if info, err = os.Stat(path); err == nil && info.Mode().Perm()&0o077 != 0 {
@@ -48,23 +47,48 @@ func readSecret(path, flagName string) (string, error) {
 	return value, nil
 }
 
+// pasteTheValuePrompt is the hidden prompt of a command that reads one
+// secret value.
+const pasteTheValuePrompt = "Paste the value, then press Enter. Nothing shows as you paste: "
+
 // readSecretFromStandardInput reads a secret from input. A pipe is read to
-// its end, as before. A terminal shows nothing as the person pastes, and one
-// line, ending with Enter, is the whole secret: Ctrl-D is not needed, and
-// would close the person's shell if typed after Enter.
-func readSecretFromStandardInput(input *os.File, prompts io.Writer, turnOffEcho func(*os.File) (func(), bool)) ([]byte, error) {
+// its end, as before. A terminal shows prompt, shows nothing as the person
+// pastes, and one line, ending with Enter, is the whole secret: Ctrl-D is
+// not needed, and would close the person's shell if typed after Enter.
+func readSecretFromStandardInput(input *os.File, prompts io.Writer, prompt string, turnOffEcho func(*os.File) (func(), bool)) ([]byte, error) {
 	restore, isTerminal := turnOffEcho(input)
 	if !isTerminal {
 		return io.ReadAll(io.LimitReader(input, 64<<10))
 	}
 	defer restore()
-	fmt.Fprint(prompts, "Paste the value, then press Enter. Nothing shows as you paste: ")
-	line, err := bufio.NewReader(io.LimitReader(input, 64<<10)).ReadBytes('\n')
+	fmt.Fprint(prompts, prompt)
+	line, err := readOneLine(input)
 	fmt.Fprintln(prompts)
-	if errors.Is(err, io.EOF) {
-		err = nil
-	}
 	return line, err
+}
+
+// readOneLine reads input up to and including the next line feed, at most
+// 64 KiB, one byte at a time: nothing after the line is read, so the next
+// question of the same command reads the person's next answer.
+func readOneLine(input io.Reader) ([]byte, error) {
+	var line []byte
+	var one [1]byte
+	for len(line) < 64<<10 {
+		count, err := input.Read(one[:])
+		if count == 1 {
+			line = append(line, one[0])
+			if one[0] == '\n' {
+				return line, nil
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			return line, nil
+		}
+		if err != nil {
+			return line, err
+		}
+	}
+	return line, nil
 }
 
 // statusPageSetUpInput is what status-page set-up takes. The API token is

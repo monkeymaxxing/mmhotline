@@ -58,7 +58,7 @@ prints:
 The settings file /etc/mmhotline/mmhotline_settings.yml has no problems.
 ```
 
-[Get started](../get-started.md) writes this file in step 3.
+[Get started](../get-started.md) writes this file in step 2.
 
 ## Rules for the whole file
 
@@ -178,7 +178,7 @@ team_name: Operations
 | Type | Text, 1 to 100 characters; spaces around it are dropped |
 | Default | None |
 | Wrong value | `team_name: team name must contain 1–100 characters` |
-| Set up in | [Get started](../get-started.md), step 3, and [Install MMHotline](../how-to/install.md) |
+| Set up in | [Get started](../get-started.md), step 2, and [Install MMHotline](../how-to/install.md) |
 
 `mmhotline install` names the new database after `team_name`. A later
 change applies as its own part.
@@ -200,7 +200,7 @@ web_url: https://ops.example.com
 | Default | None |
 | Wrong value | `web_url: must be an HTTPS origin, such as https://mmhotline.example.com, or http://localhost:PORT or http://127.0.0.1:PORT` |
 | Takes effect | At a restart, which `settings apply` does |
-| Set up in | [Get started](../get-started.md), step 3, and [Put MMHotline behind Cloudflare Access](../how-to/put-mmhotline-behind-cloudflare-access.md) |
+| Set up in | [Get started](../get-started.md), step 2, and [Put MMHotline behind Cloudflare Access](../how-to/put-mmhotline-behind-cloudflare-access.md) |
 
 ### web_listen_address
 
@@ -219,7 +219,7 @@ web_listen_address: 127.0.0.1:8480
 | Default | None |
 | Wrong value | `web_listen_address: must be a host:port address, such as 127.0.0.1:8480` |
 | Takes effect | At a restart, which `settings apply` does |
-| Set up in | [Get started](../get-started.md), step 3 |
+| Set up in | [Get started](../get-started.md), step 2 |
 
 ### alert_intake_listen_address
 
@@ -238,7 +238,7 @@ alert_intake_listen_address: 10.20.0.1:8484
 | Default | None |
 | Wrong value | `alert_intake_listen_address: must be a host:port address, such as 127.0.0.1:8480` |
 | Takes effect | At a restart, which `settings apply` does |
-| Set up in | [Get started](../get-started.md), step 3, and [Connect a tool that sends alerts](../how-to/connect-a-tool-that-sends-alerts.md) |
+| Set up in | [Get started](../get-started.md), step 2, and [Connect a tool that sends alerts](../how-to/connect-a-tool-that-sends-alerts.md) |
 
 `settings check` cannot know the server's addresses. An address that is
 not the server's own passes the check, and MMHotline then fails to start

@@ -25,7 +25,7 @@ func TestReadSecretFromAPipeReadsToTheEndWithoutAPrompt(t *testing.T) {
 	reader, writer, _ := os.Pipe()
 	writer.WriteString("abc\ndef\n")
 	writer.Close()
-	raw, err := readSecretFromStandardInput(reader, &prompts, func(*os.File) (func(), bool) { return nil, false })
+	raw, err := readSecretFromStandardInput(reader, &prompts, pasteTheValuePrompt, func(*os.File) (func(), bool) { return nil, false })
 	if err != nil || string(raw) != "abc\ndef\n" || prompts.Len() != 0 {
 		t.Fatalf("raw=%q prompts=%q err=%v", raw, prompts.String(), err)
 	}
@@ -34,7 +34,7 @@ func TestReadSecretFromAPipeReadsToTheEndWithoutAPrompt(t *testing.T) {
 func TestReadSecretFromATerminalTurnsEchoOffReadsOneLineAndTurnsEchoOn(t *testing.T) {
 	var prompts bytes.Buffer
 	echoOff, echoRestored := false, false
-	raw, err := readSecretFromStandardInput(pipeWith(t, "pasted-key\n"), &prompts, func(*os.File) (func(), bool) {
+	raw, err := readSecretFromStandardInput(pipeWith(t, "pasted-key\n"), &prompts, pasteTheValuePrompt, func(*os.File) (func(), bool) {
 		echoOff = true
 		return func() { echoRestored = true }, true
 	})

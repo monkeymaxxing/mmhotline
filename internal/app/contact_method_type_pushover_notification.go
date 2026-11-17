@@ -230,6 +230,27 @@ func (c *PushoverNotificationContactMethodType) checkUserKeyAndDevice(ctx contex
 	return answer.Group == 1, nil
 }
 
+// userKeyDevices asks Pushover about key once
+// (https://pushover.net/api#validate) and answers the device names Pushover
+// lists for it, for `connect-pushover` to offer. Pushover refusing the key
+// (an HTTP 4xx answer) is an error. Pushover not answering is not: the device
+// names are then unknown (nil), and the contact method's test message shows
+// any problem with the key, as checkUserKeyAndDevice treats it.
+func (c *PushoverNotificationContactMethodType) userKeyDevices(ctx context.Context, key string) ([]string, error) {
+	if !pushoverKeyPattern.MatchString(key) {
+		return nil, fmt.Errorf("%w: a Pushover user key is exactly 30 letters and digits", ErrInvalid)
+	}
+	answer, err := c.call(ctx, http.MethodPost, "users/validate", url.Values{"user": {key}})
+	var refused *pushoverAPIError
+	if errors.As(err, &refused) && refused.HTTPStatusCode >= 400 && refused.HTTPStatusCode < 500 {
+		return nil, fmt.Errorf("%w: Pushover refused the user key: %s", ErrInvalid, refused.Text)
+	}
+	if err != nil {
+		return nil, nil
+	}
+	return answer.Devices, nil
+}
+
 // withPushoverDevice adds Pushover's `device` field when the contact method
 // names one device. With no device named, Pushover sends to all of the
 // user's devices.

@@ -14,6 +14,7 @@ reason, such as a time below which a restart would wake someone.
 
 | Choice | Starting default | Owner and reason |
 | --- | --- | --- |
+| `connect-pushover` questions | One person in `people` is chosen without a question; an unknown sign-in email address or device name is asked again; Enter at the device question means all devices | [Notifications](notifications.md#connecting-pushover-in-one-command): the token is already saved when the questions come, so a typing mistake should not mean pasting it again. |
 | Settings page hierarchy | Setup status and next action first; one folded settings path per page; technical detail folded | [Interface](interface.md#settings-pages): routine checks need status and next actions, while repeated paths and technical output crowd a phone. |
 | Browser error presentation | Frame browser navigation errors and unknown paths; preserve status codes, rate-limit retry headers, and non-page responses | [Interface](interface.md#shared-behavior): a person needs a readable reason and a way back, while senders and background fetches depend on their existing responses. |
 | Triage session page hierarchy | State and Stop first, reports and alerts next; run steps, past runs, and session details folded; team-zone times throughout | [Triage session page](triage-agent.md#the-triage-sessions-page): the current work and findings matter before commands and background records, especially on a phone. |

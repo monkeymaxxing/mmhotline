@@ -411,8 +411,9 @@ The team:
 One person is on call for a week, and the other person is the backup.
 
 Run each step's check before the next step. Ask me for each secret when you
-need it, and keep secrets out of our chat and out of any repository: I will
-put them in the files myself. Tell me exactly what to do in Cloudflare and
+need it, and keep secrets out of our chat and out of any repository. Never
+compose your own shell line for a secret: give me the command to run in my
+own terminal. Tell me exactly what to do in Cloudflare and
 in the Pushover app, because I do those parts. At the end, send a test SOS
 and ask me whether my phone sounded.
 ```
@@ -521,7 +522,8 @@ On the server:
    database and every row. [Upgrade MMHotline](docs/how-to/upgrade.md) has the
    details.
 
-3. Set up Pushover and add your phone as a contact method.
+3. Set up Pushover and add your phone as a contact method, with
+   `sudo mmhotline connect-pushover` run in your own terminal.
    [Connect Pushover](docs/how-to/connect-pushover.md)
    has the steps, with the phone settings that let an emergency alert sound
    in silent mode.
@@ -552,13 +554,16 @@ check before moving on.
 | --- | --- | --- |
 | 1 | The settings file exists, with the person as the first administrator. | `sudo ./mmhotline settings check --settings-file /etc/mmhotline/mmhotline_settings.yml`, run from the unpacked folder, prints that the settings file has no problems. |
 | 2 | MMHotline is installed and runs. | `sudo ./mmhotline install` prints the web URL, and `mmhotline version` prints a version. |
-| 3 | The person's phone gets notifications. | The person saw the quiet **MMHotline can reach this phone** notification that MMHotline sent when the contact method was added. `contact-methods list` still says `Emergency test: not yet acknowledged.` |
+| 3 | The person's phone gets notifications. | The person ran `sudo mmhotline connect-pushover` in their own terminal and saw the quiet **MMHotline can reach this phone** notification that MMHotline sent when the contact method was added. `contact-methods list` still says `Emergency test: not yet acknowledged.` |
 | 4 | The person can open MMHotline. | The person opened the web URL and signed in through Cloudflare Access. |
 | 5 | An SOS wakes the person. | You ran `sudo mmhotline incidents send-test-sos --sign-in-email-address EMAIL`, the person's phone sounded, and the person acknowledged it. `contact-methods list` then says `Emergency test: acknowledged at TIME.`, and `sudo mmhotline incidents list` lists no incident. |
 
 - The person does the steps in Cloudflare and in the Pushover app. Say
   exactly what to create and where the value goes.
 - Never put a secret's value in the chat, a command line, or a repository.
+  Never compose your own shell line for a secret: give the person the
+  command to run in their own terminal, such as
+  `sudo mmhotline connect-pushover` for Pushover.
   The settings file holds the secrets. Change it with `sudoedit`. Other
   users on the server cannot read it.
 - Of the built-in contact methods, only a Pushover notification and an

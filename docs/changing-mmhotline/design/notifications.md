@@ -439,6 +439,43 @@ an emergency that Pushover may have accepted.
 The [message API](https://pushover.net/api) and
 [receipt API](https://pushover.net/api/receipts) own the sending service fields and limits.
 
+### Connecting Pushover in one command
+
+`sudo mmhotline connect-pushover` connects Pushover and adds one person's
+phone at the person's own prompts
+([acceptance A31b](../acceptance.md)). The command exists because the two
+Pushover secrets must be typed by the person, where a coding agent never
+sees them, and the two commands that do the job one secret each are long
+enough (86 and about 140 characters) that a coding agent composed its own
+shell line that wrote the secrets to files, and the person had to rejoin a
+wrapped line by hand. The two long commands stay, for scripts.
+
+The command adds no operation of its own. The token goes through
+`settings set-secret`'s code with `--apply`, so the settings part's outside
+test is the token check and the file keeps its owner and mode. The phone
+goes through `contact-methods add`, so the contact method is saved, checked
+and tested as from the page. Decisions:
+
+- The token is saved, then checked by the apply, not checked first by the
+  command. Reason: one check of the token, in the service, which holds
+  the sending services' address (a development fake, or Pushover). A token
+  Pushover refuses stays in the file and fails the part at each apply
+  until replaced; the command says so and asks nothing more.
+- The user key is checked through the command socket's
+  `contact-methods check-pushover-user-key`, which only connect-pushover
+  sends. It calls `users/validate` with the applied token and answers the
+  device names. Reason: the device question comes before the save, and
+  only the service holds the applied token. A key Pushover refuses (HTTP
+  4xx) stops the command; Pushover not answering is not a refusal, as for
+  the save, and the device question is then skipped.
+- People come from the settings file's `people`, which the apply just
+  applied. An unknown sign-in email address or device name is asked
+  again, with the list, rather than ending the command, because the token
+  is already saved and a person should not paste it again for a typing
+  mistake.
+- The command refuses without a terminal on standard input. Reason: a
+  pipe means a script or an agent, which has the two long commands.
+
 ## Phone numbers: automated voice calls
 
 **Built.** Real Twilio acceptance is pending

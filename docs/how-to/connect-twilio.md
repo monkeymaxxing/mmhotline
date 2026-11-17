@@ -94,10 +94,10 @@ a call rings through Do Not Disturb.
    ```
 
    The command waits for the secret: paste it, then press Enter. Nothing
-   shows as you paste. A coding agent pipes the value in instead, from
-   where the person put it. Reason: a secret typed on the command line
-   would stay in the shell history and show in the list of running
-   processes.
+   shows as you paste. A coding agent never composes its own shell line for
+   a secret: it gives you this command to run in your own terminal. Reason:
+   a secret typed on the command line would stay in the shell history and
+   show in the list of running processes.
 
 
    **Check:** among the lines it prints are:

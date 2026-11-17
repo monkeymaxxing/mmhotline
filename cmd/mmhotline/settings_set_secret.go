@@ -24,13 +24,19 @@ type setSecretTerminals struct {
 	Prompt io.Writer
 	// StdoutIsTerminal is true when a person's screen shows Stdout.
 	StdoutIsTerminal bool
-	TurnOffEcho      func(*os.File) (func(), bool)
+	// StdinIsTerminal is true when a person types at Stdin; connect-pushover
+	// refuses to run without one.
+	StdinIsTerminal bool
+	TurnOffEcho     func(*os.File) (func(), bool)
+	// ValuePrompt is the hidden prompt for the value; empty is
+	// pasteTheValuePrompt.
+	ValuePrompt string
 	// Apply runs sudo mmhotline settings apply.
 	Apply func() error
 }
 
 func realSetSecretTerminals() setSecretTerminals {
-	return setSecretTerminals{Stdin: os.Stdin, Stdout: os.Stdout, Prompt: os.Stderr, StdoutIsTerminal: fileIsTerminal(os.Stdout), TurnOffEcho: turnOffTerminalEcho,
+	return setSecretTerminals{Stdin: os.Stdin, Stdout: os.Stdout, Prompt: os.Stderr, StdoutIsTerminal: fileIsTerminal(os.Stdout), StdinIsTerminal: fileIsTerminal(os.Stdin), TurnOffEcho: turnOffTerminalEcho,
 		Apply: func() error { return runSettings([]string{"apply"}) }}
 }
 
@@ -170,7 +176,11 @@ func newSecretValue(makeNew bool, terminals setSecretTerminals) (string, error) 
 		}
 		return hex.EncodeToString(random), nil
 	}
-	raw, err := readSecretFromStandardInput(terminals.Stdin, terminals.Prompt, terminals.TurnOffEcho)
+	prompt := terminals.ValuePrompt
+	if prompt == "" {
+		prompt = pasteTheValuePrompt
+	}
+	raw, err := readSecretFromStandardInput(terminals.Stdin, terminals.Prompt, prompt, terminals.TurnOffEcho)
 	if err != nil {
 		return "", fmt.Errorf("MMHotline cannot read the value: %w", err)
 	}

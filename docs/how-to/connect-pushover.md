@@ -48,51 +48,48 @@ test that an emergency alert wakes them, also in silent mode.
 
    **Check:** the token is 30 letters and digits.
 
-2. **Connect it to MMHotline.** Save the token in the settings file and
-   apply the file:
+2. **Connect it to MMHotline and add your phone.** Run this one command on
+   the MMHotline server:
 
    ```sh
-   sudo mmhotline settings set-secret sending_services.pushover.application_token --apply
+   sudo mmhotline connect-pushover
    ```
 
-   Each command waits for the value: paste it, then press Enter. Nothing
-   shows as you paste. A coding agent pipes the value in instead, from
-   where the person put it. Reason: a secret typed on the command line
-   would stay in the shell history and show in the list of running
-   processes.
-
-   The command checks the token's form before it saves anything, and
-   never prints the token.
-
-   **Check:** among the lines it prints are:
-
-   ```text
-   sending_services.pushover: applied.
-     sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.
-   ```
-
-   MMHotline checked the token with Pushover, and saved the application's
-   monthly message limit, without sending a notification.
-   `sudo mmhotline sending-services list` now says
-   `Pushover: set up by the settings file ... Checked with Pushover: monthly message limit 10000.`
-
-3. **Add each person's phone.** Each person copies their own **User Key**
-   from the main page of pushover.net after signing in. Then, in MMHotline,
-   they open **Contact methods**, paste the key into **Pushover user key**
-   under **Add Pushover notification**, and choose
-   **Add Pushover notification**.
-
-   An administrator can add it for a person from the server instead, with
-   that person's sign-in email address from `people`:
+   From your laptop, run it through SSH with `-t`, which gives the command
+   your terminal:
 
    ```sh
-   sudo mmhotline contact-methods add --sign-in-email-address barbara@example.com \
-     --contact-method-type pushover_notification --pushover-user-key-file -
+   ssh -t barbara@server.example.com sudo mmhotline connect-pushover
    ```
 
-   The command waits for the key: paste it, then press Enter. Nothing
-   shows as you paste. A coding agent pipes the key in instead. Reason: a
-   key on the command line would stay in the shell history.
+   RUN THIS YOURSELF IN YOUR TERMINAL. YOUR CODING AGENT CAN'T TYPE AT A HIDDEN PROMPT.
+
+   A coding agent never composes its own shell line for a secret: it gives
+   you this command to run in your own terminal.
+
+   The command asks, in this order:
+
+   - `Pushover application token (nothing shows as you paste):` Paste the
+     application's API token, then press Enter. Nothing shows as you
+     paste. MMHotline saves the token in the settings file exactly as
+     `settings set-secret` does, and applies the file.
+   - `Your sign-in email address:` Only when `people` lists more than one
+     person. An address that is not in `people` is refused with the list
+     of addresses, and asked again.
+   - `Your Pushover user key (nothing shows as you paste):` The person's
+     own **User Key**, from the top of pushover.net after signing in.
+     MMHotline checks it with Pushover, which also lists the person's
+     devices.
+   - `Send alerts to which device? Press Enter for all devices:` Only when
+     the Pushover account has more than one device. Enter means all
+     devices; a device's name, such as `phone`, sends alerts to that device
+     only, as [Send to one device only](#send-to-one-device-only) says.
+
+   Reason: the token and the key are secrets. At a hidden prompt, they
+   never show on the screen or in a coding agent's chat, and they stay out
+   of the shell history and the list of running processes. The command
+   checks the token's form before it saves anything, and never prints the
+   token or the key.
 
    USE YOUR OWN PUSHOVER USER KEY, NOT A GROUP KEY. AN ACKNOWLEDGEMENT FROM A GROUP CANNOT CLAIM THE INCIDENT.
 
@@ -108,9 +105,19 @@ test that an emergency alert wakes them, also in silent mode.
    again with the person's own user key. `send-test-sos` stops at once with
    exit code 1 and says the same.
 
-   **Check:** the command, or the page, says the contact method is saved
-   and a test is queued (with a group key, it also prints the warning
-   above):
+   **Check:** among the lines it prints are:
+
+   ```text
+   sending_services.pushover: applied.
+     sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.
+   ```
+
+   MMHotline checked the token with Pushover, and saved the application's
+   monthly message limit, without sending a notification.
+   `sudo mmhotline sending-services list` now says
+   `Pushover: set up by the settings file ... Checked with Pushover: monthly message limit 10000.`
+   The command then adds the phone as `contact-methods add` does, and ends
+   with:
 
    ```text
    Contact method saved. A test message for the contact method is queued. Inspect the last test result to check delivery.
@@ -122,6 +129,23 @@ test that an emergency alert wakes them, also in silent mode.
    notification, and only a test SOS proves the phone wakes the person.
    `sudo mmhotline contact-methods list` keeps saying `Emergency test: not
    yet acknowledged.` for the contact method until then.
+
+   If a step fails, the command says what to do and keeps what it saved.
+   Running it again is safe: it replaces the token, and a phone already
+   added with the same user key stays as it is.
+
+3. **Add each other person's phone.** Each person copies their own
+   **User Key** from the main page of pushover.net after signing in. Then,
+   in MMHotline, they open **Contact methods**, paste the key into
+   **Pushover user key** under **Add Pushover notification**, and choose
+   **Add Pushover notification**. The page says the contact method is
+   saved and a test is queued.
+
+   USE YOUR OWN PUSHOVER USER KEY, NOT A GROUP KEY. AN ACKNOWLEDGEMENT FROM A GROUP CANNOT CLAIM THE INCIDENT.
+
+   A person at the server's terminal can also run
+   `sudo mmhotline connect-pushover`: it asks for the application token
+   again, then whose phone it adds.
 
    The new contact method gets SOS, Warning, and Info alerts at once,
    because Pushover is often a person's only contact method. A person can
@@ -201,14 +225,9 @@ device, and MMHotline sends only to it.
 1. Find the device's name in the Pushover app, or at pushover.net under
    **Your Devices**. A name has up to 25 letters, digits, `_` and `-`.
 2. Type it in **Pushover device name** when you add the contact method, or
-   on its card later. Or add it from the server:
-
-   ```sh
-   sudo mmhotline contact-methods add --sign-in-email-address barbara@example.com \
-     --contact-method-type pushover_notification --pushover-user-key-file - \
-     --pushover-device-name tablet
-   ```
-
+   on its card later. On the server, `sudo mmhotline connect-pushover` asks
+   which device when the account has more than one; a script uses
+   `--pushover-device-name`, as [In a script](#in-a-script) says.
 3. **Check:** `sudo mmhotline contact-methods list` shows
    `Sends to: the Pushover user key ending in ABCD on device tablet`, and the quiet test arrives only
    on that device.
@@ -219,6 +238,28 @@ empty to send to all devices again.
 
 Reason: the acknowledgement still comes from the person's own Pushover user,
 so it claims the incident. A group key cannot do that.
+
+## In a script
+
+`connect-pushover` asks at hidden prompts, so it needs a person at a
+terminal. Without one, it stops and says
+`connect-pushover asks at hidden prompts; run it yourself in a terminal (ssh -t for a remote server). Scripts use settings set-secret and contact-methods add.`
+
+A script uses those two commands, which `connect-pushover` combines. Each
+reads its secret from standard input:
+
+```sh
+sudo mmhotline settings set-secret sending_services.pushover.application_token --apply
+sudo mmhotline contact-methods add --sign-in-email-address barbara@example.com \
+  --contact-method-type pushover_notification --pushover-user-key-file -
+```
+
+Add `--pushover-device-name NAME` to the second command for one device.
+On a terminal, each command waits for the value: paste it, then press
+Enter. Nothing shows as you paste. A coding agent never composes its own
+shell line for a secret: it gives you this command to run in your own
+terminal. Reason: a secret typed on the command line would stay in the
+shell history and show in the list of running processes.
 
 ## What MMHotline sends through Pushover
 
@@ -307,6 +348,10 @@ it, the apply keeps the setup and says
   page at Pushover. Nothing changed: if Pushover was connected before, the
   old token keeps sending; if it was not, the line ends
   `It stays not set up, as before.`
+- **`connect-pushover` says**
+  `Pushover refused the user key: user identifier is invalid.`: the key is
+  wrong, or is the application's token. Copy your own user key again and
+  run the command again. The token it saved stays.
 - **Adding the contact method says**
   `Pushover user key must contain exactly 30 letters and digits`: copy the
   whole user key again.

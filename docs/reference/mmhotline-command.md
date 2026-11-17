@@ -1492,6 +1492,83 @@ uses it.
 | `tasks_on_services_whose_changes_a_person_must_approve` | `path`, `node`, `module`, `service_name`, and `reason`, as in [`approval-requests show`](#mmhotline-approval-requests-show). Present also when empty |
 | `unrecognized_tasks` | `path`, `module`, and `reason`, as in `approval-requests show`. Present also when empty |
 
+## mmhotline connect-pushover
+
+Connects Pushover and adds a person's phone in one run, at the person's own
+prompts. It runs as root, on the MMHotline server, and needs a person at a
+terminal: from a laptop, `ssh -t USER@SERVER sudo mmhotline connect-pushover`.
+[Connect Pushover](../how-to/connect-pushover.md#steps) uses it step by
+step.
+
+```sh
+sudo mmhotline connect-pushover
+```
+
+```text
+Copy the API token from your MMHotline application's page on pushover.net.
+Pushover application token (nothing shows as you paste):
+Saved sending_services.pushover.application_token in /etc/mmhotline/mmhotline_settings.yml.
+The settings file /etc/mmhotline/mmhotline_settings.yml has no problems.
+Settings file: /etc/mmhotline/mmhotline_settings.yml
+sending_services.pushover: applied.
+  sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.
+26 parts unchanged.
+Every part of the settings file is applied.
+Your sign-in email address: barbara@example.com
+Copy your user key from the top of pushover.net after you sign in, labelled "Your User Key". It is not the application's token.
+Your Pushover user key (nothing shows as you paste):
+Your Pushover account has these devices: phone, tablet.
+Send alerts to which device? Press Enter for all devices: phone
+Contact method 0c9da9f6cb2ce7944afba4eef75950be belongs to barbara@example.com.
+Contact method type: pushover_notification. Sends to: the Pushover user key ending in ABCD on device phone. Alert severities: info,sos,warn.
+Send while unavailable or muted: false. Last test message: queued (queued at 2026-11-18T05:35:53Z).
+Emergency test: not yet acknowledged. Run `sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com` to check that an SOS wakes this phone.
+Contact method saved. A test message for the contact method is queued. Inspect the last test result to check delivery.
+
+THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
+```
+
+It does, in order:
+
+1. Asks for the application token at a hidden prompt, then saves and
+   applies it exactly as
+   `settings set-secret sending_services.pushover.application_token --apply`
+   does, which checks the token with Pushover.
+2. Takes the one person in the settings file's `people`, and says whose
+   phone it adds. With several people, it asks
+   `Your sign-in email address:`; an address not in `people` is refused
+   with the list of addresses, and asked again.
+3. Asks for the person's user key at a hidden prompt, and checks it with
+   Pushover, which also lists the account's devices.
+4. With more than one device, asks
+   `Send alerts to which device? Press Enter for all devices:`. A name
+   Pushover does not list is asked again.
+5. Adds the Pushover notification contact method exactly as
+   `contact-methods add --contact-method-type pushover_notification`
+   does, with `pushover_device_name` when a device was chosen. That sends
+   the quiet test notification and prints the same lines.
+
+It stores nothing of its own. Each failure prints what to do. When the
+token is saved and applied but a later step fails, it says so, and
+running the command again is safe: the token is replaced, and a contact
+method with the same user key is reported, not added twice. Without a
+terminal on standard input, it changes nothing and says
+`connect-pushover asks at hidden prompts; run it yourself in a terminal (ssh -t for a remote server). Scripts use settings set-secret and contact-methods add.`
+Reason: the command exists so that a person types the two secrets where a
+coding agent never sees them. A script uses those two commands.
+
+| Flag | Meaning |
+| --- | --- |
+| `--settings-file FILE` | The settings file that gets the token. Default `/etc/mmhotline/mmhotline_settings.yml` |
+| `--command-socket PATH` | The command socket. Default `/run/mmhotline/command.sock` |
+| `--help` | Show the command's flags |
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The phone is added, or was already added with this user key |
+| `1` | The settings file has problems, or Pushover refused the token |
+| `4` | No terminal, a refused user key, a missing answer, or the command socket does not answer |
+
 ## mmhotline contact-methods list
 
 Lists contact methods: all of them, one person's, or the team's shared

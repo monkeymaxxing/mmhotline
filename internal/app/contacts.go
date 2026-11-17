@@ -458,6 +458,11 @@ func (a *App) requireSendingServiceSetupTx(ctx context.Context, tx *sql.Tx, cont
 	}
 	return nil
 }
+
+// ContactMethodAlreadyAdded starts the refusal of a contact method the person
+// already has; connect-pushover tells a re-run by it.
+const ContactMethodAlreadyAdded = "you already added this"
+
 func checkPersonalContactMethodLimit(ctx context.Context, tx *sql.Tx, contactMethodType ContactMethodType, memberID, exceptID, destination string) error {
 	facts := contactMethodType.Facts()
 	var count, duplicate int
@@ -465,7 +470,7 @@ func checkPersonalContactMethodLimit(ctx context.Context, tx *sql.Tx, contactMet
 		return err
 	}
 	if duplicate > 0 {
-		return fmt.Errorf("%w: you already added this %s contact method", ErrConflict, facts.CardTitle)
+		return fmt.Errorf("%w: %s %s contact method", ErrConflict, ContactMethodAlreadyAdded, facts.CardTitle)
 	}
 	if exceptID == "" && count >= facts.MaximumPerPerson {
 		return fmt.Errorf("%w: each person can add at most %d %s contact methods to limit the number of accidental duplicate notifications; remove a contact method first", ErrRateLimited, facts.MaximumPerPerson, facts.CardTitle)

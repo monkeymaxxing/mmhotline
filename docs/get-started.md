@@ -24,7 +24,7 @@ tool that sends alerts to MMHotline, such as your monitoring tool.
   alerts, such as the WireGuard address `10.20.0.1`. `ip -brief addr` lists
   the server's addresses.
 - **Cloudflare, which a first test does not need.** For a first test,
-  keep `web_url=http://localhost:8480` in step 2's block and skip step 8: see
+  keep `web_url=http://localhost:8480` in step 2's block and skip step 7: see
   [The team has no Cloudflare](#if-something-is-different). So that people
   can open MMHotline's pages from their phones, you add later a
   Cloudflare account with Zero Trust and a domain whose DNS Cloudflare
@@ -105,7 +105,7 @@ in your own.
      address starts with `10.`, `192.168.`, or `172.16.` to `172.31.`.
    - `web_url`: keep `http://localhost:8480` for a first test without
      Cloudflare. With Cloudflare, write the address people will open, at
-     the host name you put behind Cloudflare Access in step 8, such as
+     the host name you put behind Cloudflare Access in step 7, such as
      `https://ops.example.com`.
 
    The next two lines fill themselves: the server's time zone, and last
@@ -248,23 +248,60 @@ in your own.
    [Install MMHotline](how-to/install.md#what-the-install-does) says what
    else it made.
 
-6. **Connect Pushover.** On the Pushover website, create an application
-   named MMHotline, as [the Pushover guide](how-to/connect-pushover.md)
-   shows, and copy its API token. Then run this command, which saves the
-   token in the settings file and applies the file:
+6. **Connect Pushover and add your phone.** On the Pushover website,
+   create an application named MMHotline, as
+   [the Pushover guide](how-to/connect-pushover.md#steps) shows, and copy
+   its API token. Then run this one command on the server. It asks for the
+   token and for your Pushover **user key**, saves the token, and adds your
+   phone as your **contact method**, the place where you get
+   notifications:
 
    ```sh
-   sudo mmhotline settings set-secret sending_services.pushover.application_token --apply
+   sudo mmhotline connect-pushover
    ```
 
-   RUN THE COMMAND FIRST. PASTE THE TOKEN ONLY WHEN IT WAITS FOR IT.
+   From your laptop, run it through SSH with `-t`, which gives the command
+   your terminal:
 
-   Pasted at the shell prompt instead, the token runs as a command and
-   stays in the shell history. The command waits for the token: paste it,
-   then press Enter. Nothing shows as you paste. A coding agent pipes the token in instead, from
-   where the person put it. Reason: a token typed on the command line
-   would stay in the shell history and show in the list of running
-   processes.
+   ```sh
+   ssh -t barbara@server.example.com sudo mmhotline connect-pushover
+   ```
+
+   RUN THIS YOURSELF IN YOUR TERMINAL. YOUR CODING AGENT CAN'T TYPE AT A HIDDEN PROMPT.
+
+   A coding agent never composes its own shell line for a secret: it gives
+   you this command to run.
+
+   RUN THE COMMAND FIRST. PASTE EACH VALUE ONLY WHEN IT ASKS FOR IT.
+
+   Pasted at the shell prompt instead, a value runs as a command and stays
+   in the shell history. The command asks, in this order:
+
+   - `Pushover application token (nothing shows as you paste):` Paste the
+     application's API token, then press Enter. Nothing shows as you
+     paste. MMHotline saves the token in the settings file and applies the
+     file, which checks the token with Pushover.
+   - `Your sign-in email address:` Only when `people` in the settings file
+     lists more than one person. With one person, the command says whose
+     phone it adds.
+   - `Your Pushover user key (nothing shows as you paste):` Your own user
+     key is at the top of pushover.net after you sign in, labelled "Your
+     User Key". It is 30 characters and differs from the application's
+     token. MMHotline checks it with Pushover.
+   - `Send alerts to which device? Press Enter for all devices:` Only when
+     your Pushover account has more than one device. Press Enter for all
+     of them, or type one device's name, such as `phone`, for alerts on
+     that device only.
+
+   Reason: the token and the key are secrets. At a hidden prompt, they
+   never show on the screen or in a coding agent's chat, and they stay out
+   of the shell history and the list of running processes.
+
+   USE YOUR OWN PUSHOVER USER KEY, NOT A GROUP KEY. AN ACKNOWLEDGEMENT FROM A GROUP CANNOT CLAIM THE INCIDENT.
+
+   A group key comes from a delivery group's page. A group key still wakes
+   phones, but acknowledging on a phone does not claim the incident for
+   you. MMHotline warns you when you add one.
 
    **Check:** among the lines it prints are:
 
@@ -273,55 +310,33 @@ in your own.
      sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.
    ```
 
-   and it ends with `Every part of the settings file is applied.`
-   MMHotline checked the token with Pushover before it saved it.
+   and `Every part of the settings file is applied.` MMHotline checked the
+   token with Pushover before it started using it. The command then adds
+   your phone, and ends with:
 
-7. **Add your phone.** A **contact method** is where a person gets
-   notifications, here Pushover on your phone. Your Pushover **user key**,
-   on the Pushover website's main page after you sign in, is 30 characters
-   and differs from the application's token. Add it as your contact
-   method, with your own sign-in email address from `people`:
+   ```text
+   Contact method saved. A test message for the contact method is queued. Inspect the last test result to check delivery.
 
-   ```sh
-   sudo mmhotline contact-methods add --sign-in-email-address barbara@example.com \
-     --contact-method-type pushover_notification \
-     --pushover-user-key-file -
+   THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
    ```
 
-   Pushover sends to every device on your account. For alerts on one
-   device only, such as your phone and not a tablet, add
-   `--pushover-device-name NAME` with the device's name from the Pushover
-   website, as [Send to one device only](how-to/connect-pushover.md#send-to-one-device-only)
-   says.
-
-   The command waits for the key: paste it, then press Enter. Nothing
-   shows as you paste. A coding agent pipes the key in instead, from where
-   the person put it. Reason: a key typed on the command line would stay
-   in the shell history and show in the list of running processes.
-
-   USE YOUR OWN PUSHOVER USER KEY, NOT A GROUP KEY. AN ACKNOWLEDGEMENT FROM A GROUP CANNOT CLAIM THE INCIDENT.
-
-   Your own user key is at the top of pushover.net after you sign in,
-   labelled "Your User Key". A group key comes from a delivery group's
-   page. A group key still wakes phones, but acknowledging on a phone does
-   not claim the incident for you. MMHotline warns you when you add one.
-
-   **Check:** your phone shows a quiet Pushover notification titled
+   Your phone shows a quiet Pushover notification titled
    **MMHotline can reach this phone**. There is nothing to acknowledge.
    `sudo mmhotline contact-methods list` then says
    `Last test message: accepted`, which means Pushover took the message.
+   It keeps saying `Emergency test: not yet acknowledged.` until step 8
+   proves that the phone wakes you.
 
-   THIS PHONE HAS NOT PROVED IT WAKES YOU YET. The command prints that
-   line in capitals too, and `contact-methods list` keeps saying
-   `Emergency test: not yet acknowledged.` until step 9 proves it.
+   If a step fails, the command says what to do. Running it again is safe:
+   it replaces the token, and keeps a phone that is already added.
 
    Before you rely on it at night, follow
    [Make an emergency alert wake you](how-to/connect-pushover.md)
    on the phone, so the alert sounds in silent mode too.
 
-8. **Put MMHotline behind Cloudflare Access.** Follow
+7. **Put MMHotline behind Cloudflare Access.** Follow
    [Put MMHotline behind Cloudflare Access](how-to/put-mmhotline-behind-cloudflare-access.md),
-   steps 1 to 6, then come back here. Steps 9 and 10 work without it from
+   steps 1 to 6, then come back here. Step 8 works without it from
    the server, but the links in notifications open only once it is done.
    In short: install `cloudflared` on
    the server, create a tunnel that sends `ops.example.com` to
@@ -332,7 +347,7 @@ in your own.
    **Check:** you opened `https://ops.example.com` on your phone, signed
    in at Cloudflare, and MMHotline's dashboard opened.
 
-9. **Send a test SOS.** This is the one test that proves your phone wakes
+8. **Send a test SOS.** This is the one test that proves your phone wakes
    you. MMHotline sends itself an SOS, wakes you (with
    `--sign-in-email-address`, you are woken whether or not you are on
    call), and waits for you to acknowledge it on your phone.
@@ -443,7 +458,7 @@ read [Handle an incident](how-to/handle-an-incident.md).
   the message, so the phone's settings stop it. Follow
   [Make an emergency alert wake you](how-to/connect-pushover.md).
 - **The team has no Cloudflare:** keep `web_url=http://localhost:8480`
-  in step 2's block, skip step 8, and open MMHotline with a sign-in link, as
+  in step 2's block, skip step 7, and open MMHotline with a sign-in link, as
   [Sign in during a Cloudflare outage](how-to/sign-in-during-a-cloudflare-outage.md)
   says. The links in notifications then open only on a computer that runs
   that SSH forward. To claim or resolve an incident with no browser at all,

@@ -55,6 +55,9 @@ type CommandPushoverEmergencyTest struct {
 }
 
 func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action string, request ContactMethodsCommandRequest, result *CommandResult) error {
+	if action == "check-pushover-user-key" {
+		return a.checkPushoverUserKeyCommand(ctx, p, request.PushoverUserKey, result)
+	}
 	if request.SharedWithTeam && request.SignInEmailAddress != "" {
 		return fmt.Errorf("%w: use either --sign-in-email-address or --shared-with-team", ErrInvalid)
 	}
@@ -295,4 +298,26 @@ func pushoverAcknowledgementProblemText(name string) string {
 		name = "the person"
 	}
 	return fmt.Sprintf("An acknowledgement in Pushover came from another Pushover user, so it did not claim the incident. This contact method uses a key that isn't %[1]s's own Pushover user key, such as a group key. To fix it, remove this contact method and add it again with %[1]s's own Pushover user key.", name)
+}
+
+// checkPushoverUserKeyCommand asks Pushover, with the applied application
+// token, about a person's user key before connect-pushover adds it, and
+// answers the key's device names. It saves nothing. Only connect-pushover
+// sends it; it is not a command of its own.
+func (a *App) checkPushoverUserKeyCommand(ctx context.Context, p Principal, key string, result *CommandResult) error {
+	if _, err := a.TeamMembers(ctx, p); err != nil {
+		return err
+	}
+	contactMethodType, _ := a.contactMethodTypeFor("pushover_notification")
+	pushover, _ := contactMethodType.(*PushoverNotificationContactMethodType)
+	if pushover == nil || pushover.ApplicationToken == "" {
+		return fmt.Errorf("%w: Pushover is not set up: the settings file's sending_services.pushover has not applied", ErrInvalid)
+	}
+	devices, err := pushover.userKeyDevices(ctx, strings.TrimSpace(key))
+	if err != nil {
+		return err
+	}
+	result.PushoverDeviceNames = append([]string{}, devices...)
+	result.Message = "Checked the Pushover user key."
+	return nil
 }

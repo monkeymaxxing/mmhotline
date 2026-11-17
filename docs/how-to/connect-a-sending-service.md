@@ -49,7 +49,9 @@ who can be on call needs Pushover or a phone call for an SOS.
    ```
 
    The command waits for the secret: paste it, then press Enter. Nothing
-   shows as you paste. Keys that are not secret, such as Twilio's
+   shows as you paste. For Pushover, `sudo mmhotline connect-pushover`
+   saves and applies the token and adds your phone in one command, as
+   [Connect Pushover](connect-pushover.md#steps) says. Keys that are not secret, such as Twilio's
    `account_sid`, go in the file as [Change the settings](change-the-settings.md)
    says.
 

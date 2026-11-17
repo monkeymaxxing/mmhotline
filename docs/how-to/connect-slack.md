@@ -54,11 +54,11 @@ not wake anyone: use [Pushover](connect-pushover.md) or
    sudo mmhotline settings set-secret sending_services.slack.app_level_token --apply
    ```
 
-   Each command waits for a token: paste it, then press Enter. Nothing
-   shows as you paste. A coding agent pipes the value in instead, from
-   where the person put it. Reason: a secret typed on the command line
-   would stay in the shell history and show in the list of running
-   processes.
+   Each command waits for a token: paste it, then press Enter. Nothing shows
+   as you paste. A coding agent never composes its own shell line for a
+   secret: it gives you these commands to run in your own terminal. Reason:
+   a secret typed on the command line would stay in the shell history and
+   show in the list of running processes.
 
    The first command says the settings file still has a problem, because
    the app-level token is missing. The second command fixes it.
