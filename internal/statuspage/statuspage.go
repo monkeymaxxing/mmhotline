@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"sort"
 	"strings"
 	"time"
@@ -365,70 +364,11 @@ func newestFirst(updates []Update) []Update {
 //go:embed status_page.css
 var pageStylesheet string
 
-// pageTemplate is index.html. Its heading is page_title exactly as written.
-// An open notice is a problem now, with its updates newest first; with
-// none, everything is working. The most recently resolved notices follow.
-var pageTemplate = template.Must(template.New("index.html").Funcs(template.FuncMap{"publishedTime": publishedTime, "updateTime": updateTime, "timeSpan": timeSpan, "isoTime": isoTime, "newestFirst": newestFirst}).Parse(`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.PageTitle}}</title>
-<style>
-{{.Stylesheet}}</style>
-</head>
-<body>
-<main class="public stack">
-<h1>{{.PageTitle}}</h1>
-{{- range .Open}}{{$opened := .OpenedAt}}{{$updates := newestFirst .Updates}}
-<section class="state sos">
-<span class="tag sos">Problem now</span>
-<p class="big">We are working on a problem.</p>
-<p class="faint small">Started <time datetime="{{isoTime .OpenedAt}}">{{publishedTime .OpenedAt}}</time>{{if gt (len $updates) 1}}{{with index $updates 0}} · last update <time datetime="{{isoTime .PostedAt}}">{{updateTime .PostedAt $opened}} UTC</time>{{end}}{{end}}</p>
-<ol class="timeline">
-{{- range $index, $update := $updates}}
-<li{{if eq $index 0}} class="sos"{{end}}><time datetime="{{isoTime .PostedAt}}">{{updateTime .PostedAt $opened}}</time><span class="dot"></span><div>{{.Message}}</div></li>
-{{- end}}
-</ol>
-</section>
-{{- else}}
-<section class="state ok">
-<span class="tag ok">Working</span>
-<p class="big">Everything is working.</p>
-<p class="faint small">Last updated <time datetime="{{isoTime .PublishedAt}}">{{publishedTime .PublishedAt}}</time></p>
-</section>
-{{- end}}
-{{- with .Resolved}}
-<section class="resolved stack">
-<h2>Recently resolved</h2>
-{{- range .}}{{$opened := .OpenedAt}}
-<article class="panel">
-<div class="row spread"><span class="tag">Resolved</span><span class="faint small">{{timeSpan .OpenedAt .ResolvedAt}}</span></div>
-<ol class="timeline">
-{{- range $index, $update := newestFirst .Updates}}
-<li{{if eq $index 0}} class="person"{{end}}><time datetime="{{isoTime .PostedAt}}">{{updateTime .PostedAt $opened}}</time><span class="dot"></span><div>{{.Message}}</div></li>
-{{- end}}
-</ol>
-</article>
-{{- end}}
-</section>
-{{- end}}
-<footer class="faint small">Times are in UTC. The same notices for programs: <a href="status.json">status.json</a></footer>
-</main>
-</body>
-</html>
-`))
-
 // RenderPage builds index.html from status.json's content: the open notices,
 // or "Everything is working." when there are none, then the most recently
 // resolved notices.
 func RenderPage(file File) ([]byte, error) {
 	var page bytes.Buffer
-	err := pageTemplate.Execute(&page, struct {
-		PageTitle      string
-		Stylesheet     template.CSS
-		PublishedAt    time.Time
-		Open, Resolved []Notice
-	}{file.PageTitle, template.CSS(pageStylesheet), file.PublishedAt, file.OpenNotices(), file.ResolvedNotices(recentlyResolvedOnPage)})
+	err := statusPage(file.PageTitle, file.PublishedAt, file.OpenNotices(), file.ResolvedNotices(recentlyResolvedOnPage)).Render(context.Background(), &page)
 	return page.Bytes(), err
 }

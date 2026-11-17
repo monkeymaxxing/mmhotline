@@ -1,0 +1,87 @@
+package statuspage
+
+import "time"
+
+// statusPage is index.html. Its heading is page_title exactly as written.
+// An open notice is a problem now, with its updates newest first; with
+// none, everything is working. The most recently resolved notices follow.
+templ statusPage(pageTitle string, publishedAt time.Time, open, resolved []Notice) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ pageTitle }</title>
+			@inlineStylesheet()
+		</head>
+		<body>
+			<main class="public stack">
+				<h1>{ pageTitle }</h1>
+				for _, notice := range open {
+					@openNotice(notice)
+				}
+				if len(open) == 0 {
+					<section class="state ok">
+						<span class="tag ok">Working</span>
+						<p class="big">Everything is working.</p>
+						<p class="faint small">Last updated <time datetime={ isoTime(publishedAt) }>{ publishedTime(publishedAt) }</time></p>
+					</section>
+				}
+				if len(resolved) > 0 {
+					<section class="resolved stack">
+						<h2>Recently resolved</h2>
+						for _, notice := range resolved {
+							@resolvedNotice(notice)
+						}
+					</section>
+				}
+				<footer class="faint small">Times are in UTC. The same notices for programs: <a href="status.json">status.json</a></footer>
+			</main>
+		</body>
+	</html>
+}
+
+templ openNotice(notice Notice) {
+	{{ updates := newestFirst(notice.Updates) }}
+	<section class="state sos">
+		<span class="tag sos">Problem now</span>
+		<p class="big">We are working on a problem.</p>
+		<p class="faint small">
+			Started <time datetime={ isoTime(notice.OpenedAt) }>{ publishedTime(notice.OpenedAt) }</time>
+			if len(updates) > 1 {
+				· last update <time datetime={ isoTime(updates[0].PostedAt) }>{ updateTime(updates[0].PostedAt, notice.OpenedAt) } UTC</time>
+			}
+		</p>
+		<ol class="timeline">
+			for index, update := range updates {
+				<li
+					if index == 0 {
+						class="sos"
+					}
+				><time datetime={ isoTime(update.PostedAt) }>{ updateTime(update.PostedAt, notice.OpenedAt) }</time><span class="dot"></span><div>{ update.Message }</div></li>
+			}
+		</ol>
+	</section>
+}
+
+templ resolvedNotice(notice Notice) {
+	<article class="panel">
+		<div class="row spread"><span class="tag">Resolved</span><span class="faint small">{ timeSpan(notice.OpenedAt, *notice.ResolvedAt) }</span></div>
+		<ol class="timeline">
+			for index, update := range newestFirst(notice.Updates) {
+				<li
+					if index == 0 {
+						class="person"
+					}
+				><time datetime={ isoTime(update.PostedAt) }>{ updateTime(update.PostedAt, notice.OpenedAt) }</time><span class="dot"></span><div>{ update.Message }</div></li>
+			}
+		</ol>
+	</article>
+}
+
+// inlineStylesheet writes the page's styles as one <style> element. The
+// stylesheet is our own embedded file, not user input, and a CSS rule has
+// characters (quotes, >) that HTML escaping would change, so it is written raw.
+templ inlineStylesheet() {
+	@templ.Raw("<style>\n" + pageStylesheet + "</style>")
+}

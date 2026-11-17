@@ -1,0 +1,199 @@
+package fakesendingservices
+
+import (
+	"maps"
+	"slices"
+)
+
+// sentPageData is everything the "What MMHotline would have sent" page shows.
+type sentPageData struct {
+	Sent                    []Sent
+	TelegramMessages        []TelegramMessage
+	TelegramCallbackAnswers []TelegramCallbackAnswer
+	SlackMessages           []SlackMessage
+	SlackReplies            []SlackReply
+	PhoneCalls              []PhoneCall
+	PushoverReceipts        []PushoverReceipt
+	CallOutcomes            map[string]string
+	SendingServiceActions   map[string]string
+	SendingServices         []string
+}
+
+templ sentPage(data sentPageData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<title>What MMHotline would have sent</title>
+			@templ.Raw("<style>body{font:16px/1.5 system-ui,sans-serif;margin:2rem}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:.3rem .6rem;text-align:left;vertical-align:top}pre{margin:0;white-space:pre-wrap}form{display:inline-block;margin:.2rem}</style>")
+		</head>
+		<body>
+			<h1>What MMHotline would have sent</h1>
+			<p>Nothing here reached a real person. These are the fake sending services used for development and tests.</p>
+			<p>Email is not faked here. Set up the mail server against Mailpit to inspect development email.</p>
+			<table>
+				<thead><tr><th>Sent at (UTC)</th><th>Sending service</th><th>From</th><th>To</th><th>Subject</th><th>Text</th></tr></thead>
+				<tbody>
+					for _, sent := range data.Sent {
+						<tr><td>{ sent.SentAt.Format("2006-01-02 15:04:05") }</td><td>{ sent.SendingService }</td><td>{ sent.From }</td><td>{ sent.To }</td><td>{ sent.Subject }</td><td><pre>{ sent.Text }</pre></td></tr>
+					}
+					if len(data.Sent) == 0 {
+						<tr><td colspan="6">Nothing sent yet.</td></tr>
+					}
+				</tbody>
+			</table>
+			<h2>Telegram messages and their buttons</h2>
+			<p>Press a button as the Telegram user with this ID. A user MMHotline does not know gets its "does not know your Telegram account" answer.</p>
+			<table>
+				<thead><tr><th>Chat</th><th>Message</th><th>Text</th><th>Buttons</th></tr></thead>
+				<tbody>
+					for _, message := range data.TelegramMessages {
+						<tr><td>{ message.Chat.ID } { message.Chat.Title }</td><td>{ message.MessageID }</td><td><pre>{ message.Text }</pre></td><td>
+							if message.ReplyMarkup != nil {
+								for _, row := range message.ReplyMarkup.InlineKeyboard {
+									for _, button := range row {
+										if button.CallbackData != "" {
+											<form method="post" action="/fake-api/actions/telegram/press"><input type="hidden" name="chat_id" value={ message.Chat.ID }/><input type="hidden" name="message_id" value={ message.MessageID }/><input type="hidden" name="callback_data" value={ button.CallbackData }/><input name="telegram_user_id" value="1001" size="6" aria-label="Telegram user ID"/> <button>{ button.Text }</button></form>
+										} else {
+											<a href={ button.URL }>{ button.Text }</a>
+										}
+									}
+								}
+							}
+						</td></tr>
+					}
+					if len(data.TelegramMessages) == 0 {
+						<tr><td colspan="4">No Telegram messages yet.</td></tr>
+					}
+				</tbody>
+			</table>
+			<h2>Telegram button answers</h2>
+			<ul>
+				for _, answer := range data.TelegramCallbackAnswers {
+					<li>{ answer.Text }</li>
+				}
+				if len(data.TelegramCallbackAnswers) == 0 {
+					<li>None yet.</li>
+				}
+			</ul>
+			<h2>Slack connections</h2>
+			<p>Set up Slack with bot token <code>xoxb-fake-slack-bot-token</code> and app-level token <code>xapp-fake-slack-app-level-token</code>. Send a connection code as a chosen user.</p>
+			<form method="post" action="/fake-api/actions/slack/message"><label>Slack user ID <input name="slack_user_id" value="U0001"/></label><label>Conversation ID <input name="slack_conversation_id" value="D0001"/></label><label>Message kind <select name="slack_message_kind"><option value="direct_message">Direct message</option><option value="mention">Channel mention (use a C conversation ID)</option></select></label><label>Connection code <input name="slack_message"/></label><button>Send to MMHotline</button></form>
+			<h2>Slack messages and their buttons</h2>
+			<p>Press as the chosen Slack user. Socket Mode delivers the press over MMHotline's outbound connection.</p>
+			<table>
+				<thead><tr><th>Workspace</th><th>Channel</th><th>Message</th><th>Text</th><th>Buttons</th></tr></thead>
+				<tbody>
+					for _, message := range data.SlackMessages {
+						<tr><td>{ message.WorkspaceID }</td><td>{ message.ChannelID }</td><td>{ message.TS } ({ message.PostedWith })</td><td><pre>{ message.Text }</pre></td><td>
+							for _, button := range message.Buttons() {
+								if button.Value != "" {
+									<form method="post" action="/fake-api/actions/slack/press"><input type="hidden" name="slack_channel_id" value={ message.ChannelID }/><input type="hidden" name="message_ts" value={ message.TS }/><input type="hidden" name="action_id" value={ button.ActionID }/><input name="slack_user_id" value="U0001" size="8" aria-label="Slack user ID"/> <input name="slack_workspace_id" value={ message.WorkspaceID } size="8" aria-label="Slack workspace ID of the user"/> <button>{ button.Text.Text }</button></form>
+								} else {
+									<a href={ button.URL }>{ button.Text.Text }</a>
+								}
+							}
+						</td></tr>
+					}
+					if len(data.SlackMessages) == 0 {
+						<tr><td colspan="5">No Slack messages yet.</td></tr>
+					}
+				</tbody>
+			</table>
+			<h2>Slack replies only the presser saw</h2>
+			<ul>
+				for _, reply := range data.SlackReplies {
+					<li>{ reply.SlackUserID }: { reply.Text }</li>
+				}
+				if len(data.SlackReplies) == 0 {
+					<li>None yet.</li>
+				}
+			</ul>
+			<h2>Pushover emergency receipts</h2>
+			<table>
+				<thead><tr><th>User key</th><th>Receipt</th><th>Status</th><th>Action</th></tr></thead>
+				<tbody>
+					for _, receipt := range data.PushoverReceipts {
+						<tr><td>{ receipt.UserKey }</td><td>{ receipt.Receipt }</td><td>{ pushoverReceiptStatus(receipt) }</td><td>
+							if !(receipt.Acknowledged || receipt.Cancelled || receipt.Expired) {
+								<form method="post" action="/fake-api/actions/pushover/acknowledge"><input type="hidden" name="receipt" value={ receipt.Receipt }/><button>Acknowledge</button></form>
+							}
+						</td></tr>
+					}
+					if len(data.PushoverReceipts) == 0 {
+						<tr><td colspan="4">No Pushover emergency messages yet.</td></tr>
+					}
+				</tbody>
+			</table>
+			<h2>Automated voice calls (Twilio)</h2>
+			<table>
+				<thead><tr><th>Sending service</th><th>To</th><th>What the call says</th><th>Status</th><th>Play the phone</th></tr></thead>
+				<tbody>
+					for _, call := range data.PhoneCalls {
+						<tr><td>{ call.SendingService }</td><td>{ call.To }</td><td>
+							for _, said := range call.Said {
+								<p>{ said }</p>
+							}
+						</td><td>{ call.Status }</td><td>
+							for _, outcome := range slices.Sorted(maps.Keys(data.CallOutcomes)) {
+								<form method="post" action="/fake-api/actions/phone"><input type="hidden" name="action" value="call_answer"/><input type="hidden" name="id_from_sending_service" value={ call.IDFromSendingService }/><input type="hidden" name="outcome" value={ outcome }/><button>{ data.CallOutcomes[outcome] }</button></form>
+							}
+						</td></tr>
+					}
+					if len(data.PhoneCalls) == 0 {
+						<tr><td colspan="5">No calls yet.</td></tr>
+					}
+				</tbody>
+			</table>
+			<h2>Phone sending services</h2>
+			for _, sendingService := range data.SendingServices {
+				<p><strong>{ sendingService }</strong> 
+					for _, action := range slices.Sorted(maps.Keys(data.SendingServiceActions)) {
+						<form method="post" action="/fake-api/actions/phone"><input type="hidden" name="action" value="next_request"/><input type="hidden" name="sending_service" value={ sendingService }/><input type="hidden" name="behavior" value={ action }/><button>{ data.SendingServiceActions[action] }</button></form>
+					}
+				</p>
+			}
+			<form method="post" action="/fake-api/actions/phone"><input type="hidden" name="action" value="number_behavior"/><label>Phone number <input name="phone_number" placeholder="+15555550123"/></label> <select name="behavior"><option value="">Normal phone</option><option value="invalid_number">Invalid number (permanent failure)</option><option value="geographic">Outside the geographic permissions</option></select> <button>Set</button></form>
+		</body>
+	</html>
+}
+
+// pushoverReceiptStatus is the status word the page shows for a receipt.
+func pushoverReceiptStatus(receipt PushoverReceipt) string {
+	switch {
+	case receipt.Acknowledged:
+		return "Acknowledged"
+	case receipt.Cancelled:
+		return "Cancelled"
+	case receipt.Expired:
+		return "Expired"
+	}
+	return "Open"
+}
+
+templ telegramLinkPage(bot, token string, group bool) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<title>{ "Fake Telegram: @" + bot }</title>
+			@templ.Raw("<style>body{font:16px/1.5 system-ui,sans-serif;margin:2rem;max-width:40rem}label{display:block;margin:.6rem 0}</style>")
+		</head>
+		<body>
+			<h1>{ "Fake Telegram: @" + bot }</h1>
+			<p>This stands in for the Telegram app. Nothing here reaches Telegram.</p>
+			<form method="post" action="/fake-api/actions/telegram/start">
+				<input type="hidden" name="start_token" value={ token }/>
+				<label>Telegram user ID <input name="telegram_user_id" value="1001"/></label>
+				<label>First name <input name="telegram_user_first_name" value="Barbara"/></label>
+				if group {
+					<label>Group chat ID <input name="telegram_group_chat_id" value="-1001"/></label>
+					<label>Group title <input name="telegram_group_title" value="Ops alerts"/></label>
+					<button>Add the bot to this group</button>
+				} else {
+					<button>Start</button>
+				}
+			</form>
+		</body>
+	</html>
+}

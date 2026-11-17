@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
 	"net/http"
 	"strconv"
@@ -454,16 +453,6 @@ func (s *Server) telegramPressAction(w http.ResponseWriter, r *http.Request) {
 	actionDone(w, r)
 }
 
-var telegramLinkPage = template.Must(template.New("t.me").Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Fake Telegram: @{{.Bot}}</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;margin:2rem;max-width:40rem}label{display:block;margin:.6rem 0}</style></head>
-<body><h1>Fake Telegram: @{{.Bot}}</h1><p>This stands in for the Telegram app. Nothing here reaches Telegram.</p>
-<form method="post" action="/fake-api/actions/telegram/start"><input type="hidden" name="start_token" value="{{.Token}}">
-<label>Telegram user ID <input name="telegram_user_id" value="1001"></label>
-<label>First name <input name="telegram_user_first_name" value="Barbara"></label>
-{{if .Group}}<label>Group chat ID <input name="telegram_group_chat_id" value="-1001"></label>
-<label>Group title <input name="telegram_group_title" value="Ops alerts"></label>
-<button>Add the bot to this group</button>{{else}}<button>Start</button>{{end}}</form></body></html>`))
-
 // telegramLinkStandIn is GET {fake}/telegram/t.me/{bot}?start=... or
 // ?startgroup=..., standing in for the t.me link the Telegram app opens.
 func (s *Server) telegramLinkStandIn(w http.ResponseWriter, r *http.Request) {
@@ -472,8 +461,5 @@ func (s *Server) telegramLinkStandIn(w http.ResponseWriter, r *http.Request) {
 		token, group = r.URL.Query().Get("startgroup"), true
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = telegramLinkPage.Execute(w, struct {
-		Bot, Token string
-		Group      bool
-	}{r.PathValue("bot"), token, group})
+	_ = telegramLinkPage(r.PathValue("bot"), token, group).Render(r.Context(), w)
 }
