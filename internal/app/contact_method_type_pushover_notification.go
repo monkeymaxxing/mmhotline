@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -37,10 +38,15 @@ const pushoverTestExpirySeconds = 600
 
 var pushoverKeyPattern = regexp.MustCompile(`^[A-Za-z0-9]{30}$`)
 
+// pushoverDeviceNamePattern is Pushover's own rule for a device name
+// (https://pushover.net/api#identifiers): up to 25 characters of letters,
+// digits, underscore, and hyphen.
+var pushoverDeviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,25}$`)
+
 func (*PushoverNotificationContactMethodType) Name() string { return "pushover_notification" }
 func (*PushoverNotificationContactMethodType) Facts() ContactMethodTypeFacts {
 	return ContactMethodTypeFacts{CardTitle: "Pushover notification", CardTitleIsAProductName: true,
-		ValueLabel: "Pushover user key", ValueField: "pushover_user_key", ValueInputType: "text", SettingsFields: []string{"pushover_user_key"},
+		ValueLabel: "Pushover user key", ValueField: "pushover_user_key", ValueInputType: "text", SettingsFields: []string{"pushover_user_key", "pushover_device_name"},
 		WakesPeople: true, WakesSleepingPeople: true, ClaimMethod: "acknowledgement", CombinesMessages: true, CombinesSOSEscalation: true,
 		RetryUncertain: true, MaximumPerPerson: 3, AcceptedLabel: "Accepted by Pushover"}
 }
@@ -49,9 +55,14 @@ func (*PushoverNotificationContactMethodType) CheckSettings(_ context.Context, i
 	if !pushoverKeyPattern.MatchString(key) {
 		return ContactMethodSettings{}, fmt.Errorf("%w: Pushover user key must contain exactly 30 letters and digits", ErrInvalid)
 	}
+	device := strings.TrimSpace(input.Fields["pushover_device_name"])
+	if device != "" && !pushoverDeviceNamePattern.MatchString(device) {
+		return ContactMethodSettings{}, fmt.Errorf("%w: Pushover device name must be 1 to 25 characters: letters, digits, _ and -", ErrInvalid)
+	}
 	settings, err := settingsJSON(struct {
-		UserKey string `json:"pushover_user_key"`
-	}{key})
+		UserKey    string `json:"pushover_user_key"`
+		DeviceName string `json:"pushover_device_name,omitempty"`
+	}{key, device})
 	return ContactMethodSettings{JSON: settings, SentTo: key}, err
 }
 func (*PushoverNotificationContactMethodType) Setup() SendingServiceSetupDefinition {
@@ -105,7 +116,7 @@ func checkPushoverSetup(ctx context.Context, fields map[string]string, fakeURL s
 }
 
 // These are the documented fields of https://pushover.net/api and
-// https://pushover.net/api/receipts. No callback, device, or sound is supplied.
+// https://pushover.net/api/receipts. No callback or sound is supplied; `device` is supplied only when the person named one.
 type pushoverAnswer struct {
 	Status         int      `json:"status"`
 	Errors         []string `json:"errors"`
@@ -113,6 +124,7 @@ type pushoverAnswer struct {
 	Receipt        string   `json:"receipt"`
 	Limit          int64    `json:"limit"`
 	Group          int      `json:"group"`
+	Devices        []string `json:"devices"`
 	Acknowledged   int      `json:"acknowledged"`
 	AcknowledgedBy string   `json:"acknowledged_by"`
 	Expired        int      `json:"expired"`
@@ -197,12 +209,35 @@ func (c *PushoverNotificationContactMethodType) call(ctx context.Context, method
 	return answer, nil
 }
 
-// userKeyIsAGroupKey asks Pushover whether key is a delivery-group key
-// (https://pushover.net/api#validate answers "group": 1). It answers false
-// when Pushover does not answer.
-func (c *PushoverNotificationContactMethodType) userKeyIsAGroupKey(ctx context.Context, key string) bool {
-	answer, err := c.call(ctx, http.MethodPost, "users/validate", url.Values{"user": {key}})
-	return err == nil && answer.Group == 1
+// checkUserKeyAndDevice asks Pushover about key once
+// (https://pushover.net/api#validate). It answers whether key is a
+// delivery-group key ("group": 1), false when Pushover does not answer. When a
+// device name is given it must be one of the devices Pushover lists for the
+// user; otherwise the error lists the names Pushover returned. Pushover not
+// answering is not a refusal: the test message then shows any problem.
+func (c *PushoverNotificationContactMethodType) checkUserKeyAndDevice(ctx context.Context, key, device string) (groupKey bool, err error) {
+	answer, callErr := c.call(ctx, http.MethodPost, "users/validate", url.Values{"user": {key}})
+	if callErr != nil {
+		return false, nil
+	}
+	if device != "" && !slices.Contains(answer.Devices, device) {
+		names := "Pushover returned no device names for this user key"
+		if len(answer.Devices) > 0 {
+			names = "The device names Pushover returned are: " + strings.Join(answer.Devices, ", ")
+		}
+		return false, fmt.Errorf("%w: this Pushover user has no device named %s. %s", ErrInvalid, device, names)
+	}
+	return answer.Group == 1, nil
+}
+
+// withPushoverDevice adds Pushover's `device` field when the contact method
+// names one device. With no device named, Pushover sends to all of the
+// user's devices.
+func withPushoverDevice(fields url.Values, settings string) url.Values {
+	if device := settingValue(settings, "pushover_device_name"); device != "" {
+		fields.Set("device", device)
+	}
+	return fields
 }
 
 // pushoverGroupKeyWarning is shown, in capitals on its own line, when a
@@ -308,7 +343,7 @@ func (c *PushoverNotificationContactMethodType) Send(ctx context.Context, m Cont
 	if utf8.RuneCountInString(link) > 512 || utf8.RuneCountInString(text) > 1024 {
 		return DeliveryResult{State: "failed", Diagnostic: "Not sent: the Pushover message or MMHotline link exceeds Pushover's limits"}
 	}
-	fields := url.Values{"user": {key}, "title": {truncateRunes(subject, 250)}, "message": {text}, "priority": {strconv.Itoa(priority)}, "url": {link}, "url_title": {"Open in MMHotline"}}
+	fields := withPushoverDevice(url.Values{"user": {key}, "title": {truncateRunes(subject, 250)}, "message": {text}, "priority": {strconv.Itoa(priority)}, "url": {link}, "url_title": {"Open in MMHotline"}}, m.Settings)
 	if emergency {
 		fields.Set("retry", "30")
 		fields.Set("expire", strconv.Itoa(pushoverEmergencyExpirySeconds))
@@ -342,7 +377,7 @@ func (c *PushoverNotificationContactMethodType) downAlarmRequests(contactMethod 
 		return downalarm.HeldRequest{}, downalarm.HeldRequest{}, errors.New("the Pushover user key is incomplete")
 	}
 	build := func(title, message string, expire int) (downalarm.HeldRequest, error) {
-		fields := url.Values{"user": {key}, "title": {title}, "message": {message}, "priority": {"2"}, "retry": {"30"}, "expire": {strconv.Itoa(expire)}, "url": {text.WebURL}, "url_title": {"Open MMHotline"}}
+		fields := withPushoverDevice(url.Values{"user": {key}, "title": {title}, "message": {message}, "priority": {"2"}, "retry": {"30"}, "expire": {strconv.Itoa(expire)}, "url": {text.WebURL}, "url_title": {"Open MMHotline"}}, contactMethod.Settings)
 		return heldRequest(c.request(context.Background(), http.MethodPost, "messages", fields))
 	}
 	request, err := build(text.title(), text.message(), pushoverEmergencyExpirySeconds)

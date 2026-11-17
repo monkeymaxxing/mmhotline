@@ -57,6 +57,15 @@ const contactMethodColumns = `id,member_id,contact_method_type,settings_json,sen
 // Setting returns one stored setting, such as "email_address", for display.
 func (c ContactMethod) Setting(field string) string { return settingValue(c.Settings, field) }
 
+// SentToText is SentTo for people to read: a Pushover contact method that
+// names one device adds "on device NAME" after the user key.
+func (c ContactMethod) SentToText() string {
+	if device := c.Setting("pushover_device_name"); c.ContactMethodType == "pushover_notification" && device != "" {
+		return c.SentTo + " on device " + device
+	}
+	return c.SentTo
+}
+
 func contactMethodByID(ctx context.Context, tx *sql.Tx, id string) (ContactMethod, error) {
 	c, err := scanContactMethod(tx.QueryRowContext(ctx, `SELECT `+contactMethodColumns+` FROM contact_methods WHERE id=? AND deleted=0`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -168,8 +177,18 @@ func (a *App) SaveContactMethod(ctx context.Context, p Principal, in ContactMeth
 	// Pushover does not answer, no warning is made: the test message then shows
 	// any problem with the key.
 	pushoverGroupKey := false
-	if pushover, isPushover := contactMethodType.(*PushoverNotificationContactMethodType); isPushover && in.ID == "" && pushover.ApplicationToken != "" {
-		pushoverGroupKey = pushover.userKeyIsAGroupKey(ctx, settings.SentTo)
+	if pushover, isPushover := contactMethodType.(*PushoverNotificationContactMethodType); isPushover && pushover.ApplicationToken != "" {
+		// A new contact method is always checked. A saved one is checked
+		// again only when it names a device, since the person may have
+		// changed the device name.
+		device := settingValue(settings.JSON, "pushover_device_name")
+		if in.ID == "" || device != "" {
+			group, err := pushover.checkUserKeyAndDevice(ctx, settings.SentTo, device)
+			if err != nil {
+				return c, err
+			}
+			pushoverGroupKey = group && in.ID == ""
+		}
 	}
 	values := append([]string(nil), in.Subscriptions...)
 	slices.Sort(values)

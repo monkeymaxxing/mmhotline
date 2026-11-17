@@ -114,6 +114,7 @@ func runManagementCommand(group string, args []string) error {
 			flags.StringVar(&tokenPath, "outgoing-webhook-bearer-token-file", "", "path to the file containing the outgoing webhook bearer token")
 			flags.StringVar(&secretPath, "outgoing-webhook-signing-secret-file", "", "path where MMHotline writes the new outgoing webhook signing secret with mode 0600")
 			flags.StringVar(&pushoverUserKeyPath, "pushover-user-key-file", "", "path to the file containing the personal Pushover user key (30 letters and digits), readable only by the file owner, or - for standard input")
+			flags.StringVar(&in.PushoverDeviceName, "pushover-device-name", "", "send only to this one of the person's Pushover devices (up to 25 letters, digits, _ and -); the default is all their devices")
 			flags.StringVar(&in.PhoneNumberToCall, "phone-number-to-call", "", "phone number to call, with +, country code, and number, such as +14155550100")
 			send := flags.Bool("send-while-unavailable-or-muted", false, "send while the person is unavailable or the team is muted")
 			in.SendWhileUnavailableOrMuted = send
@@ -151,6 +152,9 @@ func runManagementCommand(group string, args []string) error {
 				}
 				if pushoverUserKeyPath != "" && in.ContactMethodType != "pushover_notification" {
 					return errors.New("--pushover-user-key-file requires --contact-method-type pushover_notification")
+				}
+				if in.PushoverDeviceName != "" && in.ContactMethodType != "pushover_notification" {
+					return errors.New("--pushover-device-name requires --contact-method-type pushover_notification")
 				}
 				if in.ContactMethodType == "pushover_notification" {
 					key, err := readSecret(pushoverUserKeyPath, "pushover-user-key-file")

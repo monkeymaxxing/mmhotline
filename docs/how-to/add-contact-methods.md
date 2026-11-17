@@ -81,6 +81,16 @@ and `sudo mmhotline contact-methods remove --contact-method-id ID` act on
 one. The [command reference](../reference/mmhotline-command.md#mmhotline-contact-methods-add) lists
 every flag.
 
+## Send Pushover alerts to one device only
+
+By default Pushover sends each alert to all of your devices. To use only
+one, put its name in **Pushover device name** on the add form or on the
+card. A name has up to 25 letters, digits, `_` and `-`. MMHotline checks it
+with Pushover and refuses a name your Pushover account does not list.
+Leave it empty to use all devices again. Your acknowledgement still comes
+from your own Pushover user, so it still claims the incident. The steps are
+in [Connect Pushover](connect-pushover.md#send-to-one-device-only).
+
 ## Send alerts to a program
 
 An outgoing webhook sends each alert as a JSON `POST` request from the

@@ -10,6 +10,7 @@ import (
 
 type ContactMethodsCommandRequest struct {
 	PushoverUserKey             string    `json:"pushover_user_key,omitempty"`
+	PushoverDeviceName          string    `json:"pushover_device_name,omitempty"`
 	SignInEmailAddress          string    `json:"sign_in_email_address,omitempty"`
 	SharedWithTeam              bool      `json:"shared_with_team,omitempty"`
 	ContactMethodID             string    `json:"contact_method_id,omitempty"`
@@ -109,7 +110,7 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 		if request.AlertSeverities == nil {
 			return fmt.Errorf("%w: --alert-severities is required", ErrInvalid)
 		}
-		in := ContactMethodInput{ContactMethodType: request.ContactMethodType, Shared: request.SharedWithTeam, OwnerSignInEmailAddress: request.SignInEmailAddress, Subscriptions: *request.AlertSeverities, Fields: map[string]string{"email_address": request.EmailAddress, "outgoing_webhook_url": request.OutgoingWebhookURL, "outgoing_webhook_bearer_token": request.OutgoingWebhookBearerToken, "phone_number_to_call": request.PhoneNumberToCall, "pushover_user_key": request.PushoverUserKey}}
+		in := ContactMethodInput{ContactMethodType: request.ContactMethodType, Shared: request.SharedWithTeam, OwnerSignInEmailAddress: request.SignInEmailAddress, Subscriptions: *request.AlertSeverities, Fields: map[string]string{"email_address": request.EmailAddress, "outgoing_webhook_url": request.OutgoingWebhookURL, "outgoing_webhook_bearer_token": request.OutgoingWebhookBearerToken, "phone_number_to_call": request.PhoneNumberToCall, "pushover_user_key": request.PushoverUserKey, "pushover_device_name": request.PushoverDeviceName}}
 		if request.SendWhileUnavailableOrMuted != nil {
 			in.SendWhileUnavailableOrMuted = *request.SendWhileUnavailableOrMuted
 		}
@@ -186,7 +187,7 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 		if action == "list" && ((request.SharedWithTeam && c.MemberID != "") || (request.SignInEmailAddress != "" && !strings.EqualFold(signInEmailAddresses[c.MemberID], request.SignInEmailAddress))) {
 			continue
 		}
-		out := CommandContactMethod{ContactMethodID: c.ID, SignInEmailAddress: signInEmailAddresses[c.MemberID], SharedWithTeam: c.MemberID == "", ContactMethodType: c.ContactMethodType, SendsTo: c.SentTo, AlertSeverities: append([]string{}, c.Subscriptions...), SendWhileUnavailableOrMuted: c.SendWhileUnavailableOrMuted}
+		out := CommandContactMethod{ContactMethodID: c.ID, SignInEmailAddress: signInEmailAddresses[c.MemberID], SharedWithTeam: c.MemberID == "", ContactMethodType: c.ContactMethodType, SendsTo: c.SentToText(), AlertSeverities: append([]string{}, c.Subscriptions...), SendWhileUnavailableOrMuted: c.SendWhileUnavailableOrMuted}
 		if c.LastTest != nil {
 			out.LastTestMessage = &CommandLastTestMessage{DeliveryState: c.LastTest.State, DeliveryStateExplanation: c.LastTest.Reason, QueuedAt: c.LastTest.CreatedAt}
 		}

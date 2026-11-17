@@ -25,9 +25,11 @@ const PushoverGroupKey = "FakePushoverGroupUserKey000001"
 const PushoverMonthlyMessageLimit = 10000
 
 type PushoverMessage struct {
-	Sound    string `json:"sound,omitempty"`
-	Receipt  string `json:"receipt,omitempty"`
-	UserKey  string `json:"pushover_user_key"`
+	Sound   string `json:"sound,omitempty"`
+	Receipt string `json:"receipt,omitempty"`
+	UserKey string `json:"pushover_user_key"`
+	// Device is the `device` form field: the one device named, empty when none.
+	Device   string `json:"device,omitempty"`
 	Title    string `json:"title"`
 	Message  string `json:"message"`
 	URL      string `json:"url"`
@@ -161,7 +163,7 @@ func (s *Server) pushoverValidateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Form.Get("user") {
 	case PushoverUserKey, PushoverOtherUserKey, PushoverThirdUserKey:
-		writeJSON(w, 200, map[string]any{"status": 1, "group": 0, "devices": []string{"phone"}, "request": "fake-pushover-validate"})
+		writeJSON(w, 200, map[string]any{"status": 1, "group": 0, "devices": []string{"phone", "tablet"}, "request": "fake-pushover-validate"})
 	case PushoverGroupKey:
 		writeJSON(w, 200, map[string]any{"status": 1, "group": 1, "devices": []string{}, "request": "fake-pushover-validate"})
 	default:
@@ -189,7 +191,7 @@ func (s *Server) pushoverSend(w http.ResponseWriter, r *http.Request) {
 		pushoverRefuse(w, 400, "priority is invalid")
 		return
 	}
-	m := PushoverMessage{Sound: r.Form.Get("sound"), UserKey: key, Title: r.Form.Get("title"), Message: r.Form.Get("message"), URL: r.Form.Get("url"), URLTitle: r.Form.Get("url_title"), Priority: priority}
+	m := PushoverMessage{Sound: r.Form.Get("sound"), UserKey: key, Device: r.Form.Get("device"), Title: r.Form.Get("title"), Message: r.Form.Get("message"), URL: r.Form.Get("url"), URLTitle: r.Form.Get("url_title"), Priority: priority}
 	if m.Message == "" || !utf8.ValidString(m.Message) || utf8.RuneCountInString(m.Message) > 1024 || utf8.RuneCountInString(m.Title) > 250 || utf8.RuneCountInString(m.URL) > 512 || utf8.RuneCountInString(m.URLTitle) > 100 {
 		pushoverRefuse(w, 400, "message, title, or URL exceeds its limit")
 		return

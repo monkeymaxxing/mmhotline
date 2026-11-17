@@ -1574,6 +1574,7 @@ Contact method saved. A test message for the contact method is queued. Inspect t
 | `--outgoing-webhook-signing-secret-file FILE` | With `outgoing_webhook`, optional: where to write the new signing secret, instead of printing it |
 | `--phone-number-to-call NUMBER` | With `automated_voice_call`: E.164 form, such as `+12025550123`. Personal methods only |
 | `--pushover-user-key-file FILE\|-` | With `pushover_notification`: a file only its owner can read, or `-` for standard input, holding the person's own user key, exactly 30 letters and digits. A Pushover delivery-group key is saved, with a warning, but its acknowledgements cannot claim an incident. Personal methods only; needs the Pushover sending service |
+| `--pushover-device-name NAME` | With `pushover_notification`, optional: send only to this one of the person's Pushover devices, up to 25 letters, digits, `_` and `-`. MMHotline refuses a name that Pushover does not list for the user key, and names the devices Pushover lists. Without it, Pushover sends to all the person's devices. `sends_to` then reads `USER_KEY on device NAME` |
 | Common flags | As above |
 
 - **The test message** is queued in the same save, and the method gets

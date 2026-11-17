@@ -192,6 +192,34 @@ test that an emergency alert wakes them, also in silent mode.
    `Emergency test: acknowledged at 2026-11-15T05:20:01Z.` for the
    contact method.
 
+## Send to one device only
+
+By default Pushover sends each alert to all of a person's devices. A person
+with a phone and a tablet may want alerts on one of them. They name that
+device, and MMHotline sends only to it.
+
+1. Find the device's name in the Pushover app, or at pushover.net under
+   **Your Devices**. A name has up to 25 letters, digits, `_` and `-`.
+2. Type it in **Pushover device name** when you add the contact method, or
+   on its card later. Or add it from the server:
+
+   ```sh
+   sudo mmhotline contact-methods add --sign-in-email-address barbara@example.com \
+     --contact-method-type pushover_notification --pushover-user-key-file - \
+     --pushover-device-name tablet
+   ```
+
+3. **Check:** `sudo mmhotline contact-methods list` shows
+   `Sends to: USER_KEY on device tablet`, and the quiet test arrives only
+   on that device.
+
+MMHotline asks Pushover for the person's devices and refuses a name that is
+not among them. The refusal lists the names Pushover knows. Leave the name
+empty to send to all devices again.
+
+Reason: the acknowledgement still comes from the person's own Pushover user,
+so it claims the incident. A group key cannot do that.
+
 ## What MMHotline sends through Pushover
 
 | Message | Pushover priority | Repeats |

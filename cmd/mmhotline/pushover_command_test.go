@@ -40,6 +40,7 @@ func TestPushoverCommandFlagsAndJSONFieldNames(t *testing.T) {
 		group, field, want string
 	}{
 		{[]string{"contact-methods", "add", "--sign-in-email-address", "barbara@example.test", "--contact-method-type", "pushover_notification", "--pushover-user-key-file", keyFile}, "contact_methods", "pushover_user_key", fakesendingservices.PushoverUserKey},
+		{[]string{"contact-methods", "add", "--sign-in-email-address", "barbara@example.test", "--contact-method-type", "pushover_notification", "--pushover-user-key-file", keyFile, "--pushover-device-name", "tablet"}, "contact_methods", "pushover_device_name", "tablet"},
 	}
 	for _, check := range cases {
 		args := append(check.args, "--command-socket", socket, "--json")
@@ -69,6 +70,10 @@ func TestPushoverCommandFlagsAndJSONFieldNames(t *testing.T) {
 	}
 	if request := <-requests; request["contact_methods"].(map[string]any)["pushover_user_key"] != fakesendingservices.PushoverUserKey {
 		t.Fatalf("key from standard input: %+v", request)
+	}
+	deviceOutput, deviceErr := cliProcess(t, "contact-methods", "add", "--contact-method-type", "email", "--pushover-device-name", "tablet").CombinedOutput()
+	if deviceErr == nil || !strings.Contains(string(deviceOutput), "--pushover-device-name requires --contact-method-type pushover_notification") {
+		t.Fatalf("device name on another kind: %s %v", deviceOutput, deviceErr)
 	}
 	if err := os.Chmod(keyFile, 0o644); err != nil {
 		t.Fatal(err)

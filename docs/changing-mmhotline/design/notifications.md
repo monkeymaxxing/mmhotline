@@ -300,6 +300,17 @@ https://ops.example.com/sending-services/pushover says how". A key has exactly 3
 case-sensitive ASCII letters and digits. Shared team contact methods are not
 allowed. Each person may keep three keys, like three phone numbers, to bound
 accidental notification fan-out. Duplicate keys for one person are refused.
+
+A Pushover contact method may also name one device, `pushover_device_name`
+(optional, in the same settings JSON), so a person with several devices gets
+alerts on one. The name follows Pushover's rule: up to 25 letters, digits, `_`
+and `-`. Saving asks Pushover's `users/validate` for the user's devices and
+refuses a name not among them, listing the names returned. Every request
+for the contact method sends it as Pushover's `device`: deliveries, the
+contact test, the test SOS, and the MMHotline-down alarm's held requests.
+`SentTo` stays the user key, since acknowledgements are matched to it; display
+adds "on device NAME". Reason: the acknowledgement still comes from the
+person's own user, so it claims, unlike a group key.
 Only the owner edits personal contact methods through the browser.
 
 New Pushover notification contact methods subscribe to SOS, Warning, and Info, and follow
