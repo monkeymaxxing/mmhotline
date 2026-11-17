@@ -192,3 +192,31 @@ func TestTheDailyAPIKeySignInCheckAsksTheModelsList(t *testing.T) {
 	}
 	r.noRunStarts(t)
 }
+
+// TestAnAPIKeySignInCheckFollowsNoRedirect: a models list that answers with a
+// redirect fails the check, and the key never reaches the redirect's address.
+func TestAnAPIKeySignInCheckFollowsNoRedirect(t *testing.T) {
+	var elsewhere sync.Mutex
+	reached := false
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		elsewhere.Lock()
+		reached = true
+		elsewhere.Unlock()
+	}))
+	t.Cleanup(other.Close)
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/v1/models", http.StatusFound)
+	}))
+	t.Cleanup(redirecting.Close)
+	r := newTriageSessionRig(t, false)
+	r.a.triageAgent.codingAgentAPIBaseURLs = map[string]string{"claude_code": redirecting.URL, "codex": redirecting.URL}
+	event := r.a.checkAPIKeyWithModelsList(context.Background(), triageagent.Request{CodingAgent: "codex", Credential: "sk-secret-api-key-0123456789"})
+	if event.Event != "failed" || !strings.Contains(event.Reason, "302") {
+		t.Fatalf("a redirect gave %s %q", event.Event, event.Reason)
+	}
+	elsewhere.Lock()
+	defer elsewhere.Unlock()
+	if reached {
+		t.Fatal("the check followed the redirect and sent the key elsewhere")
+	}
+}

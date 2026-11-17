@@ -70,7 +70,10 @@ func (a *App) checkAPIKeyWithModelsList(ctx context.Context, request triageagent
 	} else {
 		ask.Header.Set("Authorization", "Bearer "+request.Credential)
 	}
-	answer, err := http.DefaultClient.Do(ask)
+	// A redirect is answered, never followed: following one would send the
+	// key's header to whatever address the answer names.
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	answer, err := client.Do(ask)
 	if err != nil {
 		return triageagent.Event{Event: "failed", Reason: "MMHotline could not reach " + vendor + "'s models list at " + address + ": " + err.Error()}
 	}
