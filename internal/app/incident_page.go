@@ -146,7 +146,11 @@ func (a *App) incidentPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page.CSRF = a.CSRFToken(w, r)
-	RenderPage(w, 200, "SOS incident: "+page.Incident.Title, incidentBody, page)
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, 200, "SOS incident: "+page.Incident.Title, frame, incidentHeading(frame, page), incidentBody(frame, page))
 }
 
 // readIncidentPage reads incident id's page for member p, through the same
@@ -835,59 +839,3 @@ func viewIncidentApprovals(views []ApprovalRequestView) (open, decided []inciden
 	}
 	return open, decided
 }
-
-// incidentBody is the incident page. Its live sections, which refresh.js
-// replaces when they change: incident-tags and incident-opened in the
-// heading, incident-state (the decide box), incident-steps, triage-agent,
-// incident-approvals, incident-audit ("What happened"), the bodies of the
-// folded triage-agent-steps and incident-deliveries, and incident-people.
-// The note field belongs to the form incident-action, which both Claim and
-// Resolve submit, so one note reaches either without JavaScript.
-const incidentBody = `{{define "heading"}}{{with .Data}}<div class="incident-head">
-<p class="crumbs"><a href="/dashboard">Dashboard</a> / <a href="/alerts">Alerts</a> / SOS incident</p>
-<div id="incident-tags" data-live class="tags"><span class="tag{{if ne .Incident.Status "resolved"}} sos{{end}}">SOS</span>{{if eq .Incident.Status "open"}}<span class="tag nodot">Not claimed</span>{{else if eq .Incident.Status "claimed"}}<span class="tag work">Claimed</span>{{else}}<span class="tag">Resolved</span>{{end}}</div>
-<h1>{{.Incident.Title}}</h1>
-<p id="incident-opened" data-live class="meta faint">Opened {{clock .Incident.CreatedAt}}, {{relativeTime .Incident.CreatedAt}} · sent by {{.SentBy}}</p>
-{{with .ApprovalRequestID}}<p class="meta">MMHotline raised this SOS to wake the person on call: a playbook run waits for the team's approval. <a href="/approvals/{{.}}">Open the approval request</a></p>{{end}}
-</div>{{end}}{{end}}` +
-	`<section id="incident-state" data-live class="decide{{if eq .Incident.Status "claimed"}} work{{else if eq .Incident.Status "resolved"}} done{{end}}" aria-label="{{if eq .Incident.Status "resolved"}}How the incident ended{{else}}What you can do now{{end}}"><div class="say"><strong>{{.Say}}</strong>
-{{with .Countdown}}<div class="countdown"><div class="row spread"><span>{{.Sentence}}</span>{{with .TimeLeft}}<span class="faint num">{{.}}</span>{{end}}</div>{{if .StepSeconds}}<progress class="bar" value="{{.ElapsedSeconds}}" max="{{.StepSeconds}}">{{.TimeLeft}}</progress>{{end}}</div>{{end}}
-{{with .ResolvedNote}}<p class="muted">{{.}}</p>{{end}}
-{{if ne .Incident.Status "resolved"}}<form id="incident-action" method="post" action="/incidents/{{.Incident.ID}}/claim"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="revision" value="{{.Incident.Revision}}"></form>
-<label class="field">Note for the team (optional)<input name="note" form="incident-action" maxlength="{{.MaximumNoteCharacters}}" autocomplete="off"></label>
-<p class="faint small">Claim and Resolve each keep your note in the incident history. The triage agent reads your note when the agent next looks into the incident.</p>{{end}}</div>
-{{if ne .Incident.Status "resolved"}}<div class="do">{{if not .ClaimedByYou}}<button form="incident-action" class="btn block{{if eq .Incident.Status "open"}} primary big{{end}}">{{if eq .Incident.Status "claimed"}}Take over: I'm handling the incident{{else}}Claim: I'm handling the incident{{end}}</button>{{end}}
-<div class="row incident-do-row"><button form="incident-action" formaction="/incidents/{{.Incident.ID}}/resolve" class="btn{{if .ClaimedByYou}} primary big{{end}}">Resolve</button>
-<details class="incident-more"><summary class="btn block{{if .ClaimedByYou}} big{{end}}">More</summary><div class="body">
-<form method="post" action="/incidents/{{.Incident.ID}}/escalate"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="revision" value="{{.Incident.Revision}}"><label class="field">Escalate to someone else<select name="target" required><option value="">Choose a person</option>{{range .Escalate}}<option value="{{.ID}}"{{if not .UnavailableUntil.IsZero}} disabled{{end}}>{{.Name}}{{if eq .ID $.ReaderID}} (you){{end}}{{if not .UnavailableUntil.IsZero}}, unavailable until {{clock .UnavailableUntil}}{{end}}</option>{{end}}</select></label><button class="btn block">Wake this person now</button><p class="faint small">MMHotline wakes the selected person at once and waits for the selected person to claim the incident.{{if eq .Incident.Status "claimed"}} The current claim ends.{{end}}</p></form>
-{{if .StatusPageCanPost}}<a class="btn block" href="#status-page">{{if .StatusPageNoticeID}}Status page notice {{.StatusPageNoticeID}}{{else}}Post to the status page{{end}}</a>{{end}}</div></details></div>
-<p class="faint small">{{if eq .Incident.Status "open"}}Claiming an incident tells the team you are handling the incident and stops MMHotline waking anyone else.{{else if .ClaimedByYou}}Resolve when the problem is over.{{else}}Taking over tells the team you are handling the incident now.{{end}}</p></div>{{end}}</section>` +
-	`<ol id="incident-steps" data-live class="steps incident-steps" aria-label="Where this incident is">{{range .Steps}}<li{{with .State}} class="{{.}}"{{end}}>{{.Label}}{{with .When}}<span class="when">{{.}}</span>{{end}}</li>{{end}}</ol>` +
-	`<div class="cols"><div class="col-main">` + incidentTriageAgentPanel + incidentApprovalsPanel +
-	`<section id="incident-audit" data-live class="panel"><div class="panel-head"><h2>What happened</h2><span class="faint small">Oldest first</span></div><div class="panel-body"><ol class="timeline">{{range $event := .History}}<li{{with .Tone}} class="{{.}}"{{end}}><time>{{if not .At.IsZero}}{{clock .At}}{{end}}</time><span class="dot"></span><div>{{.Text}}{{with .Reached}} <span class="faint small">{{.}}.</span>{{end}}{{if .Again}} <span class="faint small">{{if eq .Again 1}}Once more, at {{clock .LastAgain}}.{{else}}Again {{.Again}} times, the last at {{clock .LastAgain}}.{{end}}</span>{{end}}{{with .Note}}<br><span class="muted">{{.}}</span>{{end}}{{with .AlertID}} <a class="small" href="/alerts/{{.}}">{{with $event.AlertLabel}}{{.}}{{else}}The alert{{end}}</a>{{end}}</div></li>{{end}}</ol></div></section>` +
-	`<div class="folds"><details class="more"><summary>The alert's full message</summary><div class="body">{{with .Incident.Message}}<pre>{{.}}</pre>{{else}}<p class="faint">The alert came without a message.</p>{{end}}</div></details>
-{{with .TriageSession}}<details class="more"><summary>The triage agent's steps</summary><div id="triage-agent-steps" data-live class="body">{{with .Run}}{{with .EarlierSteps}}<p class="faint small">{{.}} earlier triage agent steps are not shown. Watch the session to see all triage agent steps.</p>{{end}}<ol class="timeline">{{range .Steps}}<li class="agent"><time>{{clock .OccurredAt}}</time><span class="dot"></span><div><span class="faint small">{{.Kind}}</span><pre>{{.Text}}</pre></div></li>{{else}}<li><span></span><span></span><div class="faint">No steps yet.</div></li>{{end}}</ol>{{else}}<p class="faint">The agent has not started yet.</p>{{end}}</div></details>{{end}}
-<details class="more"><summary>Notifications sent</summary><div id="incident-deliveries" data-live class="body">{{range .Deliveries}}<p class="small"><span class="faint num">{{clock .At}}</span> · {{.What}} · <a href="/deliveries/{{.ID}}">{{.Outcome}}</a>{{with .Reason}}: {{.}}{{end}}</p>{{else}}<p class="faint">No notifications for this incident yet.</p>{{end}}</div></details>
-<details class="more"><summary>Identifiers</summary><div class="body"><dl class="kv"><dt>Incident ID</dt><dd><code>{{.Incident.ID}}</code></dd><dt>Alert source ID</dt><dd><code>{{.Incident.SourceID}}</code></dd>{{with .Incident.SenderIncidentKey}}<dt>Sender incident key</dt><dd><code>{{breakAfterSeparators .}}</code></dd>{{end}}<dt>Opening alert ID</dt><dd><a href="/alerts/{{.Incident.OpeningAlertID}}"><code>{{.Incident.OpeningAlertID}}</code></a></dd></dl></div></details></div>` +
-	`</div><div class="col-side">` +
-	`<section id="incident-people" data-live class="panel"><div class="panel-head"><h2>People</h2><a class="small" href="/on-call">On call</a></div><div class="panel-body"><dl class="kv"><dt>On call</dt><dd>{{.People.OnCall}}</dd>{{with .People.Backup}}<dt>Backup</dt><dd>{{.}}</dd>{{end}}<dt>Woken so far</dt><dd>{{.People.Woken}}</dd>{{with .People.Next}}<dt>At {{clock $.People.NextAt}}</dt><dd>{{.}}</dd>{{end}}{{with .People.Skipped}}<dt>Can't be woken</dt><dd>{{.}}</dd>{{end}}</dl></div></section>` +
-	`<section class="panel"><div class="panel-head"><h2>Where the alert came from</h2></div><div class="panel-body"><dl class="kv"><dt>Sent by</dt><dd>{{capitalize .SentBy}}</dd>{{with .Incident.SenderIncidentKey}}<dt>Sender incident key</dt><dd><code>{{breakAfterSeparators .}}</code></dd>{{end}}<dt>The alert</dt><dd><a href="/alerts/{{.Incident.OpeningAlertID}}">Open the alert</a></dd>{{with .LaterAlerts}}<dt>Later alerts</dt><dd>{{.}}, in “What happened”</dd>{{end}}</dl></div></section>` +
-	`{{if .StatusPageCanPost}}<section id="status-page" class="panel"><div class="panel-head"><h2>Status page</h2><a class="small" href="/status-page">Read the status page</a></div><div class="panel-body">{{if .StatusPageNoticeID}}<p>Notice {{.StatusPageNoticeID}}, posted from this incident, is open on the status page.</p><a class="btn block" href="/status-page">Update or resolve notice {{.StatusPageNoticeID}}</a>{{else}}<p class="small muted">Your customers see only what someone posts. Posting publishes “` + StatusPageGenericMessage + `”, and you can add your own words next.</p><form method="post" action="/status-page/notices"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="incident_id" value="{{.Incident.ID}}"><input type="hidden" name="message" value="` + StatusPageGenericMessage + `"><button class="btn block">Post to the status page</button></form>{{end}}</div></section>{{end}}` +
-	`</div></div>`
-
-// incidentTriageAgentPanel is what the triage agent found and does about the
-// incident, with Take over, which takes its triage session over from it
-// (triage_session_take_over.go) and returns here.
-const incidentTriageAgentPanel = `{{with .TriageSession}}<section id="triage-agent" data-live class="panel"><div class="panel-head"><h2>{{if $.TriageReport}}What the triage agent found{{else}}The triage agent{{end}}</h2>{{if eq .Phase "working"}}<span class="tag work">Working since {{clock .Started}}</span>{{else if eq .Phase "waiting"}}<span class="tag">Waiting</span>{{else if eq .Phase "ended"}}<span class="tag">Ended</span>{{else}}<span class="tag work">{{if eq .Phase "stopping"}}Stopping{{else}}Handing over{{end}}</span>{{end}}</div>
-<div class="panel-body">{{with $.TriageReport}}<p class="finding">{{.Summary}}</p><p class="faint small">The triage agent's report at {{clock .At}} contains findings MMHotline has not checked.</p><details class="more"><summary>The whole report</summary><div class="body"><pre>{{.Text}}</pre></div></details>{{end}}
-<p class="muted">{{if eq .Phase "ended"}}The triage session ended at {{clock .Ended}}: {{.EndedBecause}}{{else if eq .Phase "working"}}The triage agent is looking into the incident now. See “The triage agent's steps” below.{{else}}{{.PhaseText}}{{end}}</p>
-{{if .Stoppable}}<p class="faint small">When you take over, the triage agent finishes the current step, reports the findings, and runs nothing more.{{if $.HeldForTriageAgent}} MMHotline then wakes the person on call at once.{{end}}</p>{{end}}</div>
-<div class="panel-foot"><a href="/triage-sessions/{{.SessionID}}">Watch the session</a>{{if .Stoppable}}<form method="post" action="/triage-sessions/{{.SessionID}}/stop"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="return_to_incident_id" value="{{$.ReturnToIncidentID}}"><button class="btn small">Take over from the agent</button></form>{{end}}</div></section>{{end}}`
-
-// incidentApprovalsPanel shows, in short, each approval request and warned
-// run of the incident's triage session, with Approve and run (or Stop) and
-// a link to the approval's own page, which lists each task.
-const incidentApprovalsPanel = `<div id="incident-approvals" data-live class="stack"{{if not (or .OpenApprovals .Decided)}} hidden{{end}}>{{range .OpenApprovals}}<section class="decide warn approval" id="approval-{{.ID}}"><div class="panel-head"><h2>{{if .Warned}}A playbook runs at {{clock .RunsAt}} unless someone stops it{{else}}Approval needed to run a playbook{{end}}</h2><span class="tag warn">{{if .Warned}}Runs {{relativeTime .RunsAt}}{{else}}Needs {{.ApprovalsNeeded}} {{if eq .ApprovalsNeeded 1}}person{{else}}people{{end}}{{end}}</span></div>
-<div class="panel-body"><p><strong>{{.Question}}</strong></p><p class="faint">{{.Where}}</p>{{with .Kinds}}<ul class="plain">{{range .}}<li>{{.}}</li>{{end}}</ul>{{end}}<p class="faint small">{{.Why}}</p>
-{{if .Warned}}<form method="post" action="/approvals/{{.ID}}/stop"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="return_to_incident_id" value="{{$.ReturnToIncidentID}}"><label class="field">Reason for stopping (optional)<input name="reason" maxlength="{{$.MaximumReasonCharacters}}"></label><div class="row"><button class="btn primary">Stop</button><a class="btn" href="/approvals/{{.ID}}">Review first</a></div></form>{{else if .ApprovedByYou}}<p>You approved the playbook run. The playbook run needs approval from another person.</p><div class="row"><a class="btn" href="/approvals/{{.ID}}">Review the playbook run</a></div>{{else}}<div class="row"><form method="post" action="/approvals/{{.ID}}/approve"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="return_to_incident_id" value="{{$.ReturnToIncidentID}}"><button class="btn primary">{{.ApproveLabel}}</button></form><a class="btn" href="/approvals/{{.ID}}">Review first</a></div>{{end}}</div></section>{{end}}
-{{with .Decided}}<section class="panel"><div class="panel-head"><h2>Playbook runs</h2></div><div class="panel-body">{{range .}}<p id="approval-{{.ID}}" class="small"><a href="/approvals/{{.ID}}">{{.Question}}</a> {{.StateLabel}}, {{clock .Changed}}.</p>{{end}}</div></section>{{end}}</div>`
