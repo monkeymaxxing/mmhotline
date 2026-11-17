@@ -335,7 +335,11 @@ in your own.
 9. **Send a test SOS.** This is the one test that proves your phone wakes
    you. MMHotline sends itself an SOS, wakes you (with
    `--sign-in-email-address`, you are woken whether or not you are on
-   call), and waits for you to acknowledge it on your phone:
+   call), and waits for you to acknowledge it on your phone.
+
+   **IF YOUR CODING AGENT RUNS THIS COMMAND, IT TELLS YOU FIRST: "YOUR
+   PHONE IS ABOUT TO SOUND. ACKNOWLEDGE IT."** Its chat waits until
+   you do, so you can't ask it then.
 
    ```sh
    sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
