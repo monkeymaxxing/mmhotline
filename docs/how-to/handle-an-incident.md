@@ -127,7 +127,8 @@ server. You need no browser and no Cloudflare.
    **Check:** each incident shows its ID on its first line, such as
    `SOS incident acc896d49ce5b2ef40cd2c944da4f08f: Disk of db001 is 99% full`.
 
-2. **Claim it,** with the sign-in email address of the member who takes it:
+2. **Claim it,** with the sign-in email address of the member who takes it.
+   Claiming stops MMHotline contacting people about this incident.
 
    ```sh
    sudo mmhotline incidents claim --incident-id ID --sign-in-email-address barbara@example.com

@@ -2104,7 +2104,8 @@ A claim or resolve with a note ends with the note, such as
 
 ## mmhotline incidents claim
 
-Claims an SOS incident for a member, from a terminal on the server. Use it
+Claims an SOS incident for a member, from a terminal on the server.
+Claiming stops MMHotline contacting people about this incident. Use it
 when you cannot open the incident page, such as when the team has no
 Cloudflare or Cloudflare is down.
 

@@ -117,7 +117,9 @@ has the inventory address `203.0.113.11` and the private address
    **Check:** `sudo -l -U triage` prints
    `User triage is not allowed to run sudo on web1.` Give `triage` sudo
    only for a short list of read-only commands with fixed arguments, if
-   any.
+   any. Never give `triage` sudo for `mmhotline`, on any server: with it,
+   the agent could claim or resolve an incident in a person's name and stop
+   MMHotline contacting people about it.
 
    **KEEP `restrict` IN THE KEY LINE, AND KEEP THE HOME, `.ssh`, AND
    `authorized_keys` OWNED BY ROOT.**

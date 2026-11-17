@@ -3,13 +3,23 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"time"
 
 	"mmhotline/internal/app"
 )
 
 // The flags of the read-only commands, which show what happened: incidents,
-// alerts, triage sessions, and approval requests. They change nothing.
+// alerts, triage sessions, and approval requests. They change nothing,
+// except incidents claim and resolve, which act like the incident page's
+// buttons, and incidents send-test-sos.
+
+const incidentsClaimHelp = `usage: sudo mmhotline incidents claim --incident-id ID --sign-in-email-address ADDRESS [--note TEXT] [--command-socket PATH] [--json]
+
+Claims an SOS incident for a member, as the incident page's Claim does.
+Claiming stops MMHotline contacting people about this incident.
+
+`
 
 func incidentsFlags(flags *flag.FlagSet, action string, in *app.IncidentsCommandRequest, waitForClaimMinutes *int) func() error {
 	if action == "send-test-sos" {
@@ -32,6 +42,10 @@ func incidentsFlags(flags *flag.FlagSet, action string, in *app.IncidentsCommand
 		flags.StringVar(&in.Note, "note", "", "one line of plain text for the incident's history, such as what you found")
 	}
 	if action == "claim" {
+		flags.Usage = func() {
+			fmt.Fprint(flags.Output(), incidentsClaimHelp)
+			flags.PrintDefaults()
+		}
 		// A Unix user is not linked to a member, so the claim names one.
 		flags.StringVar(&in.SignInEmailAddress, "sign-in-email-address", "", "sign-in email address of the member who claims the incident; the history also names the Unix user who ran the command")
 		return func() error {
