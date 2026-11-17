@@ -66,9 +66,11 @@ templ wakeSkipped(skipped []personChip) {
 	}
 }
 
-// coverageBody is the on-call page. The "Your availability" panel stays on
-// one line up to its form's revision field: the stand-in guide in
-// docs/changing-mmhotline/testing.md reads the first revision after that heading's line.
+// coverageBody is the on-call page. The stand-in guide in
+// docs/changing-mmhotline/testing.md greps the first revision field on the
+// "Your availability" heading's line. templ writes no line breaks between
+// elements, so that field must stay the first revision after the heading:
+// keep the availability panel before the other panels with forms.
 templ coverageBody(view coveragePageView) {
 	<div class="stack oncall">
 		if view.Error != "" {

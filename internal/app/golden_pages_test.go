@@ -49,16 +49,16 @@ var goldenPages = []goldenPage{
 	{render: "contacts_http.go connectTelegramHTTP (POST /connect-telegram)", page: "connect_telegram",
 		states: []string{"personal_chat", "team_group"}},
 	{render: "coverage_http.go coveragePage (GET /on-call)", page: "on_call",
-		states:     []string{"rotation", "override", "form_error", "override_and_unavailable_person", "one_person_by_day_of_week"},
-		notCovered: map[string]string{"no_schedule": "every rig the test reuses sets up a schedule", "custom_schedule_code": "needs the custom schedule sandbox", "team_mute": "left out; the same panel as a person's availability"}},
+		states:     []string{"rotation", "override", "form_error", "override_and_unavailable_person", "team_mute", "one_person_by_day_of_week"},
+		notCovered: map[string]string{"no_schedule": "every rig the test reuses sets up a schedule", "custom_schedule_code": "needs the custom schedule sandbox"}},
 	{render: "dashboard.go dashboard (GET /dashboard)", page: "dashboard",
 		states:     []string{"quiet", "down_alarm_set_up", "down_alarm_not_checking_in", "settings_part_failed", "open_sos", "claimed_sos", "sos_and_approval_waiting"},
 		notCovered: map[string]string{"warned_run_waits": "covered on the Approvals page, not the dashboard", "fleet_view_servers": "needs the fleet view command's socket"}},
 	{render: "dashboard.go alertsPage (GET /alerts)", page: "alerts",
 		states: []string{"empty", "with_items", "filtered", "more_than_a_page"}},
 	{render: "dashboard.go alertPage (GET /alerts/{id})", page: "alert",
-		states:     []string{"manual_sos", "warn", "info"},
-		notCovered: map[string]string{"held_warning": "needs a warning hold (TestHeldWarn* rigs)", "received_later_than_it_happened": "needs an alert with happened_at, which the reused admitSignedAlert does not send", "resolved_sos": "needs an SOS with a sender incident key and its resolution"}},
+		states:     []string{"manual_sos", "warn", "info", "received_later_than_it_happened", "resolved_sos"},
+		notCovered: map[string]string{"held_warning": "needs a warning hold (TestHeldWarn* rigs)"}},
 	{render: "down_alarm_http.go sendDownAlarmTestHTTP, its error (POST /mmhotline-down-alarm/send-test)", page: "down_alarm_test",
 		states: []string{"error_too_soon"}},
 	{render: "down_alarm_http.go sendDownAlarmTestHTTP, its results (POST /mmhotline-down-alarm/send-test)", page: "down_alarm_test",
@@ -505,6 +505,29 @@ func TestGoldenPages(t *testing.T) {
 			t.Fatal(w.Code, w.Body.String())
 		}
 		g.get("on_call", "override_and_unavailable_person", "/on-call", daniel)
+
+		// An alert that happened well before it arrived, then an SOS with a
+		// sender incident key and its resolution.
+		admit := func(fields string) Alert {
+			t.Helper()
+			g.advance(time.Minute)
+			alert, _, _, err := g.a.AdmitGeneric(ctx, source.Source.ID, alertSignature(source.Secret, g.a.Now(), []byte(fields)), []byte(fields))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return alert
+		}
+		late := admit(`{"sender_alert_id":"queue-17","severity":"warn","title":"Queue backed up","message":"Queue depth 9000.","happened_at":"` + g.a.Now().Add(-40*time.Minute).Format(time.RFC3339) + `"}`)
+		g.get("alert", "received_later_than_it_happened", "/alerts/"+late.ID, daniel)
+		admit(`{"sender_incident_key":"db/primary","severity":"sos","title":"Primary database down","message":"No connections."}`)
+		resolved := admit(`{"sender_incident_key":"db/primary","severity":"resolved-sos","title":"Primary database up","message":"Connections work again."}`)
+		g.get("alert", "resolved_sos", "/alerts/"+resolved.ID, daniel)
+
+		// Maya mutes the team for an hour.
+		if w := g.request("POST", "/on-call", maya, url.Values{"action": {"team_mute"}, "revision": {"0"}, "duration": {"1h"}}); w.Code != 303 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		g.get("on_call", "team_mute", "/on-call", maya)
 	})
 	t.Run("the triage agent, approvals, and commit reviews", func(t *testing.T) {
 		seedGoldenRandom(t)
