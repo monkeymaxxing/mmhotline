@@ -125,7 +125,7 @@ func TestSettingsApplyRestartsMMHotlineForARestartKey(t *testing.T) {
 	for _, want := range []string{
 		"Restarting MMHotline to apply the settings that require a restart: web_url.\n",
 		"Restarted MMHotline first, because these keys change only when it restarts: web_url.\n",
-		"team_name: applied.\npeople: unchanged.\n",
+		"team_name: applied.\n1 part unchanged.\n",
 	} {
 		if !strings.Contains(output, want) {
 			t.Errorf("output lacks %q:\n%s", want, output)

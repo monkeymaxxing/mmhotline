@@ -23,6 +23,9 @@ func TestAddingAPushoverGroupKeyWarnsInCapitalsAndStillSaves(t *testing.T) {
 	if !strings.Contains(result.Text(), "\n\n"+want+"\n") {
 		t.Fatalf("the warning is not on its own line with a blank line before and after it: %q", result.Text())
 	}
+	if !strings.Contains(result.Text(), want+"\n\n"+pushoverUserKeyHelp+"\n") {
+		t.Fatalf("the sentence saying where the user key is does not follow the warning: %q", result.Text())
+	}
 	assertCommandKeys(t, raw, "pushover_group_key_warning")
 
 	// A personal user key gets no warning.

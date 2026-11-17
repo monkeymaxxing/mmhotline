@@ -327,7 +327,7 @@ func (a *App) saveContactMethodHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if saved.PushoverGroupKey && saved.MemberID != "" {
 		if owner, err := a.CurrentMember(r.Context(), p); err == nil {
-			a.renderContactMethodsWithPhoneNumber(w, r, p, 200, "", "Contact method saved. "+pushoverGroupKeyWarning(owner.Name), "")
+			a.renderContactMethodsWithPhoneNumber(w, r, p, 200, "", "Contact method saved. "+pushoverGroupKeyWarning(owner.Name)+" "+pushoverUserKeyHelp, "")
 			return
 		}
 	}

@@ -123,14 +123,21 @@ in your own.
      port `8484`.
    - `people`: you, with the email address you will sign in with at
      Cloudflare, as `administrator`.
-   - `on_call_schedule`: puts you on call every week from Monday 09:00 in
-     your time zone. `first_start_date` must be a Monday. With
+   - `on_call_schedule`: puts you on call every week from Monday 09:00.
+     `time_zone` is your team's time zone name, such as `Europe/Bucharest`
+     or `America/New_York`, or `UTC`. `first_start_date` is a Monday in that
+     time zone, in quotes, such as `"2026-11-02"`. With
      `backup_option: everyone_available`, an SOS that nobody claims in time
      wakes everyone else who is available. Start with yourself alone; you
      add the team and its rotation after this page.
    - `web_url` is also the start of the links in notifications.
    - `signing_secrets`: leave `THE 64 HEXADECIMAL CHARACTERS` for now; the
      command below puts in the secret from step 2.
+
+   USE A MONDAY THAT HAS ALREADY PASSED FOR `first_start_date`, SUCH AS LAST MONDAY. NO ONE IS ON CALL BEFORE THE START DATE.
+
+   The settings check does not look at today's date, so it will not catch a
+   future date.
 
    ```yaml
    # Written by hand with sudoedit. Apply a change with sudo mmhotline settings apply.
@@ -240,6 +247,22 @@ in your own.
        application_token: YOUR_30_CHARACTER_APPLICATION_TOKEN
    ```
 
+   Save the file, then put the token in without showing it on the screen.
+   The command asks for the token; paste it and press Enter. Nothing shows
+   as you paste:
+
+   ```sh
+   sudo python3 -c "import getpass; from pathlib import Path; f = Path('/etc/mmhotline/mmhotline_settings.yml'); f.write_text(f.read_text().replace('YOUR_30_CHARACTER_APPLICATION_TOKEN', getpass.getpass('Paste the application token, then press Enter: ').strip()))"
+   ```
+
+   Reason: this is the same kind of command as step 3, so the guide has one
+   way to put a secret into the file. The token never appears on the
+   screen, in the shell history, or in the list of running processes, and
+   the file keeps its owner and mode.
+
+   **Check:** `sudo grep -c YOUR_30 /etc/mmhotline/mmhotline_settings.yml`
+   prints `0`.
+
    Then apply the file:
 
    ```sh
@@ -275,8 +298,10 @@ in your own.
 
    USE YOUR OWN PUSHOVER USER KEY, NOT A GROUP KEY. AN ACKNOWLEDGEMENT FROM A GROUP CANNOT CLAIM THE INCIDENT.
 
-   A group key still wakes phones, but acknowledging on a phone does not
-   claim the incident for you. MMHotline warns you when you add one.
+   Your own user key is at the top of pushover.net after you sign in,
+   labelled "Your User Key". A group key comes from a delivery group's
+   page. A group key still wakes phones, but acknowledging on a phone does
+   not claim the incident for you. MMHotline warns you when you add one.
 
    **Check:** your phone shows a quiet Pushover notification titled
    **MMHotline can reach this phone**. There is nothing to acknowledge.

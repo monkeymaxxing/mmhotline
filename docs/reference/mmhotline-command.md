@@ -427,10 +427,12 @@ before the schedule that names them:
 25. `mmhotline_down_alarm`
 26. `status_page`
 
-Each line ends in one of these:
+Each line ends in one of these. Text output counts the parts that did
+not change on one last line, such as `12 parts unchanged.`, and prints a
+line for an unchanged part only when it has a note under it. `--json` lists
+every part, with the state `unchanged`.
 
 - `applied.`
-- `unchanged.`
 - `not set up, because the settings file leaves it out.`
 - `did not apply:`, the reason, then when the earlier setting applied:
   `The earlier setting, applied at 2026-11-15T03:54:04Z, stays.`, or

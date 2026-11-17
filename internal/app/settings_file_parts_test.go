@@ -517,3 +517,23 @@ func TestAnActionKindTheFileLeavesOutIsNamed(t *testing.T) {
 		t.Fatalf("show after listing: %v\n%s", err, shown.Text())
 	}
 }
+
+// TestSettingsFileTextCountsUnchangedPartsOnOneLine: the text output prints
+// each changed part in full and the unchanged parts as one counted line; the
+// JSON output keeps every part.
+func TestSettingsFileTextCountsUnchangedPartsOnOneLine(t *testing.T) {
+	view := SettingsFileView{SettingsFile: "/etc/mmhotline/mmhotline_settings.yml", Parts: []SettingsFilePartOutcome{
+		{Part: "team_name", State: "unchanged"},
+		{Part: "people", State: "applied"},
+		{Part: "sending_services.pushover", State: "unchanged"},
+		{Part: "alert_sources", State: "unchanged"},
+	}}
+	text := view.Text()
+	if strings.Contains(text, "team_name") || strings.Contains(text, "alert_sources") || !strings.HasSuffix(text, "people: applied.\n3 parts unchanged.") {
+		t.Fatalf("text:\n%s", text)
+	}
+	raw, err := json.Marshal(view)
+	if err != nil || strings.Count(string(raw), `"state":"unchanged"`) != 3 {
+		t.Fatalf("json keeps every part: %v %s", err, raw)
+	}
+}

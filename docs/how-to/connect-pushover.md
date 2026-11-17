@@ -95,6 +95,10 @@ test that an emergency alert wakes them, also in silent mode.
 
    USE YOUR OWN PUSHOVER USER KEY, NOT A GROUP KEY. AN ACKNOWLEDGEMENT FROM A GROUP CANNOT CLAIM THE INCIDENT.
 
+   Your own user key is at the top of pushover.net after you sign in,
+   labelled "Your User Key". A group key comes from a delivery group's
+   page.
+
    A group key still wakes phones, so MMHotline accepts it. But
    acknowledging on a phone does not claim the incident for the person,
    because MMHotline must know whose acknowledgement it is. Claiming on

@@ -211,6 +211,10 @@ func pushoverGroupKeyWarning(name string) string {
 	return fmt.Sprintf("THIS IS A PUSHOVER GROUP KEY. ACKNOWLEDGING ON A PHONE WILL NOT CLAIM THE INCIDENT FOR %s. USE %s'S OWN PUSHOVER USER KEY. CLAIMING ON THE INCIDENT'S PAGE STILL WORKS.", strings.ToUpper(name), strings.ToUpper(name))
 }
 
+// pushoverUserKeyHelp follows the group key warning and says where the
+// person's own user key is.
+const pushoverUserKeyHelp = "Your own user key is at the top of pushover.net after you sign in, labelled \"Your User Key\". A group key comes from a delivery group's page."
+
 // pushoverDefaultSubscriptions is every severity: Pushover is often a person's
 // only contact method, and Warning and Info go at priorities that wake nobody
 // (Send), so subscribing to SOS alone would leave them unheard.

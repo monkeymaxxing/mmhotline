@@ -366,6 +366,7 @@ func (view SettingsFileView) Text() string {
 	for _, problem := range view.Problems {
 		lines = append(lines, problem.String())
 	}
+	unchangedParts := 0
 	for _, part := range view.Parts {
 		switch part.State {
 		case "applied":
@@ -377,7 +378,12 @@ func (view SettingsFileView) Text() string {
 				lines = append(lines, part.Part+": applied.")
 			}
 		case "unchanged":
-			lines = append(lines, part.Part+": unchanged.")
+			// An unchanged part with notes keeps its line, so the notes stay under it.
+			if len(part.Notes) > 0 {
+				lines = append(lines, part.Part+": unchanged.")
+			} else {
+				unchangedParts++
+			}
 		case "never_applied":
 			lines = append(lines, part.Part+": not applied yet.")
 		case "failed":
@@ -397,6 +403,13 @@ func (view SettingsFileView) Text() string {
 		for _, note := range part.Notes {
 			lines = append(lines, "  "+note.String())
 		}
+	}
+	// One line for all unchanged parts keeps the changed parts easy to see;
+	// the JSON output still lists every part.
+	if unchangedParts == 1 {
+		lines = append(lines, "1 part unchanged.")
+	} else if unchangedParts > 1 {
+		lines = append(lines, fmt.Sprintf("%d parts unchanged.", unchangedParts))
 	}
 	return strings.Join(lines, "\n")
 }

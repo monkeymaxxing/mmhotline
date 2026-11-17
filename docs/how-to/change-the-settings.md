@@ -92,19 +92,16 @@ key and its values.
    ```
 
    MMHotline applies the file in parts, such as `people` and
-   `on_call_schedule`, and prints one line for each part. A part you
-   changed says `applied.`, and the parts you did not change say
-   `unchanged.` For the change above, the output starts and ends like this:
+   `on_call_schedule`, and prints one line for each part you
+   changed, which says `applied.`. One last line counts the parts you did
+   not change, such as `4 parts unchanged.` For the change above, the
+   output looks like this:
 
    ```text
    Settings file: /etc/mmhotline/mmhotline_settings.yml
    Settings file first comment line: Written by hand with sudoedit. Apply a change with sudo mmhotline settings apply.
-   web_url, web_listen_address, alert_intake_listen_address, cloudflare_access: unchanged.
-   team_name: unchanged.
-   fleet_view_command: unchanged.
-   people: unchanged.
    on_call_schedule: applied.
-   ...
+   4 parts unchanged.
    Every part of the settings file is applied.
    ```
 
@@ -184,8 +181,9 @@ Fix the cause, then run `sudo mmhotline settings apply` again. The
 dashboard also tells administrators about each part that did not apply. A
 part that failed with no earlier setting says
 `No value has ever applied for the settings file part, so the part is not set.`
-A part you did not change says `unchanged.`, unless its last apply failed;
-then MMHotline tries it again.
+Parts you did not change are counted on one line, such as
+`4 parts unchanged.`, unless a part's last apply failed; then MMHotline
+tries it again and prints its line. `--json` lists every part.
 
 These parts are tested with an outside service before MMHotline saves
 them, so a wrong token or address never replaces a working one:

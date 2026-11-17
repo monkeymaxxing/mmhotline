@@ -132,7 +132,7 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 		}
 		if selected.PushoverGroupKey && selected.MemberID != "" {
 			result.PushoverGroupKeyWarning = pushoverGroupKeyWarning(names[selected.MemberID])
-			result.Message += "\n\n" + result.PushoverGroupKeyWarning + "\n"
+			result.Message += "\n\n" + result.PushoverGroupKeyWarning + "\n\n" + pushoverUserKeyHelp + "\n"
 		}
 	case "change", "remove", "send-test":
 		if selected.ID == "" {
