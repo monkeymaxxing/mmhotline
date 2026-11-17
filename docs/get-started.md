@@ -100,7 +100,8 @@ in your own.
 
    - `name` and `email`: you, with the email address you will sign in with.
    - `private_address`: the server's private address, where your tools
-     send alerts. `ip -brief addr` lists the server's addresses.
+     send alerts. `ip -brief addr` lists the server's addresses. A private
+     address starts with `10.`, `192.168.`, or `172.16.` to `172.31.`.
    - `web_url`: keep `http://localhost:8480` for a first test without
      Cloudflare. With Cloudflare, write the address people will open, at
      the host name you put behind Cloudflare Access in step 8, such as
