@@ -18,6 +18,10 @@ const PushoverReplacementApplicationToken = "FakePushoverApplicationToken02"
 const PushoverUserKey = "FakePushoverPersonalUserKey001"
 const PushoverOtherUserKey = "FakePushoverPersonalUserKey002"
 const PushoverThirdUserKey = "FakePushoverPersonalUserKey003"
+
+// PushoverGroupKey is a delivery-group key: messages to it reach every user
+// in the group, and the validate call answers "group": 1 for it.
+const PushoverGroupKey = "FakePushoverGroupUserKey000001"
 const PushoverMonthlyMessageLimit = 10000
 
 type PushoverMessage struct {
@@ -33,13 +37,16 @@ type PushoverMessage struct {
 	Expire   int    `json:"expire"`
 }
 type PushoverReceipt struct {
-	Receipt      string      `json:"receipt"`
-	UserKey      string      `json:"pushover_user_key"`
-	Acknowledged bool        `json:"acknowledged"`
-	Expired      bool        `json:"expired"`
-	Cancelled    bool        `json:"cancelled"`
-	ExpiresAt    time.Time   `json:"expires_at"`
-	Polls        []time.Time `json:"polls"`
+	Receipt      string `json:"receipt"`
+	UserKey      string `json:"pushover_user_key"`
+	Acknowledged bool   `json:"acknowledged"`
+	// AcknowledgedBy is the user key that acknowledged, when it is not UserKey,
+	// as when one user of a group acknowledges for the group.
+	AcknowledgedBy string      `json:"acknowledged_by,omitempty"`
+	Expired        bool        `json:"expired"`
+	Cancelled      bool        `json:"cancelled"`
+	ExpiresAt      time.Time   `json:"expires_at"`
+	Polls          []time.Time `json:"polls"`
 }
 type pushoverState struct {
 	messages            []PushoverMessage
@@ -52,6 +59,7 @@ func (s *Server) registerPushoverRoutes() {
 	s.pushover = pushoverState{receipts: map[string]*PushoverReceipt{}, deletedApplications: map[string]bool{}, now: time.Now}
 	s.mux.HandleFunc("GET /pushover/1/apps/limits.json", s.pushoverLimits)
 	s.mux.HandleFunc("POST /pushover/1/messages.json", s.pushoverSend)
+	s.mux.HandleFunc("POST /pushover/1/users/validate.json", s.pushoverValidateUser)
 	s.mux.HandleFunc("GET /pushover/1/receipts/{receipt}", s.pushoverReceipt)
 	s.mux.HandleFunc("POST /pushover/1/receipts/{receipt}/cancel.json", s.pushoverCancel)
 	s.mux.HandleFunc("POST /fake-api/actions/pushover/acknowledge", s.pushoverAcknowledgeAction)
@@ -81,6 +89,12 @@ func (s *Server) PushoverReceipts() []PushoverReceipt {
 	return receipts
 }
 func (s *Server) PushoverAcknowledge(receipt string) error {
+	return s.PushoverAcknowledgeAs(receipt, "")
+}
+
+// PushoverAcknowledgeAs acknowledges as the user with key by, who may differ
+// from the key the message went to. An empty by is the key it went to.
+func (s *Server) PushoverAcknowledgeAs(receipt, by string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r := s.pushover.receipts[receipt]
@@ -91,6 +105,7 @@ func (s *Server) PushoverAcknowledge(receipt string) error {
 		return fmt.Errorf("Pushover receipt is closed")
 	}
 	r.Acknowledged = true
+	r.AcknowledgedBy = by
 	return nil
 }
 
@@ -134,6 +149,26 @@ func (s *Server) pushoverLimits(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"status": 1, "limit": PushoverMonthlyMessageLimit, "remaining": PushoverMonthlyMessageLimit, "reset": time.Now().Add(30 * 24 * time.Hour).Unix()})
 }
 
+// https://pushover.net/api/validate: POST users/validate.json answers
+// "group": 1 for a delivery-group key and "group": 0 for a user key.
+func (s *Server) pushoverValidateUser(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		pushoverRefuse(w, 400, "invalid form")
+		return
+	}
+	if !s.pushoverToken(w, r) {
+		return
+	}
+	switch r.Form.Get("user") {
+	case PushoverUserKey, PushoverOtherUserKey, PushoverThirdUserKey:
+		writeJSON(w, 200, map[string]any{"status": 1, "group": 0, "devices": []string{"phone"}, "request": "fake-pushover-validate"})
+	case PushoverGroupKey:
+		writeJSON(w, 200, map[string]any{"status": 1, "group": 1, "devices": []string{}, "request": "fake-pushover-validate"})
+	default:
+		pushoverRefuse(w, 400, "user identifier is invalid")
+	}
+}
+
 // https://pushover.net/api: form fields, priorities, lengths, retry and expire.
 func (s *Server) pushoverSend(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 16384)
@@ -145,7 +180,7 @@ func (s *Server) pushoverSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := r.Form.Get("user")
-	if key != PushoverUserKey && key != PushoverOtherUserKey && key != PushoverThirdUserKey {
+	if key != PushoverUserKey && key != PushoverOtherUserKey && key != PushoverThirdUserKey && key != PushoverGroupKey {
 		pushoverRefuse(w, 400, "user identifier is invalid")
 		return
 	}
@@ -214,6 +249,9 @@ func (s *Server) pushoverReceipt(w http.ResponseWriter, r *http.Request) {
 	by := ""
 	if receipt.Acknowledged {
 		by = receipt.UserKey
+		if receipt.AcknowledgedBy != "" {
+			by = receipt.AcknowledgedBy
+		}
 	}
 	writeJSON(w, 200, map[string]any{"status": 1, "acknowledged": acknowledged, "acknowledged_by": by, "expired": expired, "expires_at": receipt.ExpiresAt.Unix()})
 }

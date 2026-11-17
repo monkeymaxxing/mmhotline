@@ -25,6 +25,9 @@ type ContactMethod struct {
 	// contact method whose test was skipped because the daily Send Test limit
 	// was reached. It is the sentence to show the person.
 	TestNotSentReason string
+	// PushoverGroupKey is set only in the result of adding a Pushover contact
+	// method whose key Pushover says is a delivery-group key.
+	PushoverGroupKey bool
 }
 
 // ContactMethodInput is what a person saves. Fields holds the contact method type's own
@@ -145,6 +148,14 @@ func (a *App) SaveContactMethod(ctx context.Context, p Principal, in ContactMeth
 			return c, err
 		}
 	}
+	// Pushover tells a group key from a user key. A group key still works for
+	// waking phones, so adding it is allowed; the person is warned. When
+	// Pushover does not answer, no warning is made: the test message then shows
+	// any problem with the key.
+	pushoverGroupKey := false
+	if pushover, isPushover := contactMethodType.(*PushoverNotificationContactMethodType); isPushover && in.ID == "" && pushover.ApplicationToken != "" {
+		pushoverGroupKey = pushover.userKeyIsAGroupKey(ctx, settings.SentTo)
+	}
 	values := append([]string(nil), in.Subscriptions...)
 	slices.Sort(values)
 	for i, v := range values {
@@ -258,6 +269,7 @@ func (a *App) SaveContactMethod(ctx context.Context, p Principal, in ContactMeth
 		c.Subscriptions = values
 		return nil
 	})
+	c.PushoverGroupKey = err == nil && pushoverGroupKey
 	return c, err
 }
 

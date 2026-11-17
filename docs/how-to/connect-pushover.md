@@ -89,16 +89,22 @@ test that an emergency alert wakes them, also in silent mode.
      --contact-method-type pushover_notification --pushover-user-key-file -
    ```
 
-   The command waits for the key: paste it, press Enter, then Ctrl-D. A
-   coding agent pipes the key in instead. Reason: a key on the command
-   line would stay in the shell history.
+   The command waits for the key: paste it, then press Enter. Nothing
+   shows as you paste. A coding agent pipes the key in instead. Reason: a
+   key on the command line would stay in the shell history.
 
-   Use a personal user key, never a Pushover delivery group's key.
-   Reason: acknowledging an SOS claims the incident as the key's owner, so
-   MMHotline must know whose key it is.
+   USE YOUR OWN PUSHOVER USER KEY, NOT A GROUP KEY. AN ACKNOWLEDGEMENT FROM A GROUP CANNOT CLAIM THE INCIDENT.
+
+   A group key still wakes phones, so MMHotline accepts it. But
+   acknowledging on a phone does not claim the incident for the person,
+   because MMHotline must know whose acknowledgement it is. Claiming on
+   the incident's page still works. When you add a group key, MMHotline
+   says so in capitals. To fix it, remove the contact method and add it
+   again with the person's own user key.
 
    **Check:** the command, or the page, says the contact method is saved
-   and a test is queued:
+   and a test is queued (with a group key, it also prints the warning
+   above):
 
    ```text
    Contact method saved. A test message for the contact method is queued. Inspect the last test result to check delivery.

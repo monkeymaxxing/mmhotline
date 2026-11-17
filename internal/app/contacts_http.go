@@ -325,6 +325,12 @@ func (a *App) saveContactMethodHTTP(w http.ResponseWriter, r *http.Request) {
 		a.renderContactMethodsWithPhoneNumber(w, r, p, 200, "", "Contact method saved. "+saved.TestNotSentReason, "")
 		return
 	}
+	if saved.PushoverGroupKey && saved.MemberID != "" {
+		if owner, err := a.CurrentMember(r.Context(), p); err == nil {
+			a.renderContactMethodsWithPhoneNumber(w, r, p, 200, "", "Contact method saved. "+pushoverGroupKeyWarning(owner.Name), "")
+			return
+		}
+	}
 	http.Redirect(w, r, "/contact-methods?done=saved", http.StatusSeeOther)
 }
 func (a *App) removeContactMethodHTTP(w http.ResponseWriter, r *http.Request) {

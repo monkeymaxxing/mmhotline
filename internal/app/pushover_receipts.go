@@ -294,6 +294,13 @@ func (a *App) recordPushoverReceiptError(ctx context.Context, item pushoverRecei
 	})
 	return errors.Join(cause, err)
 }
+
+// pushoverAcknowledgementFromAnotherUserReason is the reason stored on a
+// delivery whose Pushover acknowledgement came from someone other than the
+// contact method's own user key. The incidents and contact-methods commands
+// find those deliveries by this text.
+const pushoverAcknowledgementFromAnotherUserReason = "Pushover acknowledgement came from another user; no incidents were claimed. Add a personal Pushover user key."
+
 func (a *App) acknowledgePushoverReceipt(ctx context.Context, item pushoverReceiptWork, answer pushoverAnswer) error {
 	now := a.Now().UTC()
 	return a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
@@ -308,7 +315,7 @@ func (a *App) acknowledgePushoverReceipt(ctx context.Context, item pushoverRecei
 		// A personal user key must acknowledge as itself. A mistakenly entered
 		// group key can never let a different Pushover user act as the owner.
 		if answer.AcknowledgedBy != d.SentTo {
-			if _, err := tx.ExecContext(ctx, `UPDATE deliveries SET reason=? WHERE id=?`, "Pushover acknowledgement came from another user; no incidents were claimed. Add a personal Pushover user key.", d.ID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE deliveries SET reason=? WHERE id=?`, pushoverAcknowledgementFromAnotherUserReason, d.ID); err != nil {
 				return err
 			}
 			_, err := tx.ExecContext(ctx, `UPDATE pushover_receipts SET state='acknowledged',next_poll_at=0 WHERE delivery_id=?`, d.ID)

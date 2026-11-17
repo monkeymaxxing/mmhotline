@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -34,6 +35,10 @@ type CommandContactMethod struct {
 	AlertSeverities             []string                `json:"alert_severities"`
 	SendWhileUnavailableOrMuted bool                    `json:"send_while_unavailable_or_muted"`
 	LastTestMessage             *CommandLastTestMessage `json:"last_test_message"`
+	// PushoverAcknowledgementProblem is set when an acknowledgement in Pushover
+	// came from another Pushover user, so it did not claim an incident. It says
+	// the problem and the fix.
+	PushoverAcknowledgementProblem string `json:"pushover_acknowledgement_problem,omitempty"`
 }
 
 func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action string, request ContactMethodsCommandRequest, result *CommandResult) error {
@@ -51,6 +56,10 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 	methods, err := a.ContactMethods(ctx, p)
 	if err != nil {
 		return err
+	}
+	names := map[string]string{}
+	for _, m := range members {
+		names[m.ID] = m.Name
 	}
 	var selected ContactMethod
 	for _, c := range methods {
@@ -104,6 +113,10 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 		if selected.TestNotSentReason != "" {
 			result.Message = "Contact method saved. " + selected.TestNotSentReason
 		}
+		if selected.PushoverGroupKey && selected.MemberID != "" {
+			result.PushoverGroupKeyWarning = pushoverGroupKeyWarning(names[selected.MemberID])
+			result.Message += "\n\n" + result.PushoverGroupKeyWarning + "\n"
+		}
 	case "change", "remove", "send-test":
 		if selected.ID == "" {
 			return fmt.Errorf("%w: no contact method has ID %s", ErrNotFound, request.ContactMethodID)
@@ -145,6 +158,10 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 		return err
 	}
 	result.ContactMethods = []CommandContactMethod{}
+	acknowledgedByAnotherUser, err := a.contactMethodsAcknowledgedByAnotherPushoverUser(ctx)
+	if err != nil {
+		return err
+	}
 	for _, c := range methods {
 		if action != "list" && c.ID != selected.ID {
 			continue
@@ -156,10 +173,43 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 		if c.LastTest != nil {
 			out.LastTestMessage = &CommandLastTestMessage{DeliveryState: c.LastTest.State, DeliveryStateExplanation: c.LastTest.Reason, QueuedAt: c.LastTest.CreatedAt}
 		}
+		if acknowledgedByAnotherUser[c.ID] {
+			out.PushoverAcknowledgementProblem = pushoverAcknowledgementProblemText(personNameOrThePerson(names, c.MemberID))
+		}
 		result.ContactMethods = append(result.ContactMethods, out)
 	}
 	if action == "list" {
 		result.Message = "Listed " + countText(len(result.ContactMethods), "contact method", "contact methods") + "."
 	}
 	return nil
+}
+
+// contactMethodsAcknowledgedByAnotherPushoverUser are the contact methods
+// that have a delivery whose Pushover acknowledgement came from another user.
+func (a *App) contactMethodsAcknowledgedByAnotherPushoverUser(ctx context.Context) (map[string]bool, error) {
+	found := map[string]bool{}
+	err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, `SELECT DISTINCT contact_method_id FROM deliveries WHERE contact_method_type='pushover_notification' AND reason=?`, pushoverAcknowledgementFromAnotherUserReason)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			if err = rows.Scan(&id); err != nil {
+				return err
+			}
+			found[id] = true
+		}
+		return rows.Err()
+	})
+	return found, err
+}
+
+// pushoverAcknowledgementProblemText names the problem and the fix.
+func pushoverAcknowledgementProblemText(name string) string {
+	if name == "The person" {
+		name = "the person"
+	}
+	return fmt.Sprintf("An acknowledgement in Pushover came from another Pushover user, so it did not claim the incident. This contact method uses a key that isn't %[1]s's own Pushover user key, such as a group key. To fix it, remove this contact method and add it again with %[1]s's own Pushover user key.", name)
 }

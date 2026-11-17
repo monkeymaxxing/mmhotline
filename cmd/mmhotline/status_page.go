@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -27,7 +28,7 @@ func readSecret(path, flagName string) (string, error) {
 	var raw []byte
 	var err error
 	if path == "-" {
-		raw, err = io.ReadAll(io.LimitReader(os.Stdin, 64<<10))
+		raw, err = readSecretFromStandardInput(os.Stdin, os.Stderr, turnOffTerminalEcho)
 	} else {
 		var info os.FileInfo
 		if info, err = os.Stat(path); err == nil && info.Mode().Perm()&0o077 != 0 {
@@ -45,6 +46,25 @@ func readSecret(path, flagName string) (string, error) {
 		return "", fmt.Errorf("--%s gave an empty value", flagName)
 	}
 	return value, nil
+}
+
+// readSecretFromStandardInput reads a secret from input. A pipe is read to
+// its end, as before. A terminal shows nothing as the person pastes, and one
+// line, ending with Enter, is the whole secret: Ctrl-D is not needed, and
+// would close the person's shell if typed after Enter.
+func readSecretFromStandardInput(input *os.File, prompts io.Writer, turnOffEcho func(*os.File) (func(), bool)) ([]byte, error) {
+	restore, isTerminal := turnOffEcho(input)
+	if !isTerminal {
+		return io.ReadAll(io.LimitReader(input, 64<<10))
+	}
+	defer restore()
+	fmt.Fprint(prompts, "Paste the value, then press Enter. Nothing shows as you paste: ")
+	line, err := bufio.NewReader(io.LimitReader(input, 64<<10)).ReadBytes('\n')
+	fmt.Fprintln(prompts)
+	if errors.Is(err, io.EOF) {
+		err = nil
+	}
+	return line, err
 }
 
 // statusPageSetUpInput is what status-page set-up takes. The API token is

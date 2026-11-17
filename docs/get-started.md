@@ -25,9 +25,9 @@ tool that sends alerts to MMHotline, such as your monitoring tool.
   the server's addresses.
 - **A Cloudflare account with Zero Trust,** and a domain whose DNS
   Cloudflare manages, such as `example.com`. People sign in to MMHotline
-  through Cloudflare Access, at a host name such as `ops.example.com`. A
-  team without Cloudflare can still follow this page: see
-  [If something is different](#if-something-is-different).
+  through Cloudflare Access, at a host name such as `ops.example.com`.
+  **No Cloudflare?** Write `web_url: http://localhost:8480` in step 3 and
+  skip step 8: see [The team has no Cloudflare](#if-something-is-different).
 - **A Pushover account,** and the Pushover app on your phone, signed in.
   Pushover sends the notification that wakes you; the phone opens
   MMHotline in its browser and needs no other app. A team can also wake
@@ -88,7 +88,10 @@ in your own.
    Paste the file below, then change the values to yours:
 
    - `web_url`: the address people will open, at the host name you put
-     behind Cloudflare Access in step 7.
+     behind Cloudflare Access in step 8. With no Cloudflare, write
+     `http://localhost:8480` (`http://127.0.0.1:8480` also works).
+     MMHotline refuses any other address that does not start with
+     `https://`, such as `http://SERVER_IP:8480`.
    - `alert_intake_listen_address`: the server's private address, with the
      port `8484`.
    - `people`: you, with the email address you will sign in with at
@@ -236,10 +239,15 @@ in your own.
      --pushover-user-key-file -
    ```
 
-   The command waits for the key: paste it, press Enter, then Ctrl-D. A
-   coding agent pipes the key in instead, from where the person put it.
-   Reason: a key typed on the command line would stay in the shell history
-   and show in the list of running processes.
+   The command waits for the key: paste it, then press Enter. Nothing
+   shows as you paste. A coding agent pipes the key in instead, from where
+   the person put it. Reason: a key typed on the command line would stay
+   in the shell history and show in the list of running processes.
+
+   USE YOUR OWN PUSHOVER USER KEY, NOT A GROUP KEY. AN ACKNOWLEDGEMENT FROM A GROUP CANNOT CLAIM THE INCIDENT.
+
+   A group key still wakes phones, but acknowledging on a phone does not
+   claim the incident for you. MMHotline warns you when you add one.
 
    **Check:** your phone gets an emergency test alert that sounds until you
    acknowledge it in Pushover, and `sudo mmhotline contact-methods list`

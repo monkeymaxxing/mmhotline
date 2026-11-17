@@ -32,7 +32,9 @@ that systemd, SSH, or the triage agent run take none.
 - Flags come after the action: `mmhotline schedules show --json`.
 - Never put a secret in an argument: other users on the server can read
   a program's arguments. The flags that take a secret read it from a file
-  or from standard input instead.
+  or from standard input instead. On a terminal, standard input shows
+  nothing as you paste, and one line ending with Enter is the whole
+  secret; a pipe is read to its end.
 - Use `sudo` for every command that uses the command socket.
 
 **Who the command acts as.** A command run through `sudo` acts for the
@@ -1395,6 +1397,8 @@ and:
 | `contact_methods[].last_test_message.delivery_state` | Such as `queued`, `accepted`, `failed`, or `uncertain` |
 | `contact_methods[].last_test_message.delivery_state_explanation` | Why, such as an error, a wait, or the service's answer (`HTTP 200`) |
 | `contact_methods[].last_test_message.queued_at` | When the test was queued |
+| `contact_methods[].pushover_acknowledgement_problem` | Present when an acknowledgement in Pushover came from another Pushover user, so it did not claim an incident, such as when the key is a group key. It says the problem and the fix: remove the contact method and add it again with the person's own user key. `list` prints it as a `Problem:` line |
+| `pushover_group_key_warning` | `add` of a Pushover method only, when Pushover says the key is a group key: the capitals warning, which the command prints on its own line. Absent when the key is a user key or Pushover did not answer |
 | `outgoing_webhook_signing_secret_id` | `add` of a webhook only: the new signing secret's ID |
 | `outgoing_webhook_signing_secret_shown_once` | `add` of a webhook only, without an output file: the new signing secret in hex |
 | `outgoing_webhook_signing_secret_file` | `add` of a webhook only, with an output file: its path, in place of the secret |
@@ -1428,7 +1432,7 @@ Contact method saved. A test message for the contact method is queued. Inspect t
 | `--outgoing-webhook-bearer-token-file FILE` | With `outgoing_webhook`, optional: a file holding only the bearer token; surrounding whitespace is trimmed |
 | `--outgoing-webhook-signing-secret-file FILE` | With `outgoing_webhook`, optional: where to write the new signing secret, instead of printing it |
 | `--phone-number-to-call NUMBER` | With `automated_voice_call`: E.164 form, such as `+12025550123`. Personal methods only |
-| `--pushover-user-key-file FILE\|-` | With `pushover_notification`: a file only its owner can read, or `-` for standard input, holding the person's own user key, exactly 30 letters and digits, not a delivery-group key. Personal methods only; needs the Pushover sending service |
+| `--pushover-user-key-file FILE\|-` | With `pushover_notification`: a file only its owner can read, or `-` for standard input, holding the person's own user key, exactly 30 letters and digits. A Pushover delivery-group key is saved, with a warning, but its acknowledgements cannot claim an incident. Personal methods only; needs the Pushover sending service |
 | Common flags | As above |
 
 - **The test message** is queued in the same save, and the method gets
@@ -2073,6 +2077,7 @@ A claim or resolve with a note ends with the note, such as
 | `history[].message`, `history[].occurred_at` | What happened, and when |
 | `history[].by` | The person, alert source, triage agent, or `MMHotline` |
 | `history[].related_alert_id` | The alert that caused the entry, when one did |
+| `history[]` with `kind` `pushover_acknowledgement_did_not_claim` | A Pushover acknowledgement came from another Pushover user, so it claimed nothing: `Barbara Example's phone acknowledged, but the acknowledgement came from another Pushover user, so it did not claim the incident. The contact method uses a key that isn't Barbara Example's own Pushover user key, such as a group key.` Its time is when MMHotline sent the message |
 | `history[].note` | What the person wrote with a claim or resolve; absent when they wrote none |
 
 ## mmhotline incidents send-test-sos

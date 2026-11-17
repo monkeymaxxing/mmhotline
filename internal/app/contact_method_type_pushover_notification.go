@@ -112,6 +112,7 @@ type pushoverAnswer struct {
 	Request        string   `json:"request"`
 	Receipt        string   `json:"receipt"`
 	Limit          int64    `json:"limit"`
+	Group          int      `json:"group"`
 	Acknowledged   int      `json:"acknowledged"`
 	AcknowledgedBy string   `json:"acknowledged_by"`
 	Expired        int      `json:"expired"`
@@ -194,6 +195,20 @@ func (c *PushoverNotificationContactMethodType) call(ctx context.Context, method
 		return answer, errPushoverNoAnswer
 	}
 	return answer, nil
+}
+
+// userKeyIsAGroupKey asks Pushover whether key is a delivery-group key
+// (https://pushover.net/api#validate answers "group": 1). It answers false
+// when Pushover does not answer.
+func (c *PushoverNotificationContactMethodType) userKeyIsAGroupKey(ctx context.Context, key string) bool {
+	answer, err := c.call(ctx, http.MethodPost, "users/validate", url.Values{"user": {key}})
+	return err == nil && answer.Group == 1
+}
+
+// pushoverGroupKeyWarning is shown, in capitals on its own line, when a
+// person adds a group key. name is the contact method owner's name.
+func pushoverGroupKeyWarning(name string) string {
+	return fmt.Sprintf("THIS IS A PUSHOVER GROUP KEY. ACKNOWLEDGING ON A PHONE WILL NOT CLAIM THE INCIDENT FOR %s. USE %s'S OWN PUSHOVER USER KEY. CLAIMING ON THE INCIDENT'S PAGE STILL WORKS.", strings.ToUpper(name), strings.ToUpper(name))
 }
 
 // pushoverDefaultSubscriptions is every severity: Pushover is often a person's

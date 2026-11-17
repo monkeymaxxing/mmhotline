@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -132,6 +133,17 @@ func (a *App) incidentsCommand(ctx context.Context, p Principal, action string, 
 	for _, action := range history {
 		incident.History = append(incident.History, CommandIncidentHistoryEntry{Kind: action.Kind, Label: incidentActionLabel(action.Kind), Message: action.Message, By: action.ActorName, OccurredAt: action.At, RelatedAlertID: action.RelatedAlertID, Note: action.Note})
 	}
+	deliveries, err := a.IncidentDeliveries(ctx, p, i.ID)
+	if err != nil {
+		return err
+	}
+	for _, d := range deliveries {
+		if d.Reason == pushoverAcknowledgementFromAnotherUserReason {
+			name := personNameOrThePerson(names, d.MemberID)
+			incident.History = append(incident.History, CommandIncidentHistoryEntry{Kind: "pushover_acknowledgement_did_not_claim", Label: "Pushover acknowledgement did not claim", Message: pushoverAcknowledgementDidNotClaimMessage(name), By: name, OccurredAt: d.CreatedAt})
+		}
+	}
+	sort.SliceStable(incident.History, func(a, b int) bool { return incident.History[a].OccurredAt.Before(incident.History[b].OccurredAt) })
 	if session != nil {
 		incident.TriageSessionID = session.SessionID
 	}
@@ -348,4 +360,20 @@ func (t CommandTestSOS) Text() string {
 		lines = append(lines, "MMHotline resolved the test after the claim, at "+commandTime(t.ResolvedAt)+".")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// personNameOrThePerson is the member's name, or "The person" when the
+// member is no longer on the team.
+func personNameOrThePerson(names map[string]string, memberID string) string {
+	if name := names[memberID]; memberID != "" && name != "" {
+		return name
+	}
+	return "The person"
+}
+
+// pushoverAcknowledgementDidNotClaimMessage says why an acknowledgement in
+// Pushover left the incident unclaimed. The history shows it where the claim
+// would have been.
+func pushoverAcknowledgementDidNotClaimMessage(name string) string {
+	return fmt.Sprintf("%[1]s's phone acknowledged, but the acknowledgement came from another Pushover user, so it did not claim the incident. The contact method uses a key that isn't %[1]s's own Pushover user key, such as a group key.", name)
 }
