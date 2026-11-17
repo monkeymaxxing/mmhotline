@@ -120,7 +120,9 @@ call when MMHotline stops checking in.
    The MMHotline-down alarm sent a test alert for each held message, and each service accepted it.
    ```
 
-   The dashboard card's **Send a test now** does the same.
+   The dashboard card's **Send a test now** does the same, at most once
+   every 10 minutes and 6 times in 24 hours, because each test calls
+   everyone on the list.
 
 ## What happens when MMHotline is down
 

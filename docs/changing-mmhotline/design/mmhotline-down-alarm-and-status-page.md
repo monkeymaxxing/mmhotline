@@ -401,6 +401,18 @@ check-in to the next. Each held message also carries a test request for
 "Send a test now". The test request uses the held message's notification or
 call type, with text identifying the notification or call as a test.
 
+A test calls and notifies everyone on the list at once, through the team's
+Twilio and Pushover accounts. So "Send a test now" on the dashboard starts a
+test at most once every 10 minutes, and at most 6 times in 24 hours, across
+the team. Otherwise any member could make everyone's phone ring again and
+again, at the team's cost. Ten minutes is enough to fix a contact method and
+test again, and 6 a day covers a setup session. A refused test says when the
+next one can start, such as "Each test calls everyone on the MMHotline-down
+alarm's list, so a test can start once every 10 minutes. Try again in 4
+minutes." `sudo mmhotline down-alarm send-test` has no limit, because root
+already holds the accounts' credentials. MMHotline counts the tests in
+memory, so a restart starts the count again.
+
 A test of a Pushover emergency is proved from Pushover's receipt. The Worker
 reads the start of each accepted test's answer, at most 4,096 characters, and
 returns the `receipt` field as `pushover_receipt` when it is 30 letters and
@@ -742,6 +754,7 @@ Worker in the Cloudflare dashboard and apply again.
 | Check-in interval | Every 60 seconds, and within 5 seconds of a change to held messages, such as who is on call or the recipients' contact methods | 1,440 Worker requests a day, under 2% of the free plan; a handoff reaches the MMHotline-down alarm at once |
 | Held message delay | 180 to 2,147,483,647 seconds | The shortest wake time, three missed check-ins, at least; the largest 32-bit integer at most |
 | Sizes | 16 KiB per held message, 1 MiB per check-in | Bounds what one faulty check-in can write |
+| "Send a test now" | At most once every 10 minutes and 6 times in 24 hours for the team; `down-alarm send-test` has no limit | Each test calls everyone on the list through the team's Twilio account. Ten minutes is enough to fix a contact method and test again; 6 a day covers a setup session. Root already holds the credentials |
 | Sends per alarm run | 40: sends never attempted first, then the longest-waiting | The free plan allows 50 outgoing requests per run; sends without an answer never crowd out the rest |
 | Retries of a send | 30 seconds after each attempt ended, until 10 minutes after the due time | A later wake-up is no longer timely |
 | Worker and bucket names | `mmhotline-down-alarm-` with MMHotline's web host name, or `mmhotline-status-` with the public status page's host name, and 8 hexadecimal characters of the respective host name's SHA-256; at most 63 characters | A repeated setup with an unchanged MMHotline web host name finds the existing Worker. An unchanged public status page host name finds the existing bucket. Distinct host names give separate resources within an account. Cloudflare limits Worker and bucket names to 63 characters |

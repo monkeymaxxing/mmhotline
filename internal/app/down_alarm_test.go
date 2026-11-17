@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -850,5 +851,46 @@ func TestDownAlarmTestIsProvedFromPushoversReceiptAndItsRepeatsAreCancelled(t *t
 	result, _ = test(pushoverEmergencyAt(t, r.sendingServicesURL, fakesendingservices.PushoverUserKey))
 	if push = result.DownAlarm.TestSends[0]; push.PushoverReceiptOutcome != "cancel_failed" || !DownAlarmTestFailed(result.DownAlarm.TestSends) || !strings.Contains(result.Text(), "MMHotline could not cancel its repeats") {
 		t.Fatalf("a cancel that failed: %+v\n%s", push, result.Text())
+	}
+}
+
+// Each test of the MMHotline-down alarm calls and notifies everyone on its
+// list at once, through the team's Twilio and Pushover accounts. So a member
+// may start one at most once every 10 minutes, and 6 in 24 hours. Root's
+// command is not limited: root already holds those accounts' credentials.
+func TestDownAlarmTestFromThePageHasLimits(t *testing.T) {
+	r := newDownAlarmRig(t)
+	r.setUp(t, "")
+	code := 200
+	r.fake.ChangeWorker(downAlarmWorker, func(w *fakecloudflare.Worker) {
+		w.TestSends = []downalarm.TestSend{{HeldMessageID: "primary-contact-method-" + r.barbaraCall, SendOutcome: "delivered", HTTPStatusCode: &code}}
+	})
+	ctx := context.Background()
+	if _, err := r.a.SendDownAlarmTest(ctx, r.bob); err != nil {
+		t.Fatal(err)
+	}
+	r.advance(9*time.Minute + 30*time.Second)
+	_, err := r.a.SendDownAlarmTest(ctx, r.barbara)
+	if want := "Each test calls everyone on the MMHotline-down alarm's list, so a test can start once every 10 minutes. Try again in 1 minute."; !errors.Is(err, ErrRateLimited) || publicError(err) != want {
+		t.Fatalf("a second test within 10 minutes: %v", err)
+	}
+	commandRequest(t, r.a, CommandRequest{Group: "down-alarm", Action: "send-test"}, 200)
+	for range 5 {
+		r.advance(10 * time.Minute)
+		if _, err := r.a.SendDownAlarmTest(ctx, r.bob); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.advance(10 * time.Minute)
+	_, err = r.a.SendDownAlarmTest(ctx, r.bob)
+	if want := "Each test calls everyone on the MMHotline-down alarm's list, so at most 6 tests can start in 24 hours. Try again in 23 hours."; !errors.Is(err, ErrRateLimited) || publicError(err) != want {
+		t.Fatalf("a seventh test in 24 hours: %v", err)
+	}
+	if sent := r.worker(t).TestsSent; sent != 7 {
+		t.Fatalf("tests sent: %d", sent)
+	}
+	r.advance(24 * time.Hour)
+	if _, err := r.a.SendDownAlarmTest(ctx, r.bob); err != nil {
+		t.Fatalf("a test a day later: %v", err)
 	}
 }

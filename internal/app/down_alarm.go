@@ -184,6 +184,56 @@ type downAlarmRuntime struct {
 	// unreachedNoticed is the list of people the MMHotline-down alarm cannot wake that
 	// the administrators were last told about, or empty.
 	unreachedNoticed string
+	// membersTestsStartedAt holds when members started the tests of the last
+	// 24 hours, for downAlarmTestLimits. A restart, which only root can make,
+	// starts the count again.
+	membersTestsStartedAt []time.Time
+}
+
+// A test of the MMHotline-down alarm calls and notifies everyone on its list
+// at once, through the team's Twilio and Pushover accounts, so a member can
+// start one at most once every 10 minutes and 6 times in 24 hours. The test
+// answers at once, so 10 minutes is enough to fix a contact method and test
+// again; 6 a day covers a setup session, and a member who misuses the button
+// can make each person's phone ring at most 6 times a day. Root's command is
+// not limited: root already holds the accounts' credentials.
+const (
+	downAlarmTestInterval    = 10 * time.Minute
+	downAlarmTestsPerDay     = 6
+	downAlarmTestLimitReason = "Each test calls everyone on the MMHotline-down alarm's list"
+)
+
+// startMembersDownAlarmTest records a member's test at now, or refuses it
+// with when the next one can start.
+func (r *downAlarmRuntime) startMembersDownAlarmTest(now time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	recent := r.membersTestsStartedAt[:0]
+	for _, started := range r.membersTestsStartedAt {
+		if now.Sub(started) < 24*time.Hour {
+			recent = append(recent, started)
+		}
+	}
+	r.membersTestsStartedAt = recent
+	if len(recent) > 0 {
+		if wait := recent[len(recent)-1].Add(downAlarmTestInterval).Sub(now); wait > 0 {
+			return fmt.Errorf("%w: %s, so a test can start once every 10 minutes. Try again in %s.", ErrRateLimited, downAlarmTestLimitReason, roundedUpDuration(wait, time.Minute, "minute"))
+		}
+	}
+	if len(recent) >= downAlarmTestsPerDay {
+		return fmt.Errorf("%w: %s, so at most %d tests can start in 24 hours. Try again in %s.", ErrRateLimited, downAlarmTestLimitReason, downAlarmTestsPerDay, roundedUpDuration(recent[0].Add(24*time.Hour).Sub(now), time.Hour, "hour"))
+	}
+	r.membersTestsStartedAt = append(r.membersTestsStartedAt, now)
+	return nil
+}
+
+// roundedUpDuration says d in whole units, rounded up, such as "3 hours".
+func roundedUpDuration(d, unit time.Duration, name string) string {
+	count := int64((d + unit - 1) / unit)
+	if count == 1 {
+		return "1 " + name
+	}
+	return fmt.Sprintf("%d %ss", count, name)
 }
 
 func newDownAlarmRuntime() *downAlarmRuntime { return &downAlarmRuntime{wake: make(chan struct{}, 1)} }
@@ -922,7 +972,8 @@ func (a *App) DownAlarm(ctx context.Context, p Principal) (DownAlarmView, error)
 
 // SendDownAlarmTest asks the MMHotline-down alarm to send each held message's test
 // request now, so the team sees that the MMHotline-down alarm can reach the people on
-// call. Any member may start one.
+// call. Any member may start one, within downAlarmTestInterval and
+// downAlarmTestsPerDay.
 func (a *App) SendDownAlarmTest(ctx context.Context, p Principal) (DownAlarmView, error) {
 	var setup downAlarmSetup
 	err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
@@ -939,6 +990,11 @@ func (a *App) SendDownAlarmTest(ctx context.Context, p Principal) (DownAlarmView
 	})
 	if err != nil {
 		return DownAlarmView{}, err
+	}
+	if p.UnixUser == "" {
+		if err := a.downAlarm.startMembersDownAlarmTest(a.Now()); err != nil {
+			return DownAlarmView{}, err
+		}
 	}
 	// The test goes to the held messages of the last check-in, made now.
 	a.downAlarm.mu.Lock()
