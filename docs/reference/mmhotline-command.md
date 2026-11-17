@@ -954,7 +954,7 @@ uses it.
 
 ## mmhotline triage-agent check-preparation
 
-Checks the eight things a team prepares by hand before the triage agent
+Checks the nine things a team prepares by hand before the triage agent
 works, and prints one line for each: `Present:` or `Missing:`.
 
 ```sh
@@ -966,7 +966,8 @@ Present: 1. Server names resolve: web1 -> 10.0.0.11.
 Present: 2. The triage user accepts the agent's key: triage@ on web1 accepts /var/lib/mmhotline-triage-agent/.ssh/id_ed25519.
 ...
 Present: 8. mmx and its node runners are installed: /usr/local/bin/mmx, /usr/local/bin/mmx-runner-linux-amd64.
-All 8 checks are present.
+Present: 9. The triage user is tightened: every key line has restrict, and root owns the triage user's home, .ssh, and authorized_keys.
+All 9 checks are present.
 ```
 
 [Set up the triage agent](../how-to/set-up-the-triage-agent.md#prepare-the-servers-and-the-systems-repository)
@@ -1004,14 +1005,22 @@ runs it after the preparation steps.
   8. `mmx` is installed, with `mmx-runner-linux-amd64` or
      `mmx-runner-linux-arm64` beside it for each server's processor
      (step 7).
+  9. On each server, every key line in the `triage` user's
+     `authorized_keys` has the `restrict` option, and root owns the home,
+     `.ssh`, and `authorized_keys`, with no write for anyone else. The
+     check reads these in the same login as check 2 and never prints the
+     key. A missing line names the server and what is open, then says
+     `Do "Tighten the triage user on each server" in docs/how-to/upgrade.md`;
+     its `Fix:` is that section's address. A server where check 2 failed
+     is not checked again here.
 - **A missing line** ends with `Fix:` and the how-to page's address with
   the step. A check whose input is missing, such as no copy or no servers,
-  is missing with the reason. The last line is `All 8 checks are present.`
-  or, such as, `7 of 8 checks are present; 1 is missing.`
+  is missing with the reason. The last line is `All 9 checks are present.`
+  or, such as, `8 of 9 checks are present; 1 is missing.`
 
 | Exit code | Meaning |
 | --- | --- |
-| `0` | All eight are present |
+| `0` | All nine are present |
 | `1` | At least one is missing |
 | `3` | It cannot run, such as without root |
 | `4` | The arguments are wrong |

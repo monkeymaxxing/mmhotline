@@ -118,18 +118,26 @@ func TestPreparationRefusesWithoutRoot(t *testing.T) {
 // preparationFixture is a fully prepared server: the fake runner answers as
 // the real programs do, and the files are in temporary folders.
 type preparationFixture struct {
-	p           preparation
-	failSSHFor  string // a server name whose triage login fails
+	p          preparation
+	failSSHFor string // a server name whose triage login fails
+	// tightening is what the triage login prints after the processor, such
+	// as stat's lines for the home, .ssh, and authorized_keys, then the file.
+	tightening  string
 	origin      string
 	ranCommands []string
 }
 
 const fixtureSigningKey = "ssh-ed25519 AAAAC3NzaFIXTURE triage agent"
 
+// tightenedServer is what a tightened server prints: root owns the home,
+// .ssh, and authorized_keys, and the key line starts with restrict.
+const tightenedServer = "root 755\nroot 755\nroot 644\n" +
+	"restrict,from=\"10.0.0.5\" ssh-ed25519 AAAAC3NzaSECRETKEYBODY MMHotline triage agent\n"
+
 func newPreparationFixture(t *testing.T) *preparationFixture {
 	t.Helper()
 	root := t.TempDir()
-	f := &preparationFixture{origin: "git@git.example.com:team/systems.git"}
+	f := &preparationFixture{origin: "git@git.example.com:team/systems.git", tightening: tightenedServer}
 	agentHome, copy, mmhotlineHome, bin := filepath.Join(root, "agent"), filepath.Join(root, "copy"), filepath.Join(root, "mmhotline"), filepath.Join(root, "bin")
 	for path, content := range map[string]string{
 		filepath.Join(agentHome, ".ssh", "id_ed25519"):       "PRIVATE",
@@ -177,10 +185,13 @@ func newPreparationFixture(t *testing.T) *preparationFixture {
 				if f.failSSHFor != "" && strings.Contains(joined, "triage@"+f.failSSHFor) {
 					return "", "warning\ntriage@" + f.failSSHFor + ": Permission denied (publickey).\n", errors.New("exit status 255")
 				}
-				if strings.Contains(joined, "triage@db1") {
-					return "aarch64\n", "", nil
+				if !strings.Contains(joined, triageLoginCommand) {
+					t.Errorf("the triage login does not run %q: %s", triageLoginCommand, joined)
 				}
-				return "x86_64\n", "", nil
+				if strings.Contains(joined, "triage@db1") {
+					return "aarch64\n" + f.tightening, "", nil
+				}
+				return "x86_64\n" + f.tightening, "", nil
 			case program == "ssh":
 				return "", "", nil
 			}
@@ -202,10 +213,10 @@ func presentNumbers(checks []preparationCheck) (present, missing []int) {
 	return
 }
 
-func TestPreparedServerHasAllEightChecksPresent(t *testing.T) {
+func TestPreparedServerHasAllNineChecksPresent(t *testing.T) {
 	f := newPreparationFixture(t)
 	checks := f.p.checks()
-	if len(checks) != 8 {
+	if len(checks) != 9 {
 		t.Fatalf("%d checks", len(checks))
 	}
 	for i, c := range checks {
@@ -298,5 +309,59 @@ func TestTheSigningCheckIsSkippedWhenTheSettingsTrustEveryCommitOnOrigin(t *test
 	f.p.trustsEveryCommitOnOrigin = false
 	if present, _ := presentNumbers(f.p.checks()); slices.Contains(present, 3) {
 		t.Fatal("check 3 is present without an applied key")
+	}
+}
+
+func TestAnUntightenedTriageUserIsAMissingCheckThatNamesTheFix(t *testing.T) {
+	const restrictedLine = "restrict,from=\"10.0.0.5\" ssh-ed25519 AAAAC3NzaSECRETKEYBODY agent\n"
+	for _, test := range []struct {
+		name, tightening string
+		wantInDetail     string // empty: check 9 is present
+	}{
+		{"tightened", tightenedServer, ""},
+		{"a comment line and a second restricted key", "root 755\nroot 755\nroot 644\n# note\n" + restrictedLine + restrictedLine, ""},
+		{"a key line without restrict", "root 755\nroot 755\nroot 644\nfrom=\"10.0.0.5\" ssh-ed25519 AAAAC3NzaSECRETKEYBODY agent\n", "web1: the triage user's key line has no restrict"},
+		{"a key line with no options", "root 755\nroot 755\nroot 644\nssh-ed25519 AAAAC3NzaSECRETKEYBODY agent\n", "web1: the triage user's key line has no restrict"},
+		{"one restricted and one open key line", "root 755\nroot 755\nroot 644\n" + restrictedLine + "ssh-ed25519 AAAAC3NzaOTHER agent\n", "web1: the triage user's key line has no restrict"},
+		{"no key line", "root 755\nroot 755\nroot 644\n", "web1: the triage user's key line has no restrict"},
+		{"a home that triage owns", "triage 755\nroot 755\nroot 644\n" + restrictedLine, "web1: the triage user can change its own authorized_keys (home is triage 755)"},
+		{".ssh that triage owns", "root 755\ntriage 700\nroot 644\n" + restrictedLine, "web1: the triage user can change its own authorized_keys (.ssh is triage 700)"},
+		{"authorized_keys that triage owns", "root 755\nroot 755\ntriage 600\n" + restrictedLine, "web1: the triage user can change its own authorized_keys (authorized_keys is triage 600)"},
+		{"a root-owned home that everyone can write", "root 777\nroot 755\nroot 644\n" + restrictedLine, "(home is root 777)"},
+		{"output the check cannot read", "", "could not be read"},
+	} {
+		f := newPreparationFixture(t)
+		f.tightening = test.tightening
+		checks := f.p.checks()
+		present, missing := presentNumbers(checks)
+		if test.wantInDetail == "" {
+			if !slices.Contains(present, 9) || len(missing) != 0 {
+				t.Errorf("%s: missing %v, want none", test.name, missing)
+			}
+			continue
+		}
+		// Every server prints the same, so web1 and db1 both report.
+		if !equalInts(missing, []int{9}) {
+			t.Errorf("%s: missing %v, want [9]", test.name, missing)
+			continue
+		}
+		check := checks[8]
+		if !strings.Contains(check.Detail, test.wantInDetail) || !strings.Contains(check.Detail, `Do "Tighten the triage user on each server" in docs/how-to/upgrade.md`) || check.Fix != tightenGuideURL {
+			t.Errorf("%s: detail %q fix %q", test.name, check.Detail, check.Fix)
+		}
+		if strings.Contains(check.Detail, "SECRETKEYBODY") {
+			t.Errorf("%s: the detail shows the key: %q", test.name, check.Detail)
+		}
+	}
+}
+
+func TestTheTightenedCheckPrintsOneLine(t *testing.T) {
+	f := newPreparationFixture(t)
+	f.tightening = "triage 755\nroot 755\nroot 644\nssh-ed25519 AAAA agent\n"
+	var text bytes.Buffer
+	_ = writePreparationReport(&text, false, f.p.checks())
+	want := `Missing: 9. The triage user is tightened: web1: the triage user's key line has no restrict; web1: the triage user can change its own authorized_keys (home is triage 755); db1: the triage user's key line has no restrict; db1: the triage user can change its own authorized_keys (home is triage 755). Do "Tighten the triage user on each server" in docs/how-to/upgrade.md. Fix: ` + tightenGuideURL + ".\n"
+	if !strings.Contains(text.String(), want) || !strings.HasSuffix(text.String(), "8 of 9 checks are present; 1 is missing.\n") {
+		t.Errorf("report:\n%s", text.String())
 	}
 }
