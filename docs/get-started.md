@@ -5,8 +5,9 @@ MMHotline, with `sudo`. You do the parts in Cloudflare and in the Pushover
 app yourself; a coding agent tells you what to create there.
 
 **What this page does:** you install MMHotline, put your phone on call, and
-send a test SOS that wakes you. Then you claim and resolve it on your
-phone. It takes about an hour, most of it in Cloudflare.
+have MMHotline send a test SOS that wakes you. You acknowledge it on your
+phone, and MMHotline closes it. It takes about an hour, most of it in
+Cloudflare.
 
 **Terms:** an **SOS** is the urgent alert that wakes the person on call,
 even at night. An SOS opens an **incident**, MMHotline's record of the
@@ -62,8 +63,8 @@ in your own.
    download is the release, unchanged. If it prints `FAILED`, delete the
    download and do not run it.
 
-2. **Make the alert source's signing secret.** The test SOS in step 9, and
-   later your monitoring tool, sign each alert with this secret:
+2. **Make the alert source's signing secret.** Your monitoring tool signs
+   each alert with this secret:
 
    ```sh
    sudo sh -c 'umask 077; openssl rand -hex 32 > /root/monitoring-signing-secret'
@@ -261,66 +262,46 @@ in your own.
    **Check:** you opened `https://ops.example.com` on your phone, signed
    in at Cloudflare, and MMHotline's dashboard opened.
 
-9. **Send a test SOS.** This Python program signs one SOS with the secret
-   from step 2 and sends it, as your monitoring tool will. Change the
-   address `10.20.0.1` to yours:
+9. **Send a test SOS.** MMHotline sends itself an SOS, wakes the person on
+   call, and waits for you to acknowledge it on your phone:
 
    ```sh
-   sudo python3 - <<'PYTHON'
-   import hashlib, hmac, json, time, urllib.request
-   from pathlib import Path
-
-   signing_secret = bytes.fromhex(Path('/root/monitoring-signing-secret').read_text().strip())
-   body = json.dumps({
-       "sender_alert_id": "first-test-" + str(time.time_ns()),
-       "sender_incident_key": "first-test",
-       "severity": "sos",
-       "title": "Test SOS from the first run",
-       "message": "This is a test. Claim the incident in MMHotline, then resolve it.",
-   }, separators=(",", ":")).encode()
-   timestamp = str(int(time.time()))
-   signature = hmac.new(signing_secret, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
-   request = urllib.request.Request("http://10.20.0.1:8484/alert-intake/monitoring", data=body, headers={
-       "Content-Type": "application/json",
-       "Mmhotline-Signature": f"timestamp_unix_seconds={timestamp},hmac_sha256_hex={signature}",
-   })
-   with urllib.request.urlopen(request, timeout=15) as response:
-       print(response.read().decode())
-   PYTHON
+   sudo mmhotline incidents send-test-sos
    ```
+
+   **Check:** your phone sounds with a Pushover notification titled
+   **Test of the alerts. Nothing is wrong: acknowledge this.** Acknowledge
+   it. The command then prints who acknowledged it, how, and when, and
+   exits 0:
 
    ```text
-   {"mmhotline_alert_id":"4a32eb459dd1bc2d1104623e1b1ba04e","mmhotline_incident_id":"acc896d49ce5b2ef40cd2c944da4f08f","already_received":false}
+   MMHotline sent a test SOS to the person on call. Waiting up to 10 minutes for someone to acknowledge it on the phone.
+   Incident: https://ops.example.com/incidents/acc896d49ce5b2ef40cd2c944da4f08f
+   Barbara Example claimed the test by acknowledging the alert in Pushover, at 2026-11-15T04:41:20Z.
+   MMHotline resolved the test after the claim, at 2026-11-15T04:41:20Z.
+   The test SOS worked: a person acknowledged it on the phone.
    ```
 
-   **Check:** your phone sounds with the SOS, and
-   `sudo mmhotline incidents list` shows the incident:
+   MMHotline closes the test itself, so there is nothing more to claim or
+   resolve. `sudo mmhotline incidents list` prints
+   `Listed 0 SOS incidents not resolved, newest first.`
 
-   ```text
-   SOS incident acc896d49ce5b2ef40cd2c944da4f08f: Test SOS from the first run
-   Status: Not claimed yet. Opened at 2026-11-15T04:40:40Z.
-   Being contacted now: Barbara Example.
-   Page: https://ops.example.com/incidents/acc896d49ce5b2ef40cd2c944da4f08f
-   ```
+   IF THE PHONE STAYS SILENT, THE COMMAND EXITS 1 AFTER 10 MINUTES. CHECK
+   THAT THE PUSHOVER APP IS INSTALLED AND SIGNED IN ON THE PHONE, AND THAT
+   CRITICAL ALERTS ARE ALLOWED FOR PUSHOVER IN THE PHONE'S SETTINGS.
 
    Commands print times in UTC; MMHotline's pages show them in the team's
    time zone. `sudo mmhotline schedules show` says who the schedule puts
    on call now:
    `On call now: Barbara Example (barbara@example.com). Backup now: nobody else is available.`
 
-10. **Claim and resolve the incident on your phone.** Open the link in the
-    notification. On the incident's page, choose
-    **Claim: I'm handling the incident**, which stops MMHotline from waking
-    the next person, then **Resolve**. In a real incident, you resolve
-    after fixing the problem; acknowledging a real SOS in Pushover also
-    claims it. [Handle an incident](how-to/handle-an-incident.md) shows
-    each page.
+   The test SOS starts inside MMHotline. It does not pass through your
+   monitoring tool or MMWatchdog. The signed check-ins of MMWatchdog prove
+   that path every minute, and MMHotline warns when they stop.
 
-    **Check:** `sudo mmhotline incidents list` prints
-    `Listed 0 SOS incidents not resolved, newest first.`
-
-You now know that an alert reaches MMHotline, MMHotline wakes you, and you
-can handle the incident from your phone.
+You now know that MMHotline wakes you and that your phone's
+acknowledgement reaches MMHotline. To see the pages a real incident uses,
+read [Handle an incident](how-to/handle-an-incident.md).
 
 ## What to do next
 

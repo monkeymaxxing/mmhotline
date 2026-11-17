@@ -98,16 +98,25 @@ call when MMHotline stops checking in.
 
 5. **Send a test:**
 
+   THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.
+
    ```sh
    sudo mmhotline down-alarm send-test
    ```
 
-   **Check:** each phone gets an emergency Pushover notification titled
-   **Test of the MMHotline-down alarm**, or a call that says it is a test;
-   acknowledge the Pushover test. The command lists each test and exits 0
-   when every service accepted it:
+   The command prints that line first, before it sends anything. Each phone
+   gets an emergency Pushover notification titled **Test of the
+   MMHotline-down alarm**, or a call that says it is a test. For a Pushover
+   notification, MMHotline then reads Pushover's receipt, which proves that
+   Pushover accepted it, and cancels its repeats at once. Reason: an
+   emergency notification repeats until someone acknowledges it, and the
+   test should not keep the person busy. The command lists each test and
+   exits 0 when every service accepted it and every Pushover receipt was
+   read and cancelled:
 
    ```text
+   Test: Pushover notification to Carlos Example: accepted by the service (HTTP 200). Pushover accepted the MMHotline-down alarm's notification (receipt r5qkvhu7wg8wwtbm4l5x2dnxzy9c3a). MMHotline cancelled its repeats.
+   Test: Automated voice call to Carlos Example: accepted by the service (HTTP 201).
    The MMHotline-down alarm sent a test alert for each held message, and each service accepted it.
    ```
 
@@ -150,6 +159,13 @@ call when MMHotline stops checking in.
   command exits 1: the alarm reached Pushover or Twilio, which refused the
   message, such as for a wrong user key or phone number. Check those
   contact methods with `sudo mmhotline contact-methods send-test`.
+- **A Pushover test line says** `Pushover's answer had no receipt`,
+  `Pushover refused the receipt`, or `could not cancel its repeats`, and
+  the command exits 1: `no receipt` and `refused the receipt` mean nothing
+  proves that Pushover accepted the notification, so check the contact
+  method with `sudo mmhotline contact-methods send-test`. `could not cancel
+  its repeats` means Pushover accepted it, but the phone may sound again for
+  up to 10 minutes; acknowledge the notification in Pushover.
 - **The test says**
   `The MMHotline-down alarm holds no message, so it would wake nobody.` and
   exits 1: nobody on call or as backup has a Pushover notification or an

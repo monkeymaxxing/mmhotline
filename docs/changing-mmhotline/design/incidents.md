@@ -448,6 +448,38 @@ The page refreshes its live sections every 10 seconds; a section with a
 note being typed in the section is not replaced, so the note stays until
 the person sends or clears the note.
 
+### The test SOS
+
+`mmhotline incidents send-test-sos` proves that an SOS reaches a phone,
+with one acknowledgement and nothing more to do. It opens an SOS incident
+from MMHotline itself, titled "Test of the alerts. Nothing is wrong:
+acknowledge this.". The reserved alert source ID `mmhotline_test_sos` marks
+the incident as a test, so no new column or database format change is
+needed: the alert source ID is already on every incident, and the settings
+check refuses it for a team's own source, as it refuses `system` and
+`manual`. The test pages the person on call through the ordinary SOS
+escalation: the same contact methods, repeats, and backup timing. Alerts of
+this source never join a triage session or wait for the triage agent
+(`triageSessionAlertCondition`), because nothing is wrong and the test must
+wake the person at once.
+
+The one claim operation (`claimIncidentTx`) resolves an incident of this
+source right after it records the claim, as MMHotline, with the history line
+`Resolved by MMHotline after the claim, because this incident was a test`.
+Every way to claim reaches that operation: the incident page, Pushover,
+Telegram, Slack. No "resolved" message is queued for a test. Opening a test
+first resolves any unclaimed earlier test, so a second test never leaves two
+tests ringing. The command opens the incident and then polls
+`incidents show` every 2 seconds, for `--wait-for-claim-minutes` (default 10,
+at least 1) and exits 0 with who claimed it, how, and when, or exits 1 and
+leaves the test open. Reason for 10 minutes: the person on call gets a whole
+step of the default time to claim (5 minutes) and the start of the backup's
+step; a phone that has not sounded by then has a setup problem.
+
+The test does not pass through MMWatchdog or any alert source. MMWatchdog's
+signed check-ins prove that path every minute, and MMHotline warns when they
+stop.
+
 ### Claiming from a notification
 
 **Built** and used by Pushover acknowledgements and Telegram and Slack buttons.

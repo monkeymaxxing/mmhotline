@@ -60,8 +60,8 @@ func receivedLater(happened, received time.Time) string {
 }
 
 // AlertFilter picks alerts for ListAlerts. SourceID is an alert source's ID,
-// or one of the two IDs of alerts no alert source sent: systemAlertSourceID
-// and manualAlertSourceID.
+// or one of the three IDs of alerts no alert source sent: systemAlertSourceID,
+// manualAlertSourceID, and testAlertSourceID.
 type AlertFilter struct {
 	Query, Severity, IncidentID, SourceID string
 	Before                                int64
@@ -70,10 +70,14 @@ type AlertFilter struct {
 }
 
 // The alert source IDs of the alerts no alert source sent: MMHotline's own,
-// and the SOS incidents a person creates by hand.
+// the SOS incidents a person creates by hand, and the test SOS that
+// `mmhotline incidents send-test-sos` opens. Only a test SOS has the third
+// ID, so it is the one place that says "this incident is a test", and the
+// only incident that resolves itself when someone claims it.
 const (
 	systemAlertSourceID = "system"
 	manualAlertSourceID = "manual"
+	testAlertSourceID   = "mmhotline_test_sos"
 )
 
 // Decode each named value exactly once. encoding/json's ordinary struct decode
@@ -522,7 +526,7 @@ func (a *App) ListAlerts(ctx context.Context, p Principal, f AlertFilter) ([]Ale
 			// A mistyped ID would list no alerts, which reads as a quiet
 			// alert source.
 			var known bool
-			if err := tx.QueryRowContext(ctx, `SELECT ? IN (?,?) OR EXISTS(SELECT 1 FROM sources WHERE id=?)`, f.SourceID, systemAlertSourceID, manualAlertSourceID, f.SourceID).Scan(&known); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT ? IN (?,?,?) OR EXISTS(SELECT 1 FROM sources WHERE id=?)`, f.SourceID, systemAlertSourceID, manualAlertSourceID, testAlertSourceID, f.SourceID).Scan(&known); err != nil {
 				return err
 			}
 			if !known {

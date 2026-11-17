@@ -53,6 +53,12 @@ const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 // RFC 9110 allows a tab in a field value and no other control character.
 const HEADER_VALUE_CONTROL_CHARACTER = /[\x00-\x08\x0a-\x1f\x7f]/;
 const HELD_MESSAGE_ID = /^[a-z0-9-]{1,128}$/;
+// Pushover's receipt for an emergency notification: 30 letters and digits,
+// as MMHotline checks it (pushoverKeyPattern in the Go code).
+const PUSHOVER_RECEIPT = /^[A-Za-z0-9]{30}$/;
+// A service's answer is read only for a test, and only this much of it: the
+// receipt of an emergency notification is a short JSON object.
+export const MAXIMUM_TEST_ANSWER_CHARACTERS = 4096;
 
 export class CheckInRefused extends Error {
   constructor(field, message) {
@@ -291,7 +297,9 @@ export async function acceptCheckIn(storage, heldMessages, now) {
 
 // sendOnce sends one held request and reports the HTTP status code, or null
 // when no answer came: then nobody knows whether the service acted on it.
-export async function sendOnce(request, fetchFunction) {
+// With readAnswer, which only a test sets, it also reports the start of the
+// answer's text as answer_text.
+export async function sendOnce(request, fetchFunction, readAnswer = false) {
   try {
     const response = await fetchFunction(request.url, {
       method: request.method,
@@ -300,12 +308,17 @@ export async function sendOnce(request, fetchFunction) {
       redirect: "manual",
       signal: AbortSignal.timeout(ANSWER_TIME_LIMIT_MS),
     });
+    let answerText = null;
     try {
-      await response.body?.cancel();
+      if (readAnswer) {
+        answerText = (await response.text()).slice(0, MAXIMUM_TEST_ANSWER_CHARACTERS);
+      } else {
+        await response.body?.cancel();
+      }
     } catch {
-      // The answer's body is never needed.
+      // The answer's body is needed only for a test, which then has no receipt.
     }
-    return { http_status_code: response.status };
+    return answerText === null ? { http_status_code: response.status } : { http_status_code: response.status, answer_text: answerText };
   } catch {
     return { http_status_code: null };
   }
@@ -397,12 +410,26 @@ export async function runAlarm(storage, clock, send) {
   await scheduleAlarm(storage);
 }
 
+// pushoverReceiptIn is the receipt in a service's answer to an accepted
+// test request, or null when the answer has none or a malformed one. Only
+// Pushover's answer to an emergency notification has a receipt; MMHotline
+// reads the receipt at Pushover, then cancels the repeats.
+export function pushoverReceiptIn(answerText) {
+  try {
+    const receipt = JSON.parse(answerText)?.receipt;
+    return typeof receipt === "string" && PUSHOVER_RECEIPT.test(receipt) ? receipt : null;
+  } catch {
+    return null;
+  }
+}
+
 // sendTests sends each held message's test request now, for "Send a test
-// now" in MMHotline. Tests are not retried and not logged as sends.
+// now" in MMHotline. Tests are not retried and not logged as sends. The
+// answer to each includes the Pushover receipt, when the answer has one.
 export async function sendTests(storage, send) {
   const held = await readHeldMessages(storage, await storage.get("check_in"));
   return Promise.all([...held.values()].slice(0, SENDS_PER_ALARM).map(async (message) => {
-    const result = await send(message.test_request);
+    const result = await send(message.test_request, true);
     const code = result.http_status_code;
     let outcome = "refused_by_service";
     if (code === null) {
@@ -412,7 +439,8 @@ export async function sendTests(storage, send) {
     } else if (retryable(code)) {
       outcome = "service_unavailable";
     }
-    return { held_message_id: message.held_message_id, send_outcome: outcome, http_status_code: code };
+    const receipt = outcome === "delivered" ? pushoverReceiptIn(result.answer_text) : null;
+    return { held_message_id: message.held_message_id, send_outcome: outcome, http_status_code: code, ...(receipt ? { pushover_receipt: receipt } : {}) };
   }));
 }
 
@@ -457,7 +485,7 @@ export async function handleWorkerRequest(request, env) {
 
 export class Lifeline extends DurableObject {
   async fetch(request) {
-    return handleObjectRequest(request, this.ctx.storage, Date.now(), (held) => sendOnce(held, fetch));
+    return handleObjectRequest(request, this.ctx.storage, Date.now(), (held, readAnswer) => sendOnce(held, fetch, readAnswer));
   }
 
   async alarm() {

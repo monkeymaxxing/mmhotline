@@ -401,6 +401,22 @@ check-in to the next. Each held message also carries a test request for
 "Send a test now". The test request uses the held message's notification or
 call type, with text identifying the notification or call as a test.
 
+A test of a Pushover emergency is proved from Pushover's receipt. The Worker
+reads the start of each accepted test's answer, at most 4,096 characters, and
+returns the `receipt` field as `pushover_receipt` when it is 30 letters and
+digits, as MMHotline's own check of a receipt (`pushoverKeyPattern`) requires;
+a held message with no such receipt gets no field, so a voice call's test is
+unchanged. MMHotline then reads the receipt with the Pushover application
+token it holds, which records that Pushover accepted the notification, and
+cancels the emergency at once, so it does not repeat for the test's 10 minutes.
+Each person's result says Pushover accepted the notification and MMHotline
+cancelled its repeats, or the part that failed: `no_receipt`,
+`receipt_refused_by_pushover`, or `cancel_failed`. Each failure makes the
+command exit 1. Reason for cancelling: a repeating test would keep a person
+busy with nothing to do. The command and the dashboard say, in capitals and
+before anything is sent, that the phone may sound once more: the emergency
+sounds when it arrives, before MMHotline cancels it.
+
 During team mute, which stops Pushover and phone calls, each delay starts
 when team mute ends, rounded up to the next minute.
 The MMHotline-down alarm therefore wakes nobody during a mute, and still wakes the

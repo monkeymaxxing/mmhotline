@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -67,6 +68,9 @@ type CommandIncidentHistoryEntry struct {
 const maximumIncidentAlertsShown = 100
 
 func (a *App) incidentsCommand(ctx context.Context, p Principal, action string, request IncidentsCommandRequest, result *CommandResult) error {
+	if action == "send-test-sos" {
+		return a.sendTestSOSCommand(ctx, p, result)
+	}
 	if action != "list" && action != "show" {
 		return ErrNotFound
 	}
@@ -218,4 +222,130 @@ func (i CommandIncident) Text() string {
 // stay under the line it starts.
 func indentedText(text, indent string) string {
 	return strings.ReplaceAll(strings.TrimRight(text, "\n"), "\n", "\n"+indent)
+}
+
+// testSOSTitle and testSOSMessage are what the person reads on the phone for
+// the test SOS. The title says the whole story, because a phone shows little
+// more than the title when it wakes someone.
+const (
+	testSOSTitle   = "Test of the alerts. Nothing is wrong: acknowledge this."
+	testSOSMessage = "MMHotline sent this test on purpose. Nothing is wrong. Acknowledge this message, and MMHotline closes the test for you."
+)
+
+// CommandTestSOS is what `mmhotline incidents send-test-sos` prints. The
+// server fills IncidentID and IncidentPageURL when it opens the test; the
+// command fills the rest while it waits for the claim.
+type CommandTestSOS struct {
+	IncidentID      string `json:"incident_id"`
+	IncidentPageURL string `json:"incident_page_url"`
+	// WaitedForClaimMinutes is the time limit the command waited with.
+	WaitedForClaimMinutes int `json:"waited_for_claim_minutes,omitempty"`
+	// Claimed is true when a person claimed the test before the time limit.
+	Claimed bool `json:"claimed"`
+	// ClaimedBy, ClaimedHow, and ClaimedAt say who claimed it, how (such as
+	// "by acknowledging the alert in Pushover"; empty for the incident page),
+	// and when.
+	ClaimedBy  string    `json:"claimed_by,omitempty"`
+	ClaimedHow string    `json:"claimed_how,omitempty"`
+	ClaimedAt  time.Time `json:"claimed_at,omitzero"`
+	// ResolvedAt is when MMHotline closed the test after the claim.
+	ResolvedAt time.Time `json:"resolved_at,omitzero"`
+}
+
+// sendTestSOSCommand opens the test SOS and returns at once; the command
+// waits for the claim, as `triage-agent check-sign-in` waits for its check.
+func (a *App) sendTestSOSCommand(ctx context.Context, p Principal, result *CommandResult) error {
+	incident, err := a.SendTestSOS(ctx, p)
+	if err != nil {
+		return err
+	}
+	result.TestSOS = &CommandTestSOS{IncidentID: incident.ID, IncidentPageURL: a.WebURL + "/incidents/" + incident.ID}
+	return nil
+}
+
+// SendTestSOS opens an SOS incident from MMHotline itself, marked as a test
+// by its alert source ID (testAlertSourceID). It wakes the person on call as
+// a real SOS does, through the same escalation, and skips the triage agent.
+// A test SOS that nobody claimed is closed first, so a second test never
+// leaves two tests ringing a phone. Claiming the test resolves it
+// (claimIncidentTx).
+func (a *App) SendTestSOS(ctx context.Context, p Principal) (Incident, error) {
+	var opened Incident
+	err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+		if _, err := RequireMember(ctx, tx, p, true); err != nil {
+			return err
+		}
+		at := a.Now().UTC()
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM incidents WHERE source_id=? AND status!='resolved'`, testAlertSourceID)
+		if err != nil {
+			return err
+		}
+		var earlier []string
+		for rows.Next() {
+			var id string
+			if err = rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			earlier = append(earlier, id)
+		}
+		if err = errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		for _, id := range earlier {
+			i, err := readIncident(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if _, err = resolveIncidentTx(ctx, tx, i, "system", "", " because a newer test replaced it", "", at); err != nil {
+				return err
+			}
+		}
+		alert, err := admitAlert(ctx, tx, testAlertSourceID, "system", "local:"+NewID(), "", GenericAlert{Severity: "sos", Title: testSOSTitle, Message: testSOSMessage}, nil, at)
+		if err != nil {
+			return err
+		}
+		opened, err = readIncident(ctx, tx, alert.IncidentID)
+		return err
+	})
+	return opened, err
+}
+
+// Update fills the claim facts from the test incident as `incidents show`
+// reports it, and says whether the test was claimed. The claim's history
+// entry says how: " in Telegram", or ", who acknowledged the alert in
+// Pushover".
+func (t *CommandTestSOS) Update(i CommandIncident) bool {
+	t.ClaimedBy, t.ClaimedHow, t.ClaimedAt, t.ResolvedAt = "", "", time.Time{}, time.Time{}
+	for _, entry := range i.History {
+		if entry.Kind != "claimed" {
+			continue
+		}
+		t.ClaimedBy, t.ClaimedAt = i.ClaimedBy, entry.OccurredAt
+		how := strings.TrimPrefix(entry.Message, "Claimed by "+entry.By)
+		t.ClaimedHow = strings.TrimPrefix(strings.Replace(how, ", who acknowledged", " by acknowledging", 1), " ")
+		if i.Status == "resolved" {
+			t.ResolvedAt = i.ResolvedAt
+		}
+	}
+	t.Claimed = t.ClaimedBy != ""
+	return t.Claimed
+}
+
+// Text is the test's lines: the incident's page, and who claimed the test,
+// how, and when.
+func (t CommandTestSOS) Text() string {
+	lines := []string{"Incident: " + t.IncidentPageURL}
+	if !t.Claimed {
+		return strings.Join(lines, "\n")
+	}
+	how := ""
+	if t.ClaimedHow != "" {
+		how = " " + t.ClaimedHow
+	}
+	lines = append(lines, fmt.Sprintf("%s claimed the test%s, at %s.", t.ClaimedBy, how, commandTime(t.ClaimedAt)))
+	if !t.ResolvedAt.IsZero() {
+		lines = append(lines, "MMHotline resolved the test after the claim, at "+commandTime(t.ResolvedAt)+".")
+	}
+	return strings.Join(lines, "\n")
 }

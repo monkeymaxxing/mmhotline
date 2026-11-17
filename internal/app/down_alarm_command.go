@@ -32,11 +32,17 @@ func DownAlarmTestFailed(sends []DownAlarmSendView) bool {
 		return true
 	}
 	for _, send := range sends {
-		if send.SendOutcome != "delivered" {
+		if send.SendOutcome != "delivered" || downAlarmReceiptFailed(send) {
 			return true
 		}
 	}
 	return false
+}
+
+// downAlarmReceiptFailed is true when Pushover's receipt did not prove a
+// Pushover test: no receipt, a refused receipt, or a cancel that failed.
+func downAlarmReceiptFailed(send DownAlarmSendView) bool {
+	return send.PushoverReceiptOutcome != "" && send.PushoverReceiptOutcome != pushoverReceiptProven
 }
 
 // DownAlarmTestSummary is the last line of down-alarm send-test.
@@ -50,10 +56,18 @@ func DownAlarmTestSummary(sends []DownAlarmSendView) string {
 			refused++
 		}
 	}
-	switch refused {
-	case 0:
+	unproven := 0
+	for _, send := range sends {
+		if downAlarmReceiptFailed(send) {
+			unproven++
+		}
+	}
+	switch {
+	case refused == 0 && unproven > 0:
+		return fmt.Sprintf("The MMHotline-down alarm sent a test alert for each held message, and each service accepted it, but Pushover's receipt did not prove %d of the Pushover notifications. Read the lines above for what to check.", unproven)
+	case refused == 0:
 		return "The MMHotline-down alarm sent a test alert for each held message, and each service accepted it."
-	case 1:
+	case refused == 1:
 		return fmt.Sprintf("The MMHotline-down alarm sent a test alert for each held message; 1 of %d was not accepted, so that person would not be woken. Check the contact method with sudo mmhotline contact-methods send-test.", len(sends))
 	default:
 		return fmt.Sprintf("The MMHotline-down alarm sent a test alert for each held message; %d of %d were not accepted, so those people would not be woken. Check the contact methods with sudo mmhotline contact-methods send-test.", refused, len(sends))

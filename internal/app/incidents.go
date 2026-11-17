@@ -515,6 +515,10 @@ func resolveIncidentTx(ctx context.Context, tx *sql.Tx, i Incident, actor, resol
 	if alertID == "" {
 		alertID = i.OpeningAlertID
 	}
+	// Nobody needs to hear that a test is over.
+	if i.SourceID == testAlertSourceID {
+		return i, nil
+	}
 	title, message, err := resolvedSOSText(ctx, tx, i)
 	if err != nil {
 		return i, err
@@ -581,7 +585,16 @@ func claimIncidentTx(ctx context.Context, tx *sql.Tx, i Incident, m Member, how,
 		}
 		message = "Taken over by " + m.Name + " from " + oldName + how
 	}
-	return i, recordIncidentActionWithNote(ctx, tx, i, "member:"+m.ID, kind, message, "", oldOwner, note, i.ClaimedAt)
+	if err := recordIncidentActionWithNote(ctx, tx, i, "member:"+m.ID, kind, message, "", oldOwner, note, i.ClaimedAt); err != nil {
+		return i, err
+	}
+	// A test SOS has done its job once someone claims it: it proved that the
+	// phone woke a person. MMHotline closes it at once, so the person has
+	// nothing more to do.
+	if i.SourceID == testAlertSourceID {
+		return resolveIncidentTx(ctx, tx, i, "system", "", " after the claim, because this incident was a test", "", at)
+	}
+	return i, nil
 }
 
 // ResolveIncident resolves an incident, with an optional note, as
@@ -1156,6 +1169,9 @@ func actOnNotificationIncidentsTx(ctx context.Context, tx *sql.Tx, deliveryID, m
 		switch i.Status {
 		case "resolved":
 			result.Text = "This incident is already resolved."
+			if claimedNow && i.SourceID == testAlertSourceID {
+				result.Text = "Thank you. MMHotline closed the test."
+			}
 		case "claimed":
 			if result.OwnerName, err = incidentMemberName(ctx, tx, i.OwnerMemberID); err != nil {
 				return nil, err

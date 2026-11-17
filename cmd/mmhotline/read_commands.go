@@ -11,7 +11,16 @@ import (
 // The flags of the read-only commands, which show what happened: incidents,
 // alerts, triage sessions, and approval requests. They change nothing.
 
-func incidentsFlags(flags *flag.FlagSet, action string, in *app.IncidentsCommandRequest) func() error {
+func incidentsFlags(flags *flag.FlagSet, action string, in *app.IncidentsCommandRequest, waitForClaimMinutes *int) func() error {
+	if action == "send-test-sos" {
+		flags.IntVar(waitForClaimMinutes, "wait-for-claim-minutes", defaultWaitForClaimMinutes, "how many minutes to wait for someone to acknowledge the test SOS; at least 1")
+		return func() error {
+			if *waitForClaimMinutes < 1 {
+				return errors.New("--wait-for-claim-minutes must be at least 1")
+			}
+			return nil
+		}
+	}
 	if action == "list" {
 		timeFlag(flags, "opened-since", "list the incidents opened at or after `TIME`, resolved or not", &in.OpenedSince)
 		timeFlag(flags, "opened-before", "list the incidents opened before `TIME`, resolved or not", &in.OpenedBefore)
@@ -23,7 +32,7 @@ func incidentsFlags(flags *flag.FlagSet, action string, in *app.IncidentsCommand
 
 func alertsFlags(flags *flag.FlagSet, in *app.AlertsCommandRequest) func() error {
 	flags.StringVar(&in.Severity, "severity", "", "info, warn, sos, resolved-info, resolved-warn, or resolved-sos")
-	flags.StringVar(&in.AlertSourceID, "alert-source-id", "", "alert source's ID; system for MMHotline's own alerts, manual for SOS incidents a person created")
+	flags.StringVar(&in.AlertSourceID, "alert-source-id", "", "alert source's ID; system for MMHotline's own alerts, manual for SOS incidents a person created; mmhotline_test_sos for the test SOS of incidents send-test-sos")
 	flags.StringVar(&in.IncidentID, "incident-id", "", "SOS incident's ID")
 	timeFlag(flags, "received-since", "list the alerts received at or after `TIME`", &in.ReceivedSince)
 	timeFlag(flags, "received-before", "list the alerts received before `TIME`", &in.ReceivedBefore)

@@ -1756,7 +1756,7 @@ message's request.
 | `mmhotline_down_alarm.check_ins_failing_since`, `.last_check_in_error` | Present while check-ins fail: since when, and why |
 | `mmhotline_down_alarm.held_messages` | Who would be woken: `person_name`, `contact_method_type`, `sent_to`, and `delay_minutes` |
 | `mmhotline_down_alarm.recent_sends` | The sends the alarm reported in its answer to the last accepted check-in: `send_id`, `person_name`, `contact_method_type`, `due_at`, `send_outcome`, and `http_status_code` |
-| `mmhotline_down_alarm.test_sends` | `send-test` only: each test's `person_name`, `contact_method_type`, `send_outcome`, and `http_status_code` |
+| `mmhotline_down_alarm.test_sends` | `send-test` only: each test's `person_name`, `contact_method_type`, `send_outcome`, `http_status_code`, and, for Pushover, the receipt fields [`send-test`](#mmhotline-down-alarm-send-test) lists |
 
 `send_outcome` is `delivered`, `refused_by_service`,
 `not_delivered_within_10_minutes`, `stopped_by_check_in`, or, for a test,
@@ -1766,34 +1766,61 @@ message's request.
 
 Checks in, then has the MMHotline-down alarm send a test of each held
 message now, such as an emergency Pushover notification titled "Test of
-the MMHotline-down alarm".
+the MMHotline-down alarm". For each Pushover notification, MMHotline then
+reads Pushover's receipt, which proves that Pushover accepted the
+notification, and cancels the notification's repeats at once.
+
+THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.
+
+The command prints that line first, before it sends anything. With `--json`
+it goes to standard error, so standard output stays one JSON object.
 
 ```sh
 sudo mmhotline down-alarm send-test
 ```
 
 ```text
-Test: Pushover notification to Carlos Example: refused by the service (HTTP 400).
+Test: Pushover notification to Carlos Example: accepted by the service (HTTP 200). Pushover accepted the MMHotline-down alarm's notification (receipt r5qkvhu7wg8wwtbm4l5x2dnxzy9c3a). MMHotline cancelled its repeats.
 Test: Automated voice call to Carlos Example: refused by the service (HTTP 401).
 Test: Pushover notification to Barbara Example: refused by the service (HTTP 400).
-The MMHotline-down alarm sent a test alert for each held message; 3 of 3 were not accepted, so those people would not be woken. Check the contact methods with sudo mmhotline contact-methods send-test.
+The MMHotline-down alarm sent a test alert for each held message; 2 of 3 were not accepted, so those people would not be woken. Check the contact methods with sudo mmhotline contact-methods send-test.
 ```
 
 The output starts with the lines of
-[`down-alarm show`](#mmhotline-down-alarm-show). Its last line is one of:
+[`down-alarm show`](#mmhotline-down-alarm-show). Each test line says what the
+service answered. For a Pushover notification the service accepted, it adds
+one of these sentences:
+
+- `Pushover accepted the MMHotline-down alarm's notification (receipt R). MMHotline cancelled its repeats.`
+- `Pushover's answer had no receipt, so nothing proves that Pushover accepted the notification.`
+- `Pushover refused the receipt, so nothing proves that Pushover accepted the notification.`
+  and Pushover's reason.
+- `Pushover accepted the MMHotline-down alarm's notification (receipt R), but MMHotline could not cancel its repeats.`
+  and the reason. THE PHONE MAY SOUND AGAIN FOR UP TO 10 MINUTES. Acknowledge
+  the notification in Pushover.
+
+A voice call's test line stays as it was. The last line is one of:
 
 - `The MMHotline-down alarm sent a test alert for each held message, and each service accepted it.`
+- `... and each service accepted it, but Pushover's receipt did not prove 1 of the Pushover notifications. Read the lines above for what to check.`
 - `... 1 of 3 was not accepted, so that person would not be woken. Check the contact method with sudo mmhotline contact-methods send-test.`,
   or the line above for several.
 - `The MMHotline-down alarm holds no message, so it would wake nobody.`
 
 - **Flags:** the common flags.
-- **JSON:** the fields of `down-alarm show`, with `test_sends`.
+- **JSON:** the fields of `down-alarm show`, with `test_sends`. Each test
+  send has the fields below, besides those of `recent_sends`.
+
+| Field of each `test_sends` entry | Meaning |
+| --- | --- |
+| `pushover_receipt` | The receipt in Pushover's answer; for a Pushover notification only, and absent when the answer had none |
+| `pushover_receipt_outcome` | For a Pushover notification the service accepted: `accepted_and_repeats_cancelled`, `no_receipt`, `receipt_refused_by_pushover`, or `cancel_failed`. Absent for a voice call and for a notification the service refused |
+| `pushover_receipt_problem` | Why a `receipt_refused_by_pushover` or `cancel_failed` happened; absent otherwise |
 
 | Exit code | Meaning |
 | --- | --- |
-| `0` | Every test was accepted (`send_outcome` `delivered`) |
-| `1` | A test was not accepted, or the alarm holds no message |
+| `0` | Every test was accepted (`send_outcome` `delivered`), and each Pushover receipt was read and cancelled |
+| `1` | A test was not accepted, a Pushover receipt did not prove the notification or its repeats were not cancelled, or the alarm holds no message |
 | `4` | Refused, such as when the alarm is not set up, or wrong arguments |
 
 ## mmhotline status-page set-up
@@ -1945,8 +1972,9 @@ an SSH session cannot pass. Each command shows the facts of a page and
 calls the same operation that page calls: the dashboard and incident page,
 **Alerts**, the incident page's triage agent panel, and **Approvals**.
 
-- They change nothing. To claim, resolve, approve, refuse, or stop, use
-  the pages, because each of those actions records a person.
+- Except `incidents send-test-sos`, they change nothing. To claim, resolve,
+  approve, refuse, or stop, use the pages, because each of those actions
+  records a person.
 - Each reads in at most a few transactions the size of a page's, so it
   holds the database no longer than opening the page does.
 - They need root's command access; any member sees the same facts on the
@@ -1965,7 +1993,7 @@ sudo mmhotline incidents list
 ```
 
 ```text
-SOS incident acc896d49ce5b2ef40cd2c944da4f08f: Test SOS from the first run
+SOS incident acc896d49ce5b2ef40cd2c944da4f08f: Nightly backup of db001 failed
 Status: Not claimed yet. Opened at 2026-11-15T04:40:40Z.
 Being contacted now: Barbara Example.
 Page: https://ops.example.com/incidents/acc896d49ce5b2ef40cd2c944da4f08f
@@ -2047,6 +2075,82 @@ A claim or resolve with a note ends with the note, such as
 | `history[].related_alert_id` | The alert that caused the entry, when one did |
 | `history[].note` | What the person wrote with a claim or resolve; absent when they wrote none |
 
+## mmhotline incidents send-test-sos
+
+Has MMHotline send itself a test SOS, wakes the person on call as a real
+SOS does, and waits for someone to acknowledge it on the phone. Use it to
+prove that an SOS reaches a phone. It is the one command of this group that
+opens an incident.
+
+```sh
+sudo mmhotline incidents send-test-sos
+```
+
+```text
+MMHotline sent a test SOS to the person on call. Waiting up to 10 minutes for someone to acknowledge it on the phone.
+Incident: https://ops.example.com/incidents/acc896d49ce5b2ef40cd2c944da4f08f
+Barbara Example claimed the test by acknowledging the alert in Pushover, at 2026-11-15T04:41:20Z.
+MMHotline resolved the test after the claim, at 2026-11-15T04:41:20Z.
+The test SOS worked: a person acknowledged it on the phone.
+```
+
+What the test does:
+
+- It opens an SOS incident titled `Test of the alerts. Nothing is wrong:
+  acknowledge this.` Its alert source ID is `mmhotline_test_sos`, which
+  marks it as a test. Only a test resolves itself.
+- It pages whoever is on call exactly as a real SOS does: the same contact
+  methods, repeats, and backup timing.
+- It skips the triage agent. Nothing is wrong, so the agent has nothing to
+  look into, and the test must not wait for it.
+- When someone claims the test, MMHotline resolves it at once and writes
+  `Resolved by MMHotline after the claim, because this incident was a test`
+  into its history. Acknowledging in Pushover, the page, Telegram, and
+  Slack all count as a claim. MMHotline sends nobody a message that the
+  test is resolved.
+- A test that nobody claimed stays open. The next `send-test-sos` resolves
+  it first, so two tests never ring a phone at once.
+- It does not pass through MMWatchdog or any alert source. MMWatchdog's
+  signed check-ins prove that path every minute, and MMHotline warns when
+  they stop.
+
+| Flag | Meaning |
+| --- | --- |
+| `--wait-for-claim-minutes N` | Optional. How long to wait for a claim. A whole number from 1 up. Default 10 |
+| Common flags | As above |
+
+Reason for the default: it gives the person on call a whole step of the
+default time to claim (5 minutes) and the start of the backup's step. A
+phone that has not sounded by then has a setup problem, and waiting longer
+does not fix it. A team that sets a longer time to claim can raise the
+limit. The minimum of 1 is there because 0 would wait for nothing.
+
+IF NOBODY CLAIMS THE TEST IN TIME, THE COMMAND EXITS 1 AND THE INCIDENT STAYS
+OPEN. CHECK FIRST THAT THE PUSHOVER APP IS INSTALLED AND SIGNED IN ON THE
+PHONE, AND THAT CRITICAL ALERTS ARE ALLOWED FOR PUSHOVER IN THE PHONE'S
+SETTINGS.
+
+```text
+Nobody acknowledged the test SOS within 10 minutes. The incident is still open, so MMHotline keeps trying to reach the person on call. Check first that the Pushover app is installed and signed in on the phone, and that critical alerts are allowed for Pushover in the phone's settings. Then run the command again: a new test closes this one.
+```
+
+**JSON fields:** `message`, `web_url`, and `test_sos`:
+
+| Field | Meaning |
+| --- | --- |
+| `test_sos.incident_id`, `.incident_page_url` | The test incident, and its page |
+| `test_sos.waited_for_claim_minutes` | The time limit the command used |
+| `test_sos.claimed` | `true` when a person claimed the test in time |
+| `test_sos.claimed_by`, `.claimed_how`, `.claimed_at` | Who claimed it, how (such as `by acknowledging the alert in Pushover`; absent for the incident page), and when |
+| `test_sos.resolved_at` | When MMHotline resolved the test after the claim |
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | A person claimed the test, and MMHotline resolved it |
+| `1` | Nobody claimed the test within the time limit, or someone resolved it without claiming it |
+| `4` | Refused, or the command socket does not answer |
+| `130` | Interrupted, such as with Ctrl-C. The test stays open until the next test or someone resolves it |
+
 ## mmhotline alerts list
 
 Lists the newest 100 alerts that match, newest first. Warn and info alerts
@@ -2070,7 +2174,7 @@ uses it.
 | Flag | Meaning |
 | --- | --- |
 | `--severity SEVERITY` | `info`, `warn`, `sos`, `resolved-info`, `resolved-warn`, or `resolved-sos` ([severities](severities-and-incident-states.md)) |
-| `--alert-source-id ID` | An alert source's ID from `alert-sources list`; `system` for MMHotline's own alerts, such as the triage agent's reports; `manual` for SOS incidents a person created. Another ID is refused, because an empty list would look like a source that went quiet |
+| `--alert-source-id ID` | An alert source's ID from `alert-sources list`; `system` for MMHotline's own alerts, such as the triage agent's reports; `manual` for SOS incidents a person created; `mmhotline_test_sos` for the test SOS of `incidents send-test-sos`. Another ID is refused, because an empty list would look like a source that went quiet |
 | `--incident-id ID` | Only the alerts of this SOS incident |
 | `--received-since TIME`, `--received-before TIME` | Only alerts received in that span |
 | `--older-than-alert-id ID` | Continue after a list of 100: give the oldest listed alert's ID, which the list's message names. Reason: a burst arrives within one second, and a time would skip or repeat alerts in it |

@@ -75,14 +75,17 @@ class FakeServices {
   answer(url, ...results) {
     this.answers.set(url, results);
   }
-  send = async (request) => {
+  // answerText is the text of the service's answer, which a test reads.
+  answerTexts = new Map();
+  send = async (request, readAnswer) => {
     this.sent.push(request);
     const results = this.answers.get(request.url) ?? [200];
     const result = results.length > 1 ? results.shift() : results[0];
     if (result instanceof Error) {
       throw result;
     }
-    return { http_status_code: result };
+    const text = this.answerTexts.get(request.url);
+    return readAnswer && text !== undefined ? { http_status_code: result, answer_text: text } : { http_status_code: result };
   };
 }
 
@@ -360,6 +363,33 @@ test("send-test sends each test request now and logs nothing", async () => {
   ] });
   assert.deepEqual(services.sent.map((r) => r.body), ["message=MMHotline-down alarm+test", "message=MMHotline-down alarm+test"]);
   assert.deepEqual((await checkIn(storage, [barbara, bob], T + minute)).body.sends, []);
+});
+
+const receipt = "r5qkvhu7wg8wwtbm4l5x2dnxzy9c3a";
+
+test("send-test returns the Pushover receipt of an accepted emergency notification, and only a valid one", async () => {
+  const storage = new FakeStorage();
+  const services = new FakeServices();
+  const carol = heldMessage("backup-contact-method-3", 1200, "https://api.pushover.net/1/messages.json?to=carol");
+  const dave = heldMessage("backup-contact-method-4", 1200, "https://api.pushover.net/1/messages.json?to=dave");
+  const refused = heldMessage("backup-contact-method-5", 1200, "https://api.pushover.net/1/messages.json?to=erin");
+  services.answerTexts.set(barbara.request.url, JSON.stringify({ status: 1, request: "abc", receipt }));
+  services.answerTexts.set(bob.request.url, JSON.stringify({ status: 1, request: "abc" }));
+  services.answerTexts.set(carol.request.url, JSON.stringify({ status: 1, receipt: "not-a-receipt" }));
+  services.answerTexts.set(dave.request.url, "not JSON");
+  services.answerTexts.set(refused.request.url, JSON.stringify({ status: 0, receipt }));
+  services.answer(refused.request.url, 400);
+  await checkIn(storage, [barbara, bob, carol, dave, refused], T);
+  const response = await worker.handleObjectRequest(new Request("https://mmhotline-down-alarm.example.workers.dev/send-test", { method: "POST" }), storage, T, services.send);
+  assert.deepEqual((await response.json()).test_sends.map((s) => s.pushover_receipt ?? null), [receipt, null, null, null, null]);
+});
+
+test("sendOnce reads the answer only when asked, and only its start", async () => {
+  const answer = JSON.stringify({ status: 1, receipt });
+  assert.deepEqual(await worker.sendOnce(barbara.request, async () => new Response(answer, { status: 200 })), { http_status_code: 200 });
+  assert.deepEqual(await worker.sendOnce(barbara.request, async () => new Response(answer, { status: 200 }), true), { http_status_code: 200, answer_text: answer });
+  const long = await worker.sendOnce(barbara.request, async () => new Response("x".repeat(worker.MAXIMUM_TEST_ANSWER_CHARACTERS + 10), { status: 200 }), true);
+  assert.equal(long.answer_text.length, worker.MAXIMUM_TEST_ANSWER_CHARACTERS);
 });
 
 test("sendOnce reports no answer when the request fails, and never follows a redirect", async () => {

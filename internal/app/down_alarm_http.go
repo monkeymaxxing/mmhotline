@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/http"
+	"strings"
 )
 
 func (a *App) RegisterDownAlarmRoutes(mux *http.ServeMux) {
@@ -16,7 +17,7 @@ var downAlarmCard = `{{with .DownAlarm}}<section id="mmhotline-down-alarm" data-
 	`{{with .CheckInsFailingSince}}<p class="line-warn small">MMHotline has failed to check in with the MMHotline-down alarm since {{clock .}}. Without check-ins, the MMHotline-down alarm acts as if MMHotline were down: it sends its urgent alerts once, then nothing more, even if MMHotline really goes down later.</p><details class="fold"><summary>Why</summary><p class="small">{{$.DownAlarm.LastCheckInError}}</p></details>{{else}}{{with .LastCheckInAcceptedAt}}<p>MMHotline last checked in {{relativeTime .}}.</p>{{else}}<p>MMHotline has not checked in with the MMHotline-down alarm since MMHotline started.</p>{{end}}{{end}}` +
 	`{{with .HeldMessages}}<p class="faint small">If MMHotline goes quiet, the MMHotline-down alarm wakes:</p><ul class="bullets faint small">{{range .}}<li>{{.ContactMethodType}} to {{.PersonName}} after {{.DelayMinutes}} minutes</li>{{end}}</ul>{{else}}<p class="line-warn small">If MMHotline goes quiet, the MMHotline-down alarm wakes nobody: nobody on call gets SOS alerts by Pushover or automated voice call.</p>{{end}}` +
 	`{{with .RecentSends}}<p class="faint small">The MMHotline-down alarm sent:</p><ul class="bullets faint small">{{range .}}<li>{{.ContactMethodType}} to {{.PersonName}}, at {{clock .DueAt}}</li>{{end}}</ul>{{end}}` +
-	`</div><div class="panel-foot"><form method="post" action="/mmhotline-down-alarm/send-test" class="row"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn small">Send a test now</button><span>Each person above gets a test alert now.</span></form>{{with $}}<details class="fold"><summary>Where the MMHotline-down alarm is set up</summary>` + settingsFileNotice("<code>mmhotline_down_alarm</code>") + `</details>{{end}}</div></section>{{end}}`
+	`</div><div class="panel-foot"><p class="line-warn"><strong>THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.</strong></p><form method="post" action="/mmhotline-down-alarm/send-test" class="row"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn small">Send a test now</button><span>Each person above gets a test alert now. For a Pushover notification, MMHotline checks Pushover's receipt and cancels the repeats.</span></form>{{with $}}<details class="fold"><summary>Where the MMHotline-down alarm is set up</summary>` + settingsFileNotice("<code>mmhotline_down_alarm</code>") + `</details>{{end}}</div></section>{{end}}`
 
 func (a *App) sendDownAlarmTestHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := a.CheckBrowserMutation(w, r); err != nil {
@@ -41,7 +42,7 @@ func (a *App) sendDownAlarmTestHTTP(w http.ResponseWriter, r *http.Request) {
 func testSendLines(view DownAlarmView) []struct{ ContactMethodType, PersonName, Outcome string } {
 	var lines []struct{ ContactMethodType, PersonName, Outcome string }
 	for _, s := range view.TestSends {
-		lines = append(lines, struct{ ContactMethodType, PersonName, Outcome string }{s.ContactMethodType, s.PersonName, downAlarmOutcomeLabel(s.SendOutcome, s.HTTPStatusCode)})
+		lines = append(lines, struct{ ContactMethodType, PersonName, Outcome string }{s.ContactMethodType, s.PersonName, strings.TrimPrefix(s.testText(), "Test: "+s.ContactMethodType+" to "+s.PersonName+": ")})
 	}
 	return lines
 }

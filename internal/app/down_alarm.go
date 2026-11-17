@@ -126,6 +126,14 @@ type DownAlarmSendView struct {
 	DueAt             time.Time `json:"due_at,omitzero"`
 	SendOutcome       string    `json:"send_outcome"`
 	HTTPStatusCode    *int      `json:"http_status_code,omitempty"`
+	// The three fields below are set only for a test of a Pushover
+	// notification that the service accepted. PushoverReceipt is the receipt
+	// in Pushover's answer. PushoverReceiptOutcome is
+	// accepted_and_repeats_cancelled, no_receipt, receipt_refused_by_pushover,
+	// or cancel_failed. PushoverReceiptProblem is the reason of a failure.
+	PushoverReceipt        string `json:"pushover_receipt,omitempty"`
+	PushoverReceiptOutcome string `json:"pushover_receipt_outcome,omitempty"`
+	PushoverReceiptProblem string `json:"pushover_receipt_problem,omitempty"`
 }
 
 // DownAlarmView is what the dashboard and `mmhotline down-alarm show` show. It
@@ -933,14 +941,64 @@ func (a *App) SendDownAlarmTest(ctx context.Context, p Principal) (DownAlarmView
 	if err != nil {
 		return view, err
 	}
+	var pushoverTests []bool
 	err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 		for _, test := range tests {
 			send := downAlarmSendView(ctx, tx, downalarm.Send{HeldMessageID: test.HeldMessageID, SendOutcome: test.SendOutcome, HTTPStatusCode: test.HTTPStatusCode})
 			view.TestSends = append(view.TestSends, send)
+			pushoverTests = append(pushoverTests, test.SendOutcome == "delivered" && downAlarmHeldMessageIsPushover(ctx, tx, test.HeldMessageID))
 		}
 		return nil
 	})
-	return view, err
+	if err != nil {
+		return view, err
+	}
+	// Pushover's receipt proves the notification: read it, then cancel the
+	// repeats. A voice call has no receipt and keeps today's test.
+	pushover, _ := a.configuredContactMethodTypes()["pushover_notification"].(*PushoverNotificationContactMethodType)
+	for index, test := range tests {
+		if !pushoverTests[index] {
+			continue
+		}
+		send := &view.TestSends[index]
+		send.PushoverReceipt = test.PushoverReceipt
+		if pushover == nil {
+			send.PushoverReceiptOutcome, send.PushoverReceiptProblem = pushoverReceiptRefused, "Pushover is not set up"
+			continue
+		}
+		send.PushoverReceiptOutcome, send.PushoverReceiptProblem = pushover.proveEmergencyAndCancelIt(ctx, test.PushoverReceipt)
+	}
+	return view, nil
+}
+
+func downAlarmHeldMessageIsPushover(ctx context.Context, tx *sql.Tx, heldMessageID string) bool {
+	match := downAlarmHeldMessageIDPattern.FindStringSubmatch(heldMessageID)
+	if match == nil {
+		return false
+	}
+	var contactMethodType string
+	return tx.QueryRowContext(ctx, `SELECT contact_method_type FROM contact_methods WHERE id=?`, match[2]).Scan(&contactMethodType) == nil && contactMethodType == "pushover_notification"
+}
+
+// text says what a test of the MMHotline-down alarm proved for one person,
+// and for a Pushover notification what Pushover's receipt proved.
+func (s DownAlarmSendView) testText() string {
+	line := fmt.Sprintf("Test: %s to %s: %s.", s.ContactMethodType, s.PersonName, downAlarmOutcomeLabel(s.SendOutcome, s.HTTPStatusCode))
+	problem := ""
+	if s.PushoverReceiptProblem != "" {
+		problem = " " + strings.TrimSuffix(s.PushoverReceiptProblem, ".") + "."
+	}
+	switch s.PushoverReceiptOutcome {
+	case pushoverReceiptProven:
+		line += fmt.Sprintf(" Pushover accepted the MMHotline-down alarm's notification (receipt %s). MMHotline cancelled its repeats.", s.PushoverReceipt)
+	case pushoverReceiptMissing:
+		line += " Pushover's answer had no receipt, so nothing proves that Pushover accepted the notification."
+	case pushoverReceiptRefused:
+		line += " Pushover refused the receipt, so nothing proves that Pushover accepted the notification." + problem
+	case pushoverCancelFailed:
+		line += fmt.Sprintf(" Pushover accepted the MMHotline-down alarm's notification (receipt %s), but MMHotline could not cancel its repeats.%s The phone may sound again for up to 10 minutes; acknowledge the notification in Pushover.", s.PushoverReceipt, problem)
+	}
+	return line
 }
 
 // Text is what the command prints about the MMHotline-down alarm.
@@ -967,7 +1025,7 @@ func (v DownAlarmView) Text() string {
 		lines = append(lines, fmt.Sprintf("Sent: %s to %s, due %s: %s.", s.ContactMethodType, s.PersonName, commandTime(s.DueAt), downAlarmOutcomeLabel(s.SendOutcome, s.HTTPStatusCode)))
 	}
 	for _, s := range v.TestSends {
-		lines = append(lines, fmt.Sprintf("Test: %s to %s: %s.", s.ContactMethodType, s.PersonName, downAlarmOutcomeLabel(s.SendOutcome, s.HTTPStatusCode)))
+		lines = append(lines, s.testText())
 	}
 	return strings.Join(lines, "\n")
 }

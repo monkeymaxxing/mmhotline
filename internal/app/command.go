@@ -57,8 +57,10 @@ type CommandResult struct {
 	StatusPageNoticeID                    int64                   `json:"notice_id,omitempty"`
 	DownAlarm                             *DownAlarmView          `json:"mmhotline_down_alarm,omitempty"`
 	// A list command's list is present, also when empty.
-	Incidents        []CommandIncident        `json:"incidents,omitzero"`
-	Incident         *CommandIncident         `json:"incident,omitempty"`
+	Incidents []CommandIncident `json:"incidents,omitzero"`
+	Incident  *CommandIncident  `json:"incident,omitempty"`
+	// TestSOS is what `incidents send-test-sos` prints.
+	TestSOS          *CommandTestSOS          `json:"test_sos,omitempty"`
 	Alerts           []CommandAlert           `json:"alerts,omitzero"`
 	TriageSessions   []CommandTriageSession   `json:"triage_sessions,omitzero"`
 	TriageSession    *CommandTriageSession    `json:"triage_session,omitempty"`
@@ -259,6 +261,9 @@ func (r CommandResult) Text() string {
 	}
 	if r.Incident != nil {
 		lines = append(lines, r.Incident.Text())
+	}
+	if r.TestSOS != nil {
+		lines = append(lines, r.TestSOS.Text())
 	}
 	for _, alert := range r.Alerts {
 		lines = append(lines, alert.Text(), "")

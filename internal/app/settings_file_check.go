@@ -508,7 +508,7 @@ func checkAlertSourcesSettings(sources []SettingsAlertSource, problems *settings
 		switch {
 		case !alertSourceIDPattern.MatchString(source.AlertSourceID):
 			problems.add(path+".alert_source_id", "must be 1 to 64 letters, digits, _ and -, such as monitoring")
-		case source.AlertSourceID == systemAlertSourceID || source.AlertSourceID == manualAlertSourceID:
+		case source.AlertSourceID == systemAlertSourceID || source.AlertSourceID == manualAlertSourceID || source.AlertSourceID == testAlertSourceID:
 			problems.add(path+".alert_source_id", source.AlertSourceID+" names MMHotline's own alerts; choose another ID")
 		case slices.Contains(ids, source.AlertSourceID):
 			problems.add(path+".alert_source_id", fmt.Sprintf("%s is also the ID of alert_sources[%d]; each alert source must have a unique ID", source.AlertSourceID, slices.Index(ids, source.AlertSourceID)))

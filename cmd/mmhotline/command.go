@@ -31,8 +31,8 @@ var commandActions = map[string][]string{
 	// status-page set-up runs on a laptop, without MMHotline.
 	"status-page": {"show", "set-up", "post", "resolve"},
 	"down-alarm":  {"show", "send-test"},
-	// Read only: what happened.
-	"incidents":         {"list", "show"},
+	// list and show only read what happened; send-test-sos opens a test.
+	"incidents":         {"list", "show", "send-test-sos"},
 	"alerts":            {"list"},
 	"triage-sessions":   {"list", "show"},
 	"approval-requests": {"list", "show"},
@@ -78,6 +78,7 @@ func runManagementCommand(group string, args []string) error {
 	}
 	validate := func() error { return nil }
 	var secretPath, tokenPath, pushoverUserKeyPath, settingsPath string
+	waitForClaimMinutes := defaultWaitForClaimMinutes
 	var statusPageSetUp statusPageSetUpInput
 	switch group {
 	case "agent-playbook-rules":
@@ -87,7 +88,7 @@ func runManagementCommand(group string, args []string) error {
 	case "people":
 		validate = peopleFlags(flags, action, &request.People)
 	case "incidents":
-		validate = incidentsFlags(flags, action, &request.Incidents)
+		validate = incidentsFlags(flags, action, &request.Incidents, &waitForClaimMinutes)
 	case "alerts":
 		validate = alertsFlags(flags, &request.Alerts)
 	case "triage-sessions":
@@ -218,6 +219,10 @@ func runManagementCommand(group string, args []string) error {
 		defer secretFile.Close()
 		defer func() { os.Remove(secretFile.Name()) }()
 	}
+	// The test of the MMHotline-down alarm may sound the phone once more.
+	if group == "down-alarm" && action == "send-test" {
+		say(*asJSON, "\n"+downAlarmTestWarning+"\n")
+	}
 	var result app.CommandResult
 	var err error
 	if group == "status-page" && statusPageWithoutService() {
@@ -244,6 +249,14 @@ func runManagementCommand(group string, args []string) error {
 	// Exit code 1 says a down-alarm test would leave someone unwoken.
 	if group == "down-alarm" && action == "send-test" && result.DownAlarm != nil && app.DownAlarmTestFailed(result.DownAlarm.TestSends) {
 		setupTestError = checkAnswer{exitCode: 1}
+	}
+	// Exit code 1 says nobody acknowledged the test SOS on the phone.
+	if group == "incidents" && action == "send-test-sos" {
+		result, setupTestError = waitForTestSOSClaim(*socket, request.UnixUser, result, time.Duration(waitForClaimMinutes)*time.Minute, *asJSON)
+		// Any other error ends the command without an answer to print.
+		if answer := (checkAnswer{}); setupTestError != nil && !errors.As(setupTestError, &answer) {
+			return setupTestError
+		}
 	}
 	if secretFile != nil {
 		shownOnce, file := &result.OutgoingWebhookSigningSecretShownOnce, &result.OutgoingWebhookSigningSecretFile

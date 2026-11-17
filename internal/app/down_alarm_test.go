@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -25,6 +27,10 @@ type downAlarmRig struct {
 	barbaraPushover       string
 	barbaraCall, bobPhone string
 	reports               []string
+	// sendingServices and sendingServicesURL are the fake sending services
+	// the rig set Pushover and Twilio up against.
+	sendingServices    *fakesendingservices.Server
+	sendingServicesURL string
 }
 
 // newDownAlarmRig sets up Barbara on call, with Pushover and an automated
@@ -45,8 +51,10 @@ func newDownAlarmRig(t *testing.T) *downAlarmRig {
 	ctx := context.Background()
 	r.barbara = memberFixture(t, a, "barbara@example.com").Principal
 	r.bob = memberFixture(t, a, "bob@example.com").Principal
-	services := httptest.NewServer(fakesendingservices.New())
+	r.sendingServices = fakesendingservices.New()
+	services := httptest.NewServer(r.sendingServices)
 	t.Cleanup(services.Close)
+	r.sendingServicesURL = services.URL
 	if err := a.LoadSendingServiceSetups(ctx, nil, services.URL); err != nil {
 		t.Fatal(err)
 	}
@@ -626,7 +634,7 @@ func TestDownAlarmDashboardCardAndSendATest(t *testing.T) {
 	r.advance(20 * time.Second)
 	body := getPage(t, client, server.URL+"/dashboard")
 	panel := liveSectionText(body, "mmhotline-down-alarm")
-	pageInOrder(t, panel, "MMHotline-down alarm Checking in", "MMHotline last checked in just now.", "If MMHotline goes quiet, the MMHotline-down alarm wakes:", "Send a test now", "Where the MMHotline-down alarm is set up", "Set in", InstalledSettingsFilePath, "in mmhotline_down_alarm")
+	pageInOrder(t, panel, "MMHotline-down alarm Checking in", "MMHotline last checked in just now.", "If MMHotline goes quiet, the MMHotline-down alarm wakes:", "THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.", "Send a test now", "Where the MMHotline-down alarm is set up", "Set in", InstalledSettingsFilePath, "in mmhotline_down_alarm")
 	for _, want := range []string{"Pushover notification to Responder after 5 minutes", "Automated voice call to Responder after 5 minutes", "Pushover notification to Responder after 10 minutes"} {
 		if !strings.Contains(panel, want) {
 			t.Errorf("the MMHotline-down alarm panel lacks %q", want)
@@ -716,5 +724,93 @@ func TestDownAlarmWakesEveryoneElseAvailableWhenTheBackupIsEveryoneAvailable(t *
 	}
 	if alerts := r.alertsTitled(t, "The MMHotline-down alarm cannot wake everyone on call"); len(alerts) != 0 {
 		t.Fatalf("a notice for a member reached only as everyone available: %+v", alerts)
+	}
+}
+
+// pushoverEmergencyAt sends Pushover an emergency notification, as the
+// MMHotline-down alarm's test request does, and returns the receipt in its
+// answer.
+func pushoverEmergencyAt(t *testing.T, sendingServicesURL, userKey string) string {
+	t.Helper()
+	response, err := http.PostForm(sendingServicesURL+"/pushover/1/messages.json", url.Values{"token": {fakesendingservices.PushoverApplicationToken}, "user": {userKey}, "title": {"Test of the MMHotline-down alarm"}, "message": {"Nothing is wrong."}, "priority": {"2"}, "retry": {"30"}, "expire": {"600"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var answer struct{ Receipt string }
+	if err = json.NewDecoder(response.Body).Decode(&answer); err != nil || answer.Receipt == "" {
+		t.Fatalf("Pushover's answer: %+v %v", answer, err)
+	}
+	return answer.Receipt
+}
+
+// The test of the MMHotline-down alarm is proved from Pushover's receipt:
+// MMHotline reads the receipt, which shows that Pushover accepted the
+// notification, and cancels the notification's repeats at once. A voice call
+// keeps today's test. Each failure names its part.
+func TestDownAlarmTestIsProvedFromPushoversReceiptAndItsRepeatsAreCancelled(t *testing.T) {
+	r := newDownAlarmRig(t)
+	r.setUp(t, "")
+	// The held requests keep Pushover's real https address; the receipt is
+	// read, and cancelled, at the fake Pushover.
+	if err := r.a.LoadSendingServiceSetups(context.Background(), nil, r.sendingServicesURL); err != nil {
+		t.Fatal(err)
+	}
+	code := 200
+	pushoverID, callID := "primary-contact-method-"+r.barbaraPushover, "primary-contact-method-"+r.barbaraCall
+	test := func(receipt string) (CommandResult, string) {
+		r.fake.ChangeWorker(downAlarmWorker, func(w *fakecloudflare.Worker) {
+			w.TestSends = []downalarm.TestSend{{HeldMessageID: pushoverID, SendOutcome: "delivered", HTTPStatusCode: &code, PushoverReceipt: receipt}, {HeldMessageID: callID, SendOutcome: "delivered", HTTPStatusCode: &code}}
+		})
+		return commandRequest(t, r.a, CommandRequest{Group: "down-alarm", Action: "send-test"}, 200)
+	}
+
+	receipt := pushoverEmergencyAt(t, r.sendingServicesURL, fakesendingservices.PushoverUserKey)
+	result, raw := test(receipt)
+	push, call := result.DownAlarm.TestSends[0], result.DownAlarm.TestSends[1]
+	if push.PushoverReceipt != receipt || push.PushoverReceiptOutcome != "accepted_and_repeats_cancelled" || push.PushoverReceiptProblem != "" || DownAlarmTestFailed(result.DownAlarm.TestSends) {
+		t.Fatalf("Pushover test: %+v", push)
+	}
+	if call.PushoverReceipt != "" || call.PushoverReceiptOutcome != "" || strings.Count(raw, `"pushover_receipt_outcome"`) != 1 {
+		t.Fatalf("the voice call's test changed: %+v\n%s", call, raw)
+	}
+	if receipts := r.sendingServices.PushoverReceipts(); len(receipts) != 1 || !receipts[0].Cancelled || len(receipts[0].Polls) != 1 {
+		t.Fatalf("Pushover's receipt was not read once and then cancelled: %+v", receipts)
+	}
+	for _, want := range []string{"Test: Pushover notification to Responder: accepted by the service (HTTP 200). Pushover accepted the MMHotline-down alarm's notification (receipt " + receipt + "). MMHotline cancelled its repeats.", "Test: Automated voice call to Responder: accepted by the service (HTTP 200)."} {
+		if !strings.Contains(result.Text(), want) {
+			t.Errorf("the text lacks %q:\n%s", want, result.Text())
+		}
+	}
+	if strings.Contains(result.Text(), "Test: Automated voice call to Responder: accepted by the service (HTTP 200). Pushover") {
+		t.Fatalf("a voice call's test line mentions Pushover:\n%s", result.Text())
+	}
+
+	// No receipt in the answer: nothing proves that Pushover accepted it.
+	result, _ = test("")
+	if outcome := result.DownAlarm.TestSends[0].PushoverReceiptOutcome; outcome != "no_receipt" || !DownAlarmTestFailed(result.DownAlarm.TestSends) || !strings.Contains(result.Text(), "Pushover's answer had no receipt") {
+		t.Fatalf("no receipt: %s\n%s", outcome, result.Text())
+	}
+	// A receipt Pushover does not know: Pushover refused it.
+	result, _ = test("FakePushoverReceiptUnknown0000")
+	if outcome := result.DownAlarm.TestSends[0].PushoverReceiptOutcome; outcome != "receipt_refused_by_pushover" || !DownAlarmTestFailed(result.DownAlarm.TestSends) || !strings.Contains(result.DownAlarm.TestSends[0].PushoverReceiptProblem, "Pushover answered HTTP 400") {
+		t.Fatalf("an unknown receipt: %+v", result.DownAlarm.TestSends[0])
+	}
+	// A cancel Pushover refuses: the receipt proves the notification, but
+	// the repeats go on.
+	refusingCancel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/cancel.json") {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		r.sendingServices.ServeHTTP(w, request)
+	}))
+	defer refusingCancel.Close()
+	if err := r.a.LoadSendingServiceSetups(context.Background(), nil, refusingCancel.URL); err != nil {
+		t.Fatal(err)
+	}
+	result, _ = test(pushoverEmergencyAt(t, r.sendingServicesURL, fakesendingservices.PushoverUserKey))
+	if push = result.DownAlarm.TestSends[0]; push.PushoverReceiptOutcome != "cancel_failed" || !DownAlarmTestFailed(result.DownAlarm.TestSends) || !strings.Contains(result.Text(), "MMHotline could not cancel its repeats") {
+		t.Fatalf("a cancel that failed: %+v\n%s", push, result.Text())
 	}
 }

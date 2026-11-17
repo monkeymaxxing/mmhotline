@@ -418,6 +418,12 @@ up the MMHotline-down alarm in a real Cloudflare account on its free plan.
 | Test send | `down-alarm send-test` delivered the test alarm, HTTP 200 |
 | Removal | Removing the set-up left the Worker holding nothing. The Worker, the Worker's Durable Object, and the Worker's address were then deleted |
 
+That real-account run was before `down-alarm send-test` read Pushover's
+receipt and cancelled the test's repeats. The receipt, the read, and the
+cancel have run only against the fake sending services, and
+`incidents send-test-sos` only against them too; neither has run with a real
+phone.
+
 The test server and every Cloudflare object were deleted afterwards and
 checked by ID. The settings file's `mmhotline_down_alarm` part now starts MMHotline-down alarm set-up
 and removal. The settings-file set-up and removal path, including putting

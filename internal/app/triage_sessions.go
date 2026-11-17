@@ -56,8 +56,10 @@ const triageSessionQuietTime = 30 * time.Minute
 // session: warn and sos from the team's alert sources and people, and
 // MMHotline's own SOS about an alert source it stopped hearing from or
 // refuses. MMHotline's notices about its own work, such as an escalation,
-// and the triage agent's own reports never do.
-const triageSessionAlertCondition = `severity IN ('warn','sos') AND (source_id!='system' OR (severity='sos' AND actor='system'))`
+// the triage agent's own reports, and the test SOS of
+// `mmhotline incidents send-test-sos` never do: nothing is wrong, so the
+// agent has nothing to look into, and the test must wake the person at once.
+const triageSessionAlertCondition = `severity IN ('warn','sos') AND (source_id!='system' OR (severity='sos' AND actor='system')) AND source_id!='` + testAlertSourceID + `'`
 
 // triageAgentStep is the escalation step of an SOS incident whose first
 // waking step waits for the triage agent: nobody is contacted yet, and the

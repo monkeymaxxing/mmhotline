@@ -110,11 +110,15 @@ type CheckInAnswer struct {
 	Sends []Send `json:"sends"`
 }
 
-// TestSend is the result of one test request.
+// TestSend is the result of one test request. PushoverReceipt is the receipt
+// in Pushover's answer to an emergency notification, which the Worker has
+// checked against Pushover's 30 letters and digits; empty for a held message
+// that is no Pushover emergency, or when the answer had none.
 type TestSend struct {
-	HeldMessageID  string `json:"held_message_id"`
-	SendOutcome    string `json:"send_outcome"`
-	HTTPStatusCode *int   `json:"http_status_code"`
+	HeldMessageID   string `json:"held_message_id"`
+	SendOutcome     string `json:"send_outcome"`
+	HTTPStatusCode  *int   `json:"http_status_code"`
+	PushoverReceipt string `json:"pushover_receipt,omitempty"`
 }
 
 // Refusal is the Worker's answer to a request it refused.

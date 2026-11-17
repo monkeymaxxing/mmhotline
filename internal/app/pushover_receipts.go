@@ -375,3 +375,36 @@ func pushoverNextRequestAt(now time.Time) int64 {
 	}
 	return next.Unix()
 }
+
+// The outcomes of proving a Pushover test notification from its receipt.
+const (
+	// pushoverReceiptProven: Pushover knows the receipt, so it accepted the
+	// notification, and MMHotline cancelled the notification's repeats.
+	pushoverReceiptProven = "accepted_and_repeats_cancelled"
+	// pushoverReceiptMissing: the answer to the notification had no usable
+	// receipt, so nothing proves Pushover accepted it.
+	pushoverReceiptMissing = "no_receipt"
+	// pushoverReceiptRefused: Pushover did not confirm the receipt.
+	pushoverReceiptRefused = "receipt_refused_by_pushover"
+	// pushoverCancelFailed: Pushover knows the receipt, but MMHotline could
+	// not cancel the notification's repeats.
+	pushoverCancelFailed = "cancel_failed"
+)
+
+// proveEmergencyAndCancelIt reads the receipt of an emergency notification
+// MMHotline did not send itself, as the MMHotline-down alarm's test does,
+// to see that Pushover accepted the notification, and then cancels its
+// repeats at once, so the phone does not go on sounding. It returns the
+// outcome, and for a failure Pushover's or the network's reason.
+func (c *PushoverNotificationContactMethodType) proveEmergencyAndCancelIt(ctx context.Context, receipt string) (outcome, problem string) {
+	if !pushoverKeyPattern.MatchString(receipt) {
+		return pushoverReceiptMissing, ""
+	}
+	if _, err := c.call(ctx, http.MethodGet, "receipts/"+receipt, nil); err != nil {
+		return pushoverReceiptRefused, err.Error()
+	}
+	if _, err := c.call(ctx, http.MethodPost, "receipts/"+receipt+"/cancel", nil); err != nil {
+		return pushoverCancelFailed, err.Error()
+	}
+	return pushoverReceiptProven, ""
+}

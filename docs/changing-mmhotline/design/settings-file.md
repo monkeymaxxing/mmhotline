@@ -504,8 +504,8 @@ characters, and durations without a check-in before a warning or an SOS
 the ID:
 `/alert-intake/monitoring` and `/check-in/monitoring`. An ID has 1 to 64
 letters, digits, `_`, and `-`, which takes in the 32 hexadecimal characters
-of an ID MMHotline made; `system` and `manual` name MMHotline's own alerts
-and are refused. Two secrets serve while the monitoring tool moves to a new
+of an ID MMHotline made; `system`, `manual`, and `mmhotline_test_sos` name
+MMHotline's own alerts and are refused. Two secrets serve while the monitoring tool moves to a new
 one.
 
 A source left out is disabled: its secrets stop working at once, and its

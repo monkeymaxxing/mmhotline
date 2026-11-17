@@ -221,6 +221,8 @@ contact method stays.
    token within 5 seconds; `sudo mmhotline down-alarm send-test` sends a
    test through it.
 
+   THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.
+
 MMHotline stops using the old token at once, but cannot revoke it at
 Pushover: anyone who still has it can send through the old application.
 
