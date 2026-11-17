@@ -1,0 +1,76 @@
+package app
+
+// browserErrorBody is the body of a browser's error page: the reason, and a
+// link back to the page the person came from.
+templ browserErrorBody(reason, backTarget, backLabel string) {
+	<section class="panel">
+		<div class="panel-body">
+			<p role="alert">{ reason }</p>
+			<a href={ backTarget }>{ backLabel }</a>
+		</div>
+	</section>
+}
+
+// signInUnavailableBody is the body of the page that says MMHotline cannot
+// check Cloudflare Access sign-ins right now.
+templ signInUnavailableBody() {
+	<section class="panel">
+		<div class="panel-body">
+			<p>MMHotline cannot check Cloudflare Access sign-ins right now.</p>
+			<p>Use a sign-in link created on the server to reach MMHotline during the outage.</p>
+			<details class="fold">
+				<summary>Create a sign-in link on the server</summary>
+				<p>Someone with SSH access to the server runs <code>sudo mmhotline people create-sign-in-link --sign-in-email-address ADDRESS</code>, using your sign-in email address. Follow the command's SSH forwarding instructions, then open the new link.</p>
+			</details>
+			<a href="/dashboard">Try the dashboard again</a>
+		</div>
+	</section>
+}
+
+// signInPageBody tells a person who is not signed in how to sign in: through
+// Cloudflare Access when the team has set it up, with a sign-in link
+// otherwise.
+templ signInPageBody(data signInPageData) {
+	<section class="panel">
+		<div class="panel-body">
+			if data.AccessConfigured {
+				<p>Open MMHotline through Cloudflare Access to sign in.</p>
+				<p><a href={ data.WebURL }>Open { data.WebURL }</a></p>
+				<details class="fold">
+					<summary>Sign in during an outage</summary>
+					@signInLinkInstructions(data)
+				</details>
+			} else {
+				@signInLinkInstructions(data)
+			}
+		</div>
+	</section>
+}
+
+// signInLinkInstructions says how to get a sign-in link and open it.
+templ signInLinkInstructions(data signInPageData) {
+	if data.AccessConfigured {
+		<p>Someone with SSH access to the MMHotline server runs <code>sudo mmhotline people create-sign-in-link --sign-in-email-address ADDRESS</code> with your sign-in email address.</p>
+	} else {
+		<p>To get a sign-in link, ask someone with SSH access to the MMHotline server to run <code>sudo mmhotline people create-sign-in-link --sign-in-email-address ADDRESS</code> with your sign-in email address.</p>
+	}
+	<p>On your computer, run <code>{ data.SSHForwardCommand }</code> with your SSH destination in place of <code>YOUR_SSH_HOST</code>, then open the new link.</p>
+}
+
+// notATeamMemberBody tells a person whom Cloudflare Access let in, but who is
+// not on the team, how an administrator adds the person.
+templ notATeamMemberBody(data notATeamMemberPageData) {
+	<section class="panel">
+		<div class="panel-body">
+			<p>The sign-in email address <strong>{ data.SignInEmailAddress }</strong> is not a member of { data.TeamName }.</p>
+			<p>Ask an administrator to add your sign-in email address to <code>people</code> in MMHotline's settings file and apply the file.</p>
+			<details class="fold">
+				<summary>Where team members are set</summary>
+				@settingsFileNoticeLine(data.settingsFileNoticeView) {
+					<code>people</code>
+				}
+			</details>
+			<a href="/dashboard">Try the dashboard again</a>
+		</div>
+	</section>
+}
