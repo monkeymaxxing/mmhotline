@@ -127,7 +127,20 @@ EVERY INVENTORY, OR IN YOUR DEPLOY TOOL'S TEMPLATE.**
    sudo mmhotline triage-agent check-preparation
    ```
 
-   **Check:** line 2 starts with `Present:`.
+   **Check:** line 2 starts with `Present:`. Line 9 starts with `Present:`
+   too; if it starts with `Missing:`, it names the server and what is
+   still open, and step 1 above fixes it.
+
+3. **Optional: stop `triage` from opening connections out of a server.**
+   Add the firewall rule in
+   [Set up the triage agent](set-up-the-triage-agent.md#prepare-the-servers-and-the-systems-repository),
+   step 2, under "Optional: stop the `triage` user from opening
+   connections out of a server". A command the agent runs on a server then
+   cannot send data out or open a connection. It still reads whatever the
+   `triage` user can read.
+
+   **DON'T ADD THIS RULE ON THE SERVER WHERE THE TRIAGE AGENT RUNS. IT
+   NEEDS TO REACH ITS AI PROVIDER.**
 
 Reason: without `restrict`, the agent could open a tunnel from a server
 past MMHotline's logging proxy. While `triage` owns its home, a command the

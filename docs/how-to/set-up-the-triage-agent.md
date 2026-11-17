@@ -139,6 +139,50 @@ has the inventory address `203.0.113.11` and the private address
    To remove the user later, `userdel --remove triage` leaves the
    root-owned home; delete it with `sudo rm -r /home/triage`.
 
+   **Optional: stop the `triage` user from opening connections out of a
+   server.** `restrict` stops tunnels. This firewall rule goes further: a
+   command the agent runs on a server cannot send data out or open a
+   connection to any other machine. It does not stop the agent from
+   reading anything the `triage` user can read.
+
+   **DON'T ADD THIS RULE ON THE SERVER WHERE THE TRIAGE AGENT RUNS. IT
+   NEEDS TO REACH ITS AI PROVIDER.**
+
+   On each server, as root (Debian):
+
+   ```sh
+   sudo tee /etc/triage-no-outgoing.nft <<'EOF'
+   table inet triage_no_outgoing {
+     chain output {
+       type filter hook output priority 0; policy accept;
+       meta skuid "triage" ct state new drop
+     }
+   }
+   EOF
+   sudo nft -c -f /etc/triage-no-outgoing.nft
+   sudo nft -f /etc/triage-no-outgoing.nft
+   echo 'include "/etc/triage-no-outgoing.nft"' | sudo tee -a /etc/nftables.conf
+   sudo systemctl enable --now nftables
+   ```
+
+   **Check:** `sudo nft list table inet triage_no_outgoing` prints the
+   rule, and `sudo -u triage curl -m 5 http://deb.debian.org/` fails with
+   `Could not resolve host`. Then log in as the agent does: the login still
+   works, because only new connections that `triage` starts are dropped.
+
+   Reason: the rule matches only new connections made by the `triage` user
+   (`ct state new`). The agent's own SSH login is an incoming connection,
+   and its replies belong to a connection that is already open, so both
+   keep working. Nothing MMHotline does needs the `triage` user to open a
+   connection: MMHotline logs in to the server, and the agent runs commands
+   there. A command that looks up a name or fetches a web page as `triage`
+   now fails, which is the point. The last line of `/etc/nftables.conf` runs
+   the rule at each boot: Debian's `nftables` service loads that file, and
+   `enable` starts it at boot. Debian's file starts with `flush ruleset`, so
+   put your other nftables rules in the same file, not in a second one that
+   loads later. Tested on Debian 12 in a container: the login worked, a
+   fetch as `triage` failed, and the rule was back after a restart.
+
 3. **Choose how MMHotline trusts commits, then make the agent sign its commits.**
    MMHotline checks each commit on origin before MMX runs it. The setting
    `triage_agent.trusted_commits` has two values:
@@ -553,7 +597,8 @@ inventory server at the start of each run in the systems repository.
    Present: 6. MMHotline's own key reaches the servers: /var/lib/mmhotline/.ssh/id_ed25519 logs in to every server.
    Present: 7. MMHotline's copy reaches its origin over SSH: origin is reachable with git ls-remote.
    Present: 8. mmx and its node runners are installed: /usr/local/bin/mmx, /usr/local/bin/mmx-runner-linux-amd64.
-   All 8 checks are present.
+   Present: 9. The triage user is tightened: every key line has restrict, and root owns the triage user's home, .ssh, and authorized_keys.
+   All 9 checks are present.
    ```
 
    A missing piece gives a `Missing:` line with the reason and the

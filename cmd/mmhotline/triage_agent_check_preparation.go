@@ -38,7 +38,7 @@ const preparationGuideURL = "https://github.com/monkeymaxxing/mmhotline/blob/mai
 const triageAgentHome = "/var/lib/mmhotline-triage-agent"
 
 const triageAgentCheckPreparationUsage = `usage: sudo mmhotline triage-agent check-preparation [--json]
-Checks the eight things a team prepares by hand before the triage agent
+Checks the nine things a team prepares by hand before the triage agent
 works, and prints one line for each: Present or Missing. A missing line names
 the step of the how-to page that fixes it.
 Run check-preparation as root on the MMHotline server. It reads the triage
@@ -47,8 +47,72 @@ key to log in to each server. It changes nothing and never prints a private
 key, a token, or a credential from the settings.
        --json  Print {"checks":[{"number","name","present","detail","fix"}]}
        --help  Show help
-Exit codes: 0 all eight are present; 1 at least one is missing;
+Exit codes: 0 all nine are present; 1 at least one is missing;
 3 cannot run, such as without root; 4 bad arguments.`
+
+// tightenGuideURL is the upgrade page's section that tightens the triage
+// user on a server that was set up before its key line started with
+// restrict and before root owned the triage user's home.
+const tightenGuideURL = "https://github.com/monkeymaxxing/mmhotline/blob/main/docs/how-to/upgrade.md#tighten-the-triage-user-on-each-server"
+
+// triageLoginCommand is the one command check 2 runs on each server. It
+// prints the processor (check 8), then the owner and mode of the triage
+// user's home, .ssh, and authorized_keys (check 9), then authorized_keys
+// itself, whose key line check 9 reads for restrict and never prints. The
+// final true keeps a missing file from failing the login check.
+const triageLoginCommand = "uname -m; stat -c '%U %a' ~ ~/.ssh ~/.ssh/authorized_keys 2>/dev/null; cat ~/.ssh/authorized_keys 2>/dev/null; true"
+
+// keyLineOptions matches the options that start an authorized_keys line,
+// before the key type.
+var keyLineOptions = regexp.MustCompile(`^(.*?)\s*\b(ssh-\S+|ecdsa-\S+|sk-\S+)\s`)
+
+// loginOutput is what triageLoginCommand printed.
+type loginOutput struct {
+	machine string
+	// tightenProblems is empty when the key line has restrict and root owns
+	// the home, .ssh, and authorized_keys with no write for anyone else.
+	tightenProblems []string
+}
+
+// readLoginOutput reads triageLoginCommand's output. A file the triage user
+// can change is as bad as a key line without restrict: a command the agent
+// runs could rewrite the key line. Group or other write counts, because
+// the triage user is not in root's group but may be in the file's group.
+func readLoginOutput(output string) loginOutput {
+	lines := strings.Split(strings.ReplaceAll(output, "\r", ""), "\n")
+	result := loginOutput{machine: strings.TrimSpace(lines[0])}
+	if len(lines) < 4 {
+		result.tightenProblems = []string{"the triage user's key line and file owners could not be read"}
+		return result
+	}
+	var changeable []string
+	for i, name := range []string{"home", ".ssh", "authorized_keys"} {
+		owner, mode, _ := strings.Cut(strings.TrimSpace(lines[1+i]), " ")
+		bits, err := strconv.ParseUint(mode, 8, 32)
+		if owner != "root" || err != nil || bits&0o022 != 0 {
+			changeable = append(changeable, name+" is "+owner+" "+mode)
+		}
+	}
+	if len(changeable) > 0 {
+		result.tightenProblems = append(result.tightenProblems, "the triage user can change its own authorized_keys ("+strings.Join(changeable, ", ")+")")
+	}
+	restricted, keyLines := true, 0
+	for _, line := range lines[4:] {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		keyLines++
+		found := keyLineOptions.FindStringSubmatch(line)
+		if found == nil || !slices.Contains(strings.Split(found[1], ","), "restrict") {
+			restricted = false
+		}
+	}
+	if keyLines == 0 || !restricted {
+		result.tightenProblems = append([]string{"the triage user's key line has no restrict"}, result.tightenProblems...)
+	}
+	return result
+}
 
 func preparationFix(step int) string {
 	return preparationGuideURL + " step " + strconv.Itoa(step)
@@ -290,18 +354,20 @@ func (p preparation) checks() []preparationCheck {
 	// 2. The triage user accepts the agent's key. The processors feed check 8.
 	agentKey := filepath.Join(p.agentHome, ".ssh", "id_ed25519")
 	machines := map[string]string{}
+	tightenProblems := map[string][]string{}
 	var accepted []string
 	check2 := []string{noServers()}
 	if len(servers) > 0 && !fileExists(agentKey) {
 		check2 = append(check2, agentKey+" does not exist")
 	} else if len(servers) > 0 {
 		check2 = append(check2, serverChecks(func(server preparationServer) string {
-			arguments := append(sshOptions(server.name, "-i", agentKey, "-o", "HostKeyAlias="+server.address), "triage@"+server.name, "uname", "-m")
+			arguments := append(sshOptions(server.name, "-i", agentKey, "-o", "HostKeyAlias="+server.address), "triage@"+server.name, triageLoginCommand)
 			stdout, stderr, err := p.run(runAsRoot, "", "ssh", arguments...)
 			if err != nil {
 				return "could not log in to triage@" + server.name + " with the agent's key: " + lastLine(stderr)
 			}
-			machines[server.name] = strings.TrimSpace(stdout)
+			output := readLoginOutput(stdout)
+			machines[server.name], tightenProblems[server.name] = output.machine, output.tightenProblems
 			accepted = append(accepted, server.name)
 			return ""
 		})...)
@@ -378,6 +444,20 @@ func (p preparation) checks() []preparationCheck {
 		}
 	}
 	add(8, 7, "mmx and its node runners are installed", strings.Join(runners, ", "), check8...)
+
+	// 9. The triage user is tightened on each server. A server whose login
+	// failed is already missing in check 2.
+	var check9 []string
+	for _, server := range servers {
+		for _, problem := range tightenProblems[server.name] {
+			check9 = append(check9, server.name+": "+problem)
+		}
+	}
+	add(9, 0, "The triage user is tightened", "every key line has restrict, and root owns the triage user's home, .ssh, and authorized_keys", check9...)
+	if last := &checks[len(checks)-1]; !last.Present {
+		last.Detail += `. Do "Tighten the triage user on each server" in docs/how-to/upgrade.md`
+		last.Fix = tightenGuideURL
+	}
 	return checks
 }
 

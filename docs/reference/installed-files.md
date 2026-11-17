@@ -349,7 +349,7 @@ MMHotline make them again.
 A person or the team's deploy tool adds these once, as
 [Prepare the servers and the systems repository](../how-to/set-up-the-triage-agent.md#prepare-the-servers-and-the-systems-repository)
 says. Install neither creates nor removes them.
-`sudo mmhotline triage-agent check-preparation` checks eight of them,
+`sudo mmhotline triage-agent check-preparation` checks nine of them,
 prints Present or Missing for each, and names the step that fixes a
 missing one.
 
