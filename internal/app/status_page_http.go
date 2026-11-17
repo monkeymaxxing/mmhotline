@@ -43,9 +43,14 @@ func viewStatusPageNotices(notices []statuspage.Notice) []statusPageNoticeView {
 	return views
 }
 
-const statusPageNoticeUpdates = `<ol class="settings-updates">{{range .Updates}}<li><p class="faint small">{{clock .Posted}}</p><p class="result">{{.Message}}</p></li>{{end}}</ol>`
-
-var statusPagePageBody = `<div class="settings-page stack">{{if .Error}}<p class="form-error" role="alert">{{.Error}}</p>{{end}}{{if not .View.IsSetUp}}<section class="panel"><div class="panel-head"><h2>Status page not set up</h2></div><div class="panel-body"><p>An administrator creates the status page in the team's Cloudflare account from a laptop, with <code>mmhotline status-page set-up</code>, then adds the <code>status_page</code> section to the settings file and applies the settings.</p></div></section>{{else}}<section class="panel"><div class="panel-head"><h2>Public status page</h2><span class="tag ok">Set up</span></div><div class="panel-body"><p><a href="{{.View.PageURL}}">{{.View.PageURL}}</a></p><p class="small muted">Customers see only the notices your team posts. The public page shows times in UTC and changes only when someone posts.</p>{{if .View.ReadError}}<p class="form-error" role="alert">{{.View.ReadError}}</p>{{end}}</div></section>{{if .Ready}}{{$csrf := .CSRF}}{{range .Open}}<section class="panel"><div class="panel-head"><h2>Open notice {{.NoticeID}}</h2><span class="tag warn">Open</span></div><div class="panel-body"><p class="faint small">Opened {{clock .Opened}}</p>` + statusPageNoticeUpdates + `<form class="stack" method="post" action="/status-page/notices/{{.NoticeID}}/updates"><input type="hidden" name="csrf" value="{{$csrf}}"><label class="field">Add an update<textarea name="message" required maxlength="5000"></textarea></label><div><button class="btn primary">Post the update</button></div></form><details class="fold"><summary>Resolve this notice</summary><form class="stack" method="post" action="/status-page/notices/{{.NoticeID}}/resolve"><input type="hidden" name="csrf" value="{{$csrf}}"><label class="field">Closing message (optional)<span class="faint small">The closing message is added as the last update.</span><textarea name="closing_message" maxlength="5000"></textarea></label><div><button class="btn">Resolve this notice</button></div></form></details></div></section>{{else}}<section class="panel quiet"><div class="panel-body"><p>No open notices: the public page says that everything is working.</p></div></section>{{end}}<section class="panel"><div class="panel-head"><h2>Post a new notice</h2></div><div class="panel-body"><form class="stack" method="post" action="/status-page/notices"><input type="hidden" name="csrf" value="{{$csrf}}"><label class="field">Message<textarea name="message" required maxlength="5000">` + StatusPageGenericMessage + `</textarea></label><div><button class="btn primary">Post to the status page</button></div></form></div></section>{{with .Resolved}}<details class="more"><summary>Recently resolved ({{len .}})</summary><div class="body stack">{{range .}}<section class="stack"><h3>Notice {{.NoticeID}}, resolved {{clock .Resolved}}</h3>` + statusPageNoticeUpdates + `</section>{{end}}</div></details>{{end}}{{end}}{{end}}<details class="more"><summary>Where status page settings are set</summary><div class="body">` + settingsFileNotice("<code>status_page</code>") + `</div></details></div>`
+// statusPagePageData is the Status page's data.
+type statusPagePageData struct {
+	View           StatusPageView
+	CSRF, Error    string
+	Ready          bool
+	Open, Resolved []statusPageNoticeView
+	settingsFileNoticeView
+}
 
 func (a *App) statusPagePage(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.pagePrincipal(w, r)
@@ -61,18 +66,16 @@ func (a *App) statusPagePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) renderStatusPagePage(w http.ResponseWriter, r *http.Request, status int, view StatusPageView, message string) {
-	data := struct {
-		View           StatusPageView
-		CSRF, Error    string
-		Ready          bool
-		Open, Resolved []statusPageNoticeView
-		settingsFileNoticeView
-	}{View: view, CSRF: a.CSRFToken(w, r), Error: message, Ready: view.PublishedStatusJSON != nil, settingsFileNoticeView: a.settingsFileNoticeView()}
+	data := statusPagePageData{View: view, CSRF: a.CSRFToken(w, r), Error: message, Ready: view.PublishedStatusJSON != nil, settingsFileNoticeView: a.settingsFileNoticeView()}
 	if view.PublishedStatusJSON != nil {
 		data.Open = viewStatusPageNotices(view.PublishedStatusJSON.OpenNotices())
 		data.Resolved = viewStatusPageNotices(view.PublishedStatusJSON.ResolvedNotices(5))
 	}
-	RenderPage(w, status, "Status page", statusPagePageBody, data)
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, status, "Status page", frame, nil, statusPagePageBody(frame, data))
 }
 
 func (a *App) statusPageMutation(w http.ResponseWriter, r *http.Request) (Principal, int64, bool) {
