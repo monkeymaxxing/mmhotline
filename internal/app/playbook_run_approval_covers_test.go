@@ -317,3 +317,31 @@ func TestACoverHoldsAcrossTheReplacementsInventoryCommit(t *testing.T) {
 		t.Fatalf("MMX calls: %q", calls)
 	}
 }
+
+// The cover names playbooks exactly: an approval that also approves
+// every-server covers neither every_server, which a LIKE pattern's "_"
+// would match, nor Every-Server, which a LIKE would match in any case.
+func TestACoverMatchesPlaybookNamesExactly(t *testing.T) {
+	r, runner := approvalCoversRig(t, "")
+	if _, err := r.a.Store.db.Exec(`UPDATE agent_playbook_rules_for_listed_playbooks SET its_approval_also_approves_in_the_same_session='every-server,Destroy_Replaced_Servers' WHERE playbook_name='replace_failed_servers'`); err != nil {
+		t.Fatal(err)
+	}
+	_, _, ask := coversSession(t, r, "db01")
+	ask(replaceFailedServers, "production")
+	if err := r.a.ApprovePlaybookRun(context.Background(), r.p, waitingRows(t, r.a)[0].id); err != nil {
+		t.Fatal(err)
+	}
+	runApprovedPlaybooks(t, r.a)
+	<-runner.calls
+	for _, playbook := range []string{listedEveryServer, destroyReplacedServers} {
+		before := len(waitingRows(t, r.a))
+		if answer := ask(playbook, "production"); answer.Outcome != triageagent.WaitsForAPerson || !strings.HasSuffix(answer.Message, approvalAskedText(true)) {
+			t.Fatalf("%s: %+v", playbook, answer)
+		}
+		if rows := waitingRows(t, r.a); len(rows) != before+1 || rows[before].state != "open" || rows[before].coveredBy != "" {
+			t.Fatalf("%s was covered: %+v", playbook, rows)
+		}
+	}
+	runApprovedPlaybooks(t, r.a)
+	noRunnerCall(t, runner)
+}
