@@ -23,11 +23,13 @@ tool that sends alerts to MMHotline, such as your monitoring tool.
 - **A private network address on the server** where your tools will send
   alerts, such as the WireGuard address `10.20.0.1`. `ip -brief addr` lists
   the server's addresses.
-- **A Cloudflare account with Zero Trust,** and a domain whose DNS
-  Cloudflare manages, such as `example.com`. People sign in to MMHotline
-  through Cloudflare Access, at a host name such as `ops.example.com`.
-  **No Cloudflare?** Write `web_url: http://localhost:8480` in step 2 and
-  skip step 8: see [The team has no Cloudflare](#if-something-is-different).
+- **Cloudflare, which a first test does not need.** For a first test,
+  write `web_url: http://localhost:8480` in step 2 and skip step 8: see
+  [The team has no Cloudflare](#if-something-is-different). So that people
+  can open MMHotline's pages from their phones, you add later a
+  Cloudflare account with Zero Trust and a domain whose DNS Cloudflare
+  manages, such as `example.com`. People then sign in through Cloudflare
+  Access, at a host name such as `ops.example.com`.
 - **A Pushover account,** and the Pushover app on your phone, signed in.
   Pushover sends the notification that wakes you; the phone opens
   MMHotline in its browser and needs no other app. A team can also wake

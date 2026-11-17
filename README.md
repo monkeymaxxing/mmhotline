@@ -304,9 +304,10 @@ database file, with [Litestream](https://litestream.io/), is optional.
 
 Choose another tool when you need one of these:
 
-- **Sign-in without Cloudflare.** People sign in to MMHotline through
-  Cloudflare Access. You need a Cloudflare account and a domain whose DNS
-  Cloudflare manages.
+- **Team pages without Cloudflare.** People open MMHotline's pages after
+  signing in through Cloudflare Access, which needs a Cloudflare account
+  and a domain whose DNS Cloudflare manages. MMHotline still wakes phones
+  without it, so a first test needs no Cloudflare.
 - **A hosted service.** MMHotline runs on a server that you keep running.
   PagerDuty and similar services run for you.
 - **Routing between several teams.** One MMHotline serves one team.
@@ -425,11 +426,13 @@ Before you install, you need:
 
 - **A Linux server** with systemd and `sudo`, and a private network address
   on it where your tools send alerts.
-- **A Cloudflare account** with Zero Trust, and a domain whose DNS
-  Cloudflare manages. People sign in through Cloudflare Access, Cloudflare's
-  sign-in service.
 - **A way to wake a person,** such as a Pushover account and the Pushover
   app on each person's phone, or a Twilio account for phone calls.
+
+That is all a first test on one server needs: MMHotline wakes your phone
+without Cloudflare. Later, so that people can open MMHotline's pages from
+their phones, you add a Cloudflare account with Zero Trust and a domain
+whose DNS Cloudflare manages.
 
 On the server, paste this block. It picks the archive for the server's
 processor, downloads it with its checksum file, checks it, and unpacks it
