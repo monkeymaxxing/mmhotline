@@ -1,0 +1,40 @@
+package app
+
+// peoplePageBody is the People page's body, below the frame's h1.
+templ peoplePageBody(data peoplePageData) {
+	<div class="stack people-page">
+		<section class="panel">
+			<div class="panel-head">
+				<h2>The team</h2>
+				<span class="faint small">{ countText(len(data.People), "person", "people") }</span>
+			</div>
+			<ul class="people-list">
+				for _, person := range data.People {
+					<li>
+						<div>
+							<strong>{ person.Name }</strong>
+							if person.ID == data.Viewer.ID {
+								<span class="faint small">(you)</span>
+							}
+							<p class="small muted">{ person.SignInEmailAddress }</p>
+						</div>
+						<span class="tag nodot">{ capitalize(person.Role) }</span>
+					</li>
+				}
+				if len(data.People) == 0 {
+					<li>No active people.</li>
+				}
+			</ul>
+			<p class="panel-foot">Administrators can open administration pages and see other people's contact methods.</p>
+		</section>
+		<details class="more">
+			<summary>Where people are set</summary>
+			<div class="body">
+				@settingsFileNoticeLine(data.settingsFileNoticeView) {
+					<code>people</code>
+				}
+				<p class="small muted">The settings file adds, changes, and removes people. Removing a person stops sign-in and keeps the person's history.</p>
+			</div>
+		</details>
+	</div>
+}

@@ -26,6 +26,7 @@ define the outcomes required for completion and review. Start with the
 | [People and access](people.md) | Sign-in through Cloudflare Access and sign-in links, people, roles, contact method ownership, and trusted local command access |
 | [Check-ins and planned downtime](monitoring.md) | Alerts about missing check-ins, maintenance windows, and restart timing |
 | [Interface](interface.md) | Pages, actions, display states, navigation, and accessibility |
+| [Web pages in templ](web-pages.md) | How a page is written: templ files, the frame and `renderPage`, helpers, spaces, URL attributes, live sections, and the parts other apps can reuse |
 | [Triage agent](triage-agent.md) | The fence around the team's coding agent, logging proxy, internet access, triage agent setup, runs, and the connection to each coding agent. Triage sessions, requests, rules for running the agent's playbooks, the review agent, keeping the triage and review agents' sign-in working, and MMX runs for the agent. |
 | [Status page and MMHotline-down alarm](mmhotline-down-alarm-and-status-page.md) | The public status page and MMHotline-down alarm in the team's Cloudflare account. The status page's two files, posting from MMHotline and from a laptop, and set-up. The MMHotline-down alarm's Worker, held messages, check-ins, sends, the all-clear, and set-up. |
 | [Settings file](settings-file.md) | The settings file, owner and mode, static check, parts and how each part applies, change detection, restarts, startup with a broken file, and why `backup.env` stays separate. |
@@ -53,8 +54,8 @@ Pushover notifications, and automated voice calls. The alert severities are
 `info`, `warn`, and `sos`. The resolved variants, `resolved-info`,
 `resolved-warn`, and `resolved-sos`, report that a problem cleared. Only SOS opens an incident requiring action.
 
-The web interface uses `net/http` and `html/template` with small JavaScript
-enhancements. Storage uses one `mmhotline.db` SQLite database
+The web interface uses `net/http` and [templ](web-pages.md) with small
+JavaScript enhancements. Storage uses one `mmhotline.db` SQLite database
 ([storage](operation.md#storage)).
 
 ## Purpose within Monkeymaxxing

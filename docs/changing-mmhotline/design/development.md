@@ -21,8 +21,10 @@ The dashboard reads the systems repository's checklist with `go.yaml.in/yaml/v3`
 uses, because the checklist is YAML with folded text and comments
 ([interface](interface.md#checklist)).
 
-The interface is server-rendered with `net/http` and `html/template`, plus
-small browser enhancements. Keep build
+The interface is server-rendered with `net/http` and
+[templ](web-pages.md) (`github.com/a-h/templ`, MIT license), plus small
+browser enhancements. templ compiles pages to Go, so a broken page fails the
+build instead of a request. Keep build
 and runtime dependencies explicit. Define API and command contracts and
 examples with their implementation.
 
@@ -51,13 +53,16 @@ test, and build commands below from the repository root:
 
 ```sh
 export GOCACHE="${TMPDIR:-/tmp}/go-build"
+go tool templ generate
 gofmt -l .
 CGO_ENABLED=0 go vet ./...
 CGO_ENABLED=0 go test -timeout 30m ./...
 CGO_ENABLED=0 go build -o "${TMPDIR:-/tmp}/mmhotline" ./cmd/mmhotline
 ```
 
-`gofmt -l .` must print nothing. Vet and tests must pass. The build writes the
+`go tool templ generate` must leave `git status` unchanged: the generated
+`*_templ.go` files are committed ([web pages](web-pages.md)). `gofmt -l .`
+must print nothing. Vet and tests must pass. The build writes the
 `mmhotline` program into the temporary directory, with cgo disabled.
 
 Run platform and sandbox checks on a Linux AMD64 server. Inspect release

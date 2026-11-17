@@ -22,8 +22,8 @@ to claim an incident is to say "I'm on it", which stops MMHotline
 contacting the next person.
 
 The application uses Go with cgo disabled, SQLite through the pure-Go
-`modernc.org/sqlite` driver, and the standard library's `net/http` and
-`html/template` for the web interface. The server administrator supplies a
+`modernc.org/sqlite` driver, and the standard library's `net/http` with
+[templ](web-pages.md) for the web interface. The server administrator supplies a
 Linux server with running systemd and sending service credentials.
 For sign-in through Cloudflare Access, the administrator also supplies
 `cloudflared` on the MMHotline server.
