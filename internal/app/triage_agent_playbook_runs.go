@@ -129,8 +129,11 @@ const playbookJudgingAttempts = 3
 // and the node tasks on services whose changes a person must approve.
 type playbookJudgment struct {
 	// commitID is the commit of MMHotline's copy that mmx explain read.
-	commitID         string
-	playbookText     string
+	commitID     string
+	playbookText string
+	// projectFilesText shows the files the node tasks copy or render from
+	// the systems repository at commitID (projectFilesText).
+	projectFilesText string
 	mmxExplainOutput []byte
 	recognition      actionkinds.Recognition
 	// kindSettings are the rules for running the agent's playbooks of recognition.Kinds on the
@@ -218,6 +221,10 @@ func (a *App) judgePlaybook(ctx context.Context, playbookPath, inventory string)
 		// The review agent and the people who approve read the playbook as
 		// MMHotline judged it.
 		judgment.playbookText, err = systemsrepository.FileAtCommit(ctx, directory, commit, playbookPath)
+		if err != nil {
+			return err
+		}
+		judgment.projectFilesText, err = projectFilesText(ctx, directory, commit, output)
 		return err
 	})
 	if err != nil {
@@ -324,7 +331,7 @@ func (a *App) judgeAndRunPlaybook(ctx context.Context, request TriageAgentPlaybo
 		if err != nil {
 			return refused("MMHotline could not read your diagnosis for the review agent, so it did not run " + playbook + ".")
 		}
-		if prompt, fits := reviewAgentPrompt(request, commitID, judgment.playbookText, diagnosis, earlierRefusals, recognition); fits {
+		if prompt, fits := reviewAgentPrompt(request, commitID, judgment.playbookText, judgment.projectFilesText, diagnosis, earlierRefusals, recognition); fits {
 			review = a.reviewPlaybook(ctx, reviewAgent, prompt)
 		} else {
 			now := a.Now().UTC()
@@ -347,7 +354,7 @@ func (a *App) judgeAndRunPlaybook(ctx context.Context, request TriageAgentPlaybo
 			return err
 		}
 		if reviewed {
-			if err := insertPlaybookRunReview(ctx, tx, request, commitID, judgment.playbookText, review); err != nil {
+			if err := insertPlaybookRunReview(ctx, tx, request, commitID, judgment.keptText(), review); err != nil {
 				return err
 			}
 		}
@@ -392,7 +399,7 @@ func (a *App) judgeAndRunPlaybook(ctx context.Context, request TriageAgentPlaybo
 		for _, kind := range recognition.Kinds {
 			kinds = append(kinds, string(kind))
 		}
-		waiting := approvalRequest{ID: NewID(), RunID: request.RunID, RequestID: request.RequestID, Playbook: request.Playbook, Inventory: request.Inventory, CommitID: commitID, ActionKinds: strings.Join(kinds, ","), PlaybookText: judgment.playbookText, MMXExplainOutput: string(judgment.mmxExplainOutput), PlaybookRule: setting, JudgedAt: a.Now().UTC(),
+		waiting := approvalRequest{ID: NewID(), RunID: request.RunID, RequestID: request.RequestID, Playbook: request.Playbook, Inventory: request.Inventory, CommitID: commitID, ActionKinds: strings.Join(kinds, ","), PlaybookText: judgment.keptText(), MMXExplainOutput: string(judgment.mmxExplainOutput), PlaybookRule: setting, JudgedAt: a.Now().UTC(),
 			// A review that did not approve sets the rule instead.
 			RuleFromListedPlaybook: judgment.ruleFromListedPlaybook() && setting == judgment.setting}
 		if err := tx.QueryRowContext(ctx, `SELECT triage_session_id FROM triage_agent_runs WHERE id=?`, request.RunID).Scan(&waiting.TriageSessionID); err != nil {

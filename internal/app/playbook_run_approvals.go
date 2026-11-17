@@ -225,9 +225,9 @@ func approvalThatCovers(ctx context.Context, tx *sql.Tx, request TriageAgentPlay
 WHERE triage_session_id<>'' AND triage_session_id=(SELECT triage_session_id FROM triage_agent_runs WHERE id=?)
  AND EXISTS(SELECT 1 FROM triage_sessions s WHERE s.id=w.triage_session_id AND s.ended_at=0)
  AND inventory=? AND rule=? AND covered_by_approval_request_id='' AND state NOT IN (?,?)
- AND ','||its_approval_also_approves_in_the_same_session||',' LIKE '%,'||?||',%'
+ AND its_approval_also_approves_in_the_same_session<>''
  AND NOT EXISTS(SELECT 1 FROM triage_agent_playbook_runs_waiting_for_a_person c WHERE c.covered_by_approval_request_id=w.id AND c.playbook=?)
-ORDER BY judged_at,id`, request.RunID, request.Inventory, getPermissionThenAct, approvalOpen, approvalRefused, name, request.Playbook)
+ORDER BY judged_at,id`, request.RunID, request.Inventory, getPermissionThenAct, approvalOpen, approvalRefused, request.Playbook)
 	if err != nil {
 		return approvalRequest{}, false, err
 	}
@@ -244,6 +244,12 @@ ORDER BY judged_at,id`, request.RunID, request.Inventory, getPermissionThenAct, 
 		return approvalRequest{}, false, err
 	}
 	for _, r := range candidates {
+		// The names compare exactly, in Go: SQL's LIKE would take "_" in a
+		// name for any character and ignore case, so every-server would
+		// cover every_server.
+		if !slices.Contains(r.ItsApprovalAlsoApprovesInTheSameSession, name) {
+			continue
+		}
 		counted, _, err := approvalRequestApprovers(ctx, tx, r.ID)
 		if err != nil {
 			return approvalRequest{}, false, err
@@ -316,14 +322,20 @@ func (r approvalRequest) listedPlaybookSentence() string {
 // approval request or a review: at most maximumApprovalPlaybookTextBytes,
 // then cut with a line that says so.
 func keptPlaybookText(text string) string {
-	if len(text) <= maximumApprovalPlaybookTextBytes {
+	return keptPlaybookTextWithin(text, maximumApprovalPlaybookTextBytes)
+}
+
+// keptPlaybookTextWithin is the playbook's text, at most maximum bytes, then
+// cut with a line that says so.
+func keptPlaybookTextWithin(text string, maximum int) string {
+	if len(text) <= maximum {
 		return text
 	}
-	cut := maximumApprovalPlaybookTextBytes
+	cut := maximum
 	for cut > 0 && !utf8.RuneStart(text[cut]) {
 		cut--
 	}
-	return text[:cut] + fmt.Sprintf("\n[MMHotline keeps the first %d KiB of this playbook; the commit holds all of it.]\n", maximumApprovalPlaybookTextBytes>>10)
+	return text[:cut] + fmt.Sprintf("\n[MMHotline keeps the first %d KiB of this playbook; the commit holds all of it.]\n", maximum>>10)
 }
 
 // askForPlaybookRunApproval asks the team at sos to approve r: an alert from

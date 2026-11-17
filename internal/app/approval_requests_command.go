@@ -286,6 +286,6 @@ func (r CommandApprovalRequest) Text() string {
 	if r.ResultMessage != "" {
 		lines = append(lines, "Result: "+indentedText(r.ResultMessage, "  "))
 	}
-	lines = append(lines, "The playbook's text at the checked commit:", "  "+indentedText(r.PlaybookText, "  "))
+	lines = append(lines, "The playbook's text, and any files it copies, at the checked commit:", "  "+indentedText(r.PlaybookText, "  "))
 	return strings.Join(lines, "\n")
 }

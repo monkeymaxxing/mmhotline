@@ -356,7 +356,7 @@ func TestWarnedPlaybookRunCard(t *testing.T) {
 	page := responder.get(requestPage, 200)
 	if text := approvalPageText(page); !phrasesInOrder(text, "Runs in 7 minutes", "Run “Reboot app002” on app002?",
 		"MMHotline runs the playbook at 12:10, in 7 minutes, unless someone presses Stop.", "The playbook run needs no approval because the rule is Warn, wait 10 minutes, then act.", "Stop",
-		"Reboot a server", "The playbook's text, at commit "+judged[:7], "Why MMHotline warns first") {
+		"Reboot a server", "The playbook's text, and any files it copies, at commit "+judged[:7], "Why MMHotline warns first") {
 		t.Errorf("the warned run's page: %s", text)
 	}
 	if !offers(page, requestPage+"/stop") || offers(page, requestPage+"/approve") || offers(page, requestPage+"/refuse") {

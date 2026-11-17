@@ -3361,14 +3361,35 @@ counts as possibly secret: a `set_vars` that copies a secret makes a later
 argument `runtime`, not `secret`, in `mmx explain`. Any other form is an
 Unrecognized task.
 
+What the agent has read can still leave the team's servers. MMHotline keeps
+vault secrets out of the agent's reach, but not what the agent reads on the
+servers, such as a log line. The agent can write that text into a task that
+connects out, and the server runs the task as root:
+
+- Check only runs without a person in every preset. A `wait_for` check
+  connects to the address in `url_responds` or `tcp_host`, which can be any
+  host, and the text of the address, such as a URL's path, reaches that host.
+  MMHotline does not limit the host: a check of another server or of a
+  public address is an ordinary fix, and MMHotline does not know every
+  address of the team's servers.
+- Pull a container image again connects to the registry that `image` names.
+- Change DNS records publishes the record's content, when a team lets it run
+  without a person.
+
+The triage agent's own connections are no tighter: MMHotline's proxy
+lists the coding agent's service, which accepts any upload. So MMHotline
+limits where the agent connects, not what it sends. The optional firewall
+rule for the `triage` user stops commands the agent runs on a server; it
+does not stop the playbooks MMHotline runs for the agent.
+
 | Kind of action | ID | Why |
 | --- | --- | --- |
-| Start or restart a service | `start_or_restart_a_service` | Starting a stopped service is the most common fix. `start_at_boot`, `masked`, and `refresh` change more than the service start requested by the task. MMX's `systemd_service` has no `restarted` state; the marker file keeps a rerun of the playbook from restarting the service again |
-| Free disk space | `free_disk_space` | Free disk space tasks remove old logs, downloaded packages, and images no container uses. Old files elsewhere, such as a database's, can be the data itself. MMX refuses a directory with a symlink in its path and never crosses into another filesystem below the directory, but a directory under `/var/log` could itself be a mount point of other data, so only `/var/log` acts without a person. Inside `/var/log`, only the files logrotate leaves behind count as old logs: the age must be at least one day and every pattern must be one of `*.gz`, `*.xz`, `*.zst`, `*.bz2`, `*.[0-9]`, `*.[0-9].gz`, and `*.old`. Deleting a live log that a process still has open frees no space, and fresh logs are an incident's evidence. This is not a hard limit: any other `delete_old_files` task is an unrecognized task, and a person can approve it |
+| Start or restart a service | `start_or_restart_a_service` | Starting a stopped service is the most common fix. `start_at_boot`, `masked`, and `refresh` change more than the service start requested by the task. MMX's `systemd_service` has no `restarted` state; the marker file keeps a rerun of the playbook from restarting the service again. Starting a unit does whatever the unit does: starting `poweroff.target` powers the server off. So the name must be a plain service, such as `nginx` or `shop-worker.service`: no other unit type, no template instance (`@`), no `systemd-*` or `dbus-org.*` unit, and none of the operating system's services that shut down, reboot, open a shell, change the network or firewall, or install updates. MMHotline cannot list the team's own services, so the rule allows the shape a team's service has and refuses those names. A team adds any other service to [services whose changes a person must approve](#services-whose-changes-a-person-must-approve). MMX writes the marker file as root and creates its folders, and a marker such as `/etc/nologin` would lock out every login but root's. So the marker file must be directly in `/var/lib/mmx/commands_run_once/`, MMX's folder for marker files. Any other `systemd_service` task is an unrecognized task, and a person can approve it |
+| Free disk space | `free_disk_space` | Free disk space tasks remove old logs, downloaded packages, and images no container uses. Old files elsewhere, such as a database's, can be the data itself. MMX refuses a directory with a symlink in its path and never crosses into another filesystem below the directory, but a directory under `/var/log` could itself be a mount point of other data, so only `/var/log` acts without a person. Inside `/var/log`, only the files logrotate leaves behind count as old logs: the age must be at least one day and every pattern must be one of `*.gz`, `*.xz`, `*.zst`, `*.bz2`, `*.[0-9]`, `*.[0-9].gz`, and `*.old`. Deleting a live log that a process still has open frees no space, and fresh logs are an incident's evidence. For the same reason, a journal vacuum keeps at least one day (`keep_newer_than`) and at least 100 MiB (`keep_at_most_size`): 100 MiB holds about a day of a busy server's logs. An image removal removes only images with no name left (`remove: dangling_images_only`); `every_image_no_container_uses` also removes a previous version kept for a rollback, or an image built on the server, which can be the only copy. These are not hard limits: any other `delete_old_files`, vacuum, or removal is an unrecognized task, and a person can approve it |
 | Pull a container image again | `pull_a_container_image_again` | Fetches the image a tag names now, such as after a broken pull. Podman logs in to the registry that `image` names, and the playbook writes `image`. A registry login from the vault would go to any registry the agent names, so `image`, `registry_username`, and `registry_password` must be known before the run |
 | Reboot a server | `reboot_a_server` | The `reboot` module's two check commands, `run_only_if_this_command_succeeds` and `skip_if_this_command_succeeds`, are programs, which a person who approves a reboot does not expect |
 | Block a network range | `block_a_network_range` | Adds blocks and keeps every other rule. A rule with a port, or an allow rule, changes which services are reachable. Blocking an inventory group can block the team's own servers, so `from_inventory_group` is excluded from Block a network range |
-| Change DNS records | `change_dns_records` | A path with a `..` part or an escaped character is refused because the path could reach another Cloudflare API, such as an account's members, with the same token. Certificate settings are left out, and a `Host` header is refused, so the token goes only to Cloudflare's DNS records API. MMX's `http` sends a `Host` header as the request's host, which would ask Cloudflare's servers for another site |
+| Change DNS records | `change_dns_records` | A path with a `..` part or an escaped character is refused because the path could reach another Cloudflare API, such as an account's members, with the same token. Certificate settings are left out, and a `Host` header is refused, so the token goes only to Cloudflare's DNS records API. MMX's `http` sends a `Host` header as the request's host, which would ask Cloudflare's servers for another site. `json_body` and `body` must be known before the run: a DNS record's content is public, so a secret in it would be published |
 | Check only | `check_only` | Check only tasks change nothing on the server. A role call or a node task block does nothing by itself. MMHotline judges each task inside the role or block separately. `wait_for`'s `command_succeeds` runs a command, which can change anything. `wait_for`'s `url_responds` and `tcp_host` must be known before the run: their text reaches the host they name and its name servers. `read_file` is not check only: MMX reads the file as root, and the file's content would reach the agent. The agent must never read a secret such as an app's env file, so a person decides |
 | Unrecognized task | `unrecognized_task` | Every other node task, such as `shell` or a module of the team's own. MMHotline cannot tell what the node task does, so only "Every fix without permission" lets the node task run without a person |
 
@@ -3395,7 +3416,7 @@ MMHotline reads each task of a playbook from mmx explain, never from the playboo
 Each task inside a role or a task block is sorted by itself. Every other task is an Unrecognized task, and so is each file a fleet stage saves on MMHotline's server with save_on_controller_machine.
 
 Start or restart a service (start_or_restart_a_service):
-- systemd_service. Arguments: name, state, restart_now, run_only_once_marker_file, in_systemd_of_user_account. Conditions: systemd_service.state must be running; systemd_service.restart_now must be true or false; systemd_service.restart_now: true requires run_only_once_marker_file. Example:
+- systemd_service. Arguments: name, state, restart_now, run_only_once_marker_file, in_systemd_of_user_account. Conditions: systemd_service.name must be a plain service of the team's, known before the run: a name ending in .service or with no unit type, with only letters, digits, and _ . -, and not a template instance (@), a systemd-* or dbus-org.* unit, or an operating system unit whose start shuts down, reboots, opens a shell, changes the network or firewall, or installs updates, such as poweroff, reboot, emergency, networking, or apt-daily-upgrade; systemd_service.state must be running; systemd_service.restart_now must be true or false; systemd_service.restart_now: true requires run_only_once_marker_file; systemd_service.run_only_once_marker_file must be known before the run and name a file directly in /var/lib/mmx/commands_run_once/, whose name has only letters, digits, and _ . -: MMX writes the marker file as root, so a marker elsewhere, such as /etc/nologin, could lock people out. Example:
 
     - systemd_service:
         name: caddy
@@ -3404,17 +3425,17 @@ Start or restart a service (start_or_restart_a_service):
         run_only_once_marker_file: /var/lib/mmx/commands_run_once/2026-11-03_restart_caddy
 
 Free disk space (free_disk_space):
-- systemd_journal_vacuum. Arguments: keep_at_most_size, keep_newer_than. Example:
+- systemd_journal_vacuum. Arguments: keep_at_most_size, keep_newer_than. Conditions: systemd_journal_vacuum.keep_newer_than must be at least 1d, known before the run: the journal is the evidence of an incident; systemd_journal_vacuum.keep_at_most_size must be at least 100MiB, known before the run: a smaller journal holds only hours of a busy server's logs, the evidence of an incident. Example:
 
     - systemd_journal_vacuum:
         keep_at_most_size: 500MiB
 
-- podman_unused_images. Arguments: remove, in_image_store_of_user_account. Example:
+- podman_unused_images. Arguments: remove, in_image_store_of_user_account. Conditions: podman_unused_images.remove must be dangling_images_only: every_image_no_container_uses also removes named images, such as a previous version kept for a rollback or an image built on the server, which can be the only copy. Example:
 
     - podman_unused_images:
         remove: dangling_images_only
 
-- docker_unused_images. Arguments: remove, in_image_store_of_user_account. Example:
+- docker_unused_images. Arguments: remove, in_image_store_of_user_account. Conditions: docker_unused_images.remove must be dangling_images_only: every_image_no_container_uses also removes named images, such as a previous version kept for a rollback or an image built on the server, which can be the only copy. Example:
 
     - docker_unused_images:
         remove: dangling_images_only
@@ -3456,7 +3477,7 @@ Block a network range (block_a_network_range):
             from: 203.0.113.0/24
 
 Change DNS records (change_dns_records):
-- http. Arguments: url, method, headers, json_body, body, expected_http_status_codes, changed_when. Conditions: http.url must be https://api.cloudflare.com/client/v4/zones/ZONE_ID/dns_records or a path below the zone's dns_records path, with no .. part and no escaped character; http.headers must be known before the run and must not set Host: a Host header asks Cloudflare's servers for another site, which would receive the team's token. Example:
+- http. Arguments: url, method, headers, json_body, body, expected_http_status_codes, changed_when. Conditions: http.url must be https://api.cloudflare.com/client/v4/zones/ZONE_ID/dns_records or a path below the zone's dns_records path, with no .. part and no escaped character; http.headers must be known before the run and must not set Host: a Host header asks Cloudflare's servers for another site, which would receive the team's token; http.json_body and body must be known before the run, so not a secret: a DNS record's content is public. Example:
 
     - http:
         url: https://api.cloudflare.com/client/v4/zones/023e105f4ecef8ad9ca31a8372d0c353/dns_records/372e67954025e0ba6aaa6d586b9e0b59
@@ -4061,6 +4082,8 @@ The review prompt contains:
   reads the playbook text and runs `mmx explain` while holding the lock.
   So the review agent sees the text MMHotline judged, never a file a symlink
   names;
+- [the files the playbook copies](#the-files-a-playbook-copies), quoted line
+  by line, when its tasks copy or render any;
 - the node tasks as `mmx explain` listed them: each task's path, node, module
   and module kind, status, and arguments with their values as text;
 - the kinds of action MMHotline recognized, and the node tasks it recognized
@@ -4811,8 +4834,35 @@ calls node tasks steps and uses the following words:
   “A second AI agent that checks each playbook before it runs”.
 
 The request's page folds “Earlier versions the review agent refused”, the
-playbook's text, and the identifiers. The identifiers include
-“Commit MMHotline checked”.
+playbook's text with [the files it copies](#the-files-a-playbook-copies),
+and the identifiers. The identifiers include “Commit MMHotline checked”.
+
+#### The files a playbook copies
+
+A task can copy a file of the systems repository onto the servers, such as
+`file.source: one_time_playbooks/.payload`, which installs a unit file.
+`mmx explain` lists only the path, and MMX skips dotfiles in
+`one_time_playbooks/`, so without the content a person would approve a file
+nobody saw. When MMHotline judges a playbook, it reads each file the node
+tasks copy or render from the commit it judged, with `git ls-tree` and
+`git cat-file` under the copy's lock: `source` and `template` of any
+module, `signing_key_source`, `package_file_source`, the key files and key
+directories of `authorized_keys`, and every file below a `directory.source`.
+A relative path starts at the role's directory inside a role and at the
+project root otherwise, as MMX reads it.
+
+MMHotline keeps the files' text after the playbook's text, under the line
+“Files the playbook's tasks copy or render, from the systems repository at
+the same commit:”. Each file has a line with its path, the task and
+argument that read it, its size, and its SHA-256, then its text. The review
+prompt quotes the same text in its own section. MMHotline shows the text
+only of a UTF-8 file without a NUL byte, at most 16 KiB for one file and
+64 KiB for all files together. Other files show their line only: a binary
+or long file is never cut, because a person would approve a part nobody
+showed. A path MMX knows only during the run, an absolute path on
+MMHotline's own server, a symlink, and a missing file each get a line that
+says so. At most 50 files are named, then counted. To keep the files in
+the 256 KiB kept text, MMHotline cuts a long playbook's text first.
 
 “Why the triage agent asks” shows the diagnosis's first prose paragraph
 large, with the whole diagnosis folded below it and the line “The agent's

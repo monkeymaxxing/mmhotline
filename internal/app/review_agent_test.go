@@ -789,7 +789,7 @@ func TestReviewAgentRefusalsInARow(t *testing.T) {
 		"Earlier versions the review agent refused (2)",
 		freeDiskSpacePlaybook, rounds[0].commit, "Review agent's reason: "+reasons[0], diagnoses[0], versions[0],
 		freeDiskSpacePlaybook, rounds[1].commit, "Review agent's reason: "+reasons[1], diagnoses[1], versions[1],
-		"The playbook's text, at commit "+third.commit[:7], versions[2]) {
+		"The playbook's text, and any files it copies, at commit "+third.commit[:7], versions[2]) {
 		t.Fatalf("the approval request's page, in order:\n%s", page)
 	}
 	if text := approvalPageText(page); !strings.Contains(text, "Review agent Refused The review agent refused the playbook: "+strings.Join(strings.Fields(reasons[2]), " ")) || !strings.Contains(text, "The review agent did not approve the playbook.") {
