@@ -120,18 +120,22 @@ func RunInsideSandbox(ctx context.Context, in io.Reader, out io.Writer, settings
 	}
 	home, workingDirectory := settings.Home, settings.Home
 	reviewAgent := request.AgentRole == ReviewAgentRole
-	if reviewAgent {
+	if reviewAgent || request.NewEmptyHome {
 		// The run's private /tmp: only this run sees it, and systemd discards
-		// it when the run ends. The agent's home, which the triage agent can
-		// write, stays out of the review agent's way.
-		if home, err = os.MkdirTemp("/tmp", "mmhotline-review-agent-home-"); err != nil {
-			return fail(fmt.Errorf("make the review agent's home: %w", err))
+		// it when the run ends. The agent's home, which every triage run can
+		// write, stays out of the way of a review agent and a commit review.
+		if home, err = os.MkdirTemp("/tmp", "mmhotline-"+strings.ReplaceAll(request.AgentRole, "_", "-")+"-home-"); err != nil {
+			return fail(fmt.Errorf("make the run's new empty home: %w", err))
 		}
 		defer os.RemoveAll(home)
 		workingDirectory = home
+	} else if err := removePlantablePaths(home); err != nil {
+		return fail(err)
 	}
 	if request.SystemsRepositoryBaseCommitID != "" {
-		directory := filepath.Join(settings.Home, systemsrepository.DirectoryName)
+		// In the run's home: Claude Code reads the CLAUDE.md files of the
+		// working directory's parents.
+		directory := filepath.Join(home, systemsrepository.DirectoryName)
 		if err := systemsrepository.PrepareAgentCopy(ctx, directory, request.SystemsRepositoryBundle, request.SystemsRepositoryBaseCommitID); err != nil {
 			return fail(fmt.Errorf("prepare the agent's copy of the systems repository: %w", err))
 		}
@@ -331,6 +335,9 @@ func checkRequest(request Request) error {
 	}
 	switch request.AgentRole {
 	case TriageAgentRole:
+		if request.NewEmptyHome && request.Action != "start" {
+			return errors.New("a triage agent run in a new empty home only starts; its home holds no session to resume")
+		}
 	case ReviewAgentRole:
 		// Its home is new and empty, so it has no session to resume.
 		if request.Action != "start" {
@@ -341,6 +348,23 @@ func checkRequest(request Request) error {
 		}
 	default:
 		return errors.New("agent_role must be triage_agent or review_agent")
+	}
+	return nil
+}
+
+// removePlantablePaths removes, from the agent's home at a run's start, each
+// supported coding agent's files that would steer every later run, such as
+// ~/.claude/CLAUDE.md, hooks in ~/.claude/settings.json, and
+// ~/.codex/AGENTS.md: a run that a log misled could have written them
+// (docs/changing-mmhotline/design/triage-agent.md#what-a-run-leaves-for-the-next).
+// Every supported agent's, since the team may switch agents.
+func removePlantablePaths(home string) error {
+	for _, agent := range codingAgents() {
+		for _, path := range agent.plantablePaths() {
+			if err := os.RemoveAll(filepath.Join(home, path)); err != nil {
+				return fmt.Errorf("remove %s from the agent's home: %w", path, err)
+			}
+		}
 	}
 	return nil
 }

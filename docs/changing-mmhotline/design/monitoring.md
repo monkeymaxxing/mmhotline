@@ -37,7 +37,10 @@ MMHotline uses the listed whole-node maintenance windows for
 Missing check-ins can reveal a datacenter outage, network partition, or
 monitoring tool failure that prevents the sender from reporting alerts.
 
-Any signed alert or check-in counts as hearing from the alert source.
+Any signed alert or check-in counts as hearing from the alert source,
+except a check-in whose `sent_at` is not newer than the newest one received.
+Its signature stays valid for 5 minutes, so anyone who sees the traffic
+could otherwise resend a dead source's last check-in and delay the alarm.
 So an alert keeps a Warning or SOS about missing check-ins from going out.
 Only a check-in clears a Warning or SOS about missing check-ins that already
 went out. MMHotline hears alerts from another component using the check-in

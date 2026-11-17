@@ -206,8 +206,10 @@ for the times set in the settings file
 When the tool sent the check-in, on its own clock.
 
 - Type: an RFC 3339 time. Required.
-- A check-in with an older `sent_at` than the newest one received never
-  replaces what the newer one said.
+- A check-in counts only when its `sent_at` is newer than the newest one
+  received. An older or equal one, arriving late or resent, is answered
+  `200` and changes nothing: it never replaces what the newer one said,
+  and never delays or ends an alarm about missing check-ins.
 
 ### sent_by_node_name
 

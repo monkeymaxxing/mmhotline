@@ -202,7 +202,7 @@ func triageSessionAlertText(number, count int, alert triageSessionPromptAlert) s
 	if len(message) > maximumTriageSessionPromptMessageCharacters {
 		message = append(message[:maximumTriageSessionPromptMessageCharacters-1], '…')
 	}
-	quoted := "> " + strings.ReplaceAll(string(message), "\n", "\n> ")
+	quoted := "> " + strings.ReplaceAll(withPlainLineBreaks(string(message)), "\n", "\n> ")
 	if len(message) == 0 {
 		quoted = "(empty)"
 	}

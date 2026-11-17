@@ -98,6 +98,42 @@ A second `sudo mmhotline install` changes nothing: its lines say
 `Binary: already correct (/usr/local/bin/mmhotline)` and
 `Service: mmhotline unit already correct; already enabled; already running`.
 
+## Tighten the triage user on each server
+
+Do this once if the team uses the triage agent and set up the `triage`
+user on its servers before the key line started with `restrict`.
+
+**THE UPGRADE DOES NOT CHANGE THE SERVERS. DO THIS ON EVERY SERVER OF
+EVERY INVENTORY, OR IN YOUR DEPLOY TOOL'S TEMPLATE.**
+
+1. **On each server, add `restrict` and give the files to root:**
+
+   ```sh
+   sudo sed -i 's/^from=/restrict,from=/' /home/triage/.ssh/authorized_keys
+   sudo chown root:root /home/triage /home/triage/.ssh /home/triage/.ssh/authorized_keys
+   sudo chmod 0755 /home/triage /home/triage/.ssh
+   sudo chmod 0644 /home/triage/.ssh/authorized_keys
+   sudo grep -c '^restrict,from=' /home/triage/.ssh/authorized_keys
+   sudo -u triage test -w /home/triage/.ssh/authorized_keys && echo 'still writable by triage'
+   ```
+
+   **Check:** the `grep` prints `1`, and nothing prints
+   `still writable by triage`.
+
+2. **On the MMHotline server, check that the agent still logs in:**
+
+   ```sh
+   sudo mmhotline triage-agent check-preparation
+   ```
+
+   **Check:** line 2 starts with `Present:`.
+
+Reason: without `restrict`, the agent could open a tunnel from a server
+past MMHotline's logging proxy. While `triage` owns its home, a command the
+agent runs could rewrite the key line without `restrict`.
+[Set up the triage agent](set-up-the-triage-agent.md#prepare-the-servers-and-the-systems-repository),
+step 2, has the details.
+
 ## If something is different
 
 - **The program at `/usr/local/bin/mmhotline` was already replaced,** such

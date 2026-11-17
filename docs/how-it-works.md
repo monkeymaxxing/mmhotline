@@ -410,10 +410,12 @@ The agent runs inside a fence:
 - It runs as its own Unix user, `mmhotline-triage-agent`, with no sudo, in
   a systemd sandbox started fresh for each run through a socket. It cannot
   read MMHotline's database, settings file, or sending service tokens.
-- It has no network of its own. Every connection goes through MMHotline's
-  logging proxy, which allows only the hosts the settings allow and
-  records every attempt.
-- It reads the servers over SSH but holds no key that changes them. To
+- It has no network of its own. Every connection from MMHotline's server
+  goes through MMHotline's logging proxy, which allows only the hosts the
+  settings allow and records every attempt.
+- It reads the servers over SSH, as the user `triage`, but holds no key
+  that changes them. A command it runs there can open connections from
+  that server, which the proxy does not see. To
   change something, it asks MMHotline to run a playbook from the team's
   systems repository with `mmx`. The settings file's rules decide, per
   inventory and kind of action, whether that playbook runs at once, after

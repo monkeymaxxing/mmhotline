@@ -369,8 +369,8 @@ On each server of each inventory:
 
 | Path | Holds | Step |
 | --- | --- | --- |
-| The Unix user `triage`, in group `systemd-journal`, with no sudo or only read-only commands | The account the agent investigates as | 2 |
-| `/home/triage/.ssh/authorized_keys` | The agent's public key, after `from="10.0.0.5" `, the MMHotline server's private address | 2 |
+| The Unix user `triage`, in group `systemd-journal`, with no sudo or only read-only commands, and its home `/home/triage` and `/home/triage/.ssh` owned by `root`, mode `0755` | The account the agent investigates as | 2 |
+| `/home/triage/.ssh/authorized_keys`, owned by `root`, mode `0644` | The agent's public key, after `restrict,from="10.0.0.5" `, with the MMHotline server's private address | 2 |
 | The inventory `ssh_user`'s `authorized_keys`, such as `/root/.ssh/authorized_keys` | MMHotline's public key, after the same `from=` | 5 |
 
 In the systems repository: `triage_agent_rules.md` at the top, which the
@@ -389,6 +389,12 @@ them each time:
 | `.mmhotline/bash_env` | `0600` | Puts that `ssh` first again in a bash login shell |
 | `systems_repository/` | | The agent's own copy of the systems repository, at the commit MMHotline hands the run; the agent's new commits go back to MMHotline from here |
 | `.codex/` | | Codex's own files, with Codex as the coding agent |
+
+Each run also removes the coding agents' instruction and settings files
+from the home, such as `~/.claude/CLAUDE.md`, `~/.claude/settings.json`,
+and `~/.codex/AGENTS.md`, so a run that a log misled cannot steer the next
+([what a run leaves for the next](../changing-mmhotline/design/triage-agent.md#what-a-run-leaves-for-the-next)).
+A commit review starts in a new empty home in its private `/tmp`.
 
 Each run also makes `/tmp/mmhotline-triage-agent-requests-*/request.sock`,
 mode `0600`, in its private `/tmp`, where the agent sends its requests,

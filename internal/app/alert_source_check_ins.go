@@ -149,9 +149,14 @@ func (a *App) trackAlertSourceCheckIn(ctx context.Context, sourceID, signature s
 	if source.checkInsThisMinute >= maxAlertSourceCheckInsPerMinute {
 		return receiptKey, errTooManyAlerts
 	}
-	// A check-in older than the newest one received, by its sent_at,
-	// never replaces what the newest one said.
-	isNewest := !source.expectsCheckIns || m.SentAt.Unix() >= source.newestSentAt
+	// Only a check-in newer than the newest one received, by its sent_at,
+	// counts. An older or equal one, arriving late or resent as it was, which
+	// its signature allows for 5 minutes, never replaces what the newest one
+	// said, and never delays or ends an alarm about silence.
+	if source.expectsCheckIns && m.SentAt.Unix() <= source.newestSentAt {
+		source.checkInsThisMinute++
+		return receiptKey, nil
+	}
 	cappedFrom := now
 	if now.Sub(source.maintenanceWindowsCappedFrom) < cappedMaintenanceWindowsRewrittenAfter {
 		cappedFrom = source.maintenanceWindowsCappedFrom
@@ -160,15 +165,11 @@ func (a *App) trackAlertSourceCheckIn(ctx context.Context, sourceID, signature s
 	if err != nil {
 		return receiptKey, err
 	}
-	saysSomethingNew := isNewest && (m.SentByNodeName != source.sentByNodeName || maintenance != source.nodesInWholeNodeMaintenance)
+	saysSomethingNew := m.SentByNodeName != source.sentByNodeName || maintenance != source.nodesInWholeNodeMaintenance
 	if !source.expectsCheckIns || source.checkInsStopped || saysSomethingNew {
-		sentAt, sentBy := source.newestSentAt, source.sentByNodeName
-		maintenance = source.nodesInWholeNodeMaintenance
-		if isNewest {
-			sentAt, sentBy = m.SentAt.Unix(), m.SentByNodeName
-			if maintenance, err = maintenanceWindowsJSON(m.NodesInWholeNodeMaintenance, now); err != nil {
-				return receiptKey, err
-			}
+		sentAt, sentBy := m.SentAt.Unix(), m.SentByNodeName
+		if maintenance, err = maintenanceWindowsJSON(m.NodesInWholeNodeMaintenance, now); err != nil {
+			return receiptKey, err
 		}
 		resumed := source.checkInsStopped
 		var stored map[string]storedAlertSourceCheckInState
@@ -200,14 +201,10 @@ func (a *App) trackAlertSourceCheckIn(ctx context.Context, sourceID, signature s
 			return receiptKey, err
 		}
 		team.apply(stored, now)
-		if isNewest {
-			source.maintenanceWindowsCappedFrom = now
-		}
+		source.maintenanceWindowsCappedFrom = now
 	}
 	source.lastHeardAt, source.lastCheckInAt = now, now
-	if isNewest {
-		source.newestSentAt = m.SentAt.Unix()
-	}
+	source.newestSentAt = m.SentAt.Unix()
 	source.checkInsThisMinute++
 	return receiptKey, nil
 }

@@ -85,6 +85,47 @@ The run's sandbox:
 - `MemoryDenyWriteExecute` is not set, because Claude Code runs on a
   JavaScript engine that compiles code at run time.
 
+### What a run leaves for the next
+
+A log line can mislead the agent, and a misled run can write into the
+agent's home. A file there that a coding agent reads at every start would
+then steer every later run. So each run limits what reaches the next:
+
+- **A commit review starts in a new empty home** in the run's private
+  `/tmp`, with the agent's copy of the systems repository inside it, as a
+  [review agent's run](#how-a-review-runs) does. A commit review decides
+  which commits MMX may run, so nothing an earlier run planted may reach it.
+- **Every other run in the agent's home removes, before the coding agent
+  starts,** each supported coding agent's instructions and settings:
+  `CLAUDE.md` and `CLAUDE.local.md` in the home, and `CLAUDE.md`, `rules/`,
+  `settings.json` (with its hooks), `agents/`, `commands/`, `skills/`,
+  `output-styles/`, and `plugins/` in `~/.claude/`; `AGENTS.md`,
+  `AGENTS.override.md`, `config.toml`, `hooks.json`, `prompts/`, `skills/`,
+  and `rules/` in `~/.codex/`. Every supported agent's files go, because the
+  team may switch agents.
+- **Claude Code starts with `--strict-mcp-config`,** so no MCP server that a
+  run added to `~/.claude.json` starts, and with
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. The agent's notes belong in
+  `triage_agent_notes/`, where the [commit check](#checking-commits-before-mmx-and-triage-agent-runs)
+  judges them.
+- **The agent's copy of the systems repository** drops every file the
+  starting commit lacks, ignored files too (`git clean -ffdx`).
+
+What stays, and why:
+
+- The coding agents' session files, `~/.claude/projects/` and
+  `~/.codex/sessions/`, because the next run of a triage session resumes
+  its session from them.
+- The agent's SSH key and Git settings, `~/.ssh/id_ed25519` and
+  `~/.gitconfig`, which the team's setup made.
+- No sign-in: a credential reaches each run in its request, and a ChatGPT
+  sign-in's `auth.json` is deleted when the run ends
+  ([Codex with a ChatGPT sign-in](#codex-with-a-chatgpt-sign-in)).
+
+A run could still leave other files, such as a shell's `~/.profile`, for
+later triage runs. Those runs already have the same powers as the run that
+planted them. Only the commit review crosses a line, and it starts empty.
+
 ### Every connection goes through MMHotline's logging proxy
 
 The run has its own network namespace with only a loopback interface
@@ -268,12 +309,31 @@ page's host, port, program, and key, and why a run left a page out in
 ### Reading the servers over SSH
 
 The agent reads the team's servers over SSH as the `triage` user, which the
-team's server setup creates on every server: it reads the logs and runs a
-short list of read-only commands, and it changes nothing. The team's server
+team's server setup creates on every server. `triage` has no sudo, or sudo
+only for a short list of read-only commands, so the agent changes nothing
+that needs root. The team's server
 setup also makes the triage agent's SSH key, `/var/lib/mmhotline-triage-agent/.ssh/id_ed25519`,
 and the servers accept that key only from the private address of the server
 running MMHotline. The agent connects by the server's name, such as
 `ssh app001`.
+
+The key line starts `restrict,from="ADDRESS"`. `restrict` turns off port,
+agent, and X11 forwarding and terminals, so the agent cannot open a tunnel
+from a server past the logging proxy, such as `ssh -D` or `ssh -L` to a
+database on the server's loopback address. Root owns `triage`'s home,
+`~/.ssh`, and `authorized_keys` (modes `0755`, `0755`, and `0644`), so a
+command the agent runs as `triage` cannot rewrite the line without
+`restrict`. OpenSSH's `StrictModes` accepts root as the owner, and sshd reads
+`authorized_keys` as the user, so it must stay readable; a test on Debian 13
+with OpenSSH 10.0 logged in with this layout and refused a forward and a
+terminal.
+
+The proxy logs only the connection to the server's port 22. A command that
+the agent runs there as `triage` can still open its own connections from
+that server, such as `curl`, which the proxy neither sees nor limits. A
+`command=` list of allowed commands in the key line, or a firewall rule for
+the `triage` user's outgoing connections on each server, would close that;
+neither is part of the setup.
 
 **The servers become listed hosts at each run's start.** Before a run in the
 systems repository starts, MMHotline runs MMX's listing of each inventory in
@@ -547,7 +607,8 @@ reads the file once a second and sends each change at once as a
 `chatgpt_sign_in_changed` event. After Codex exits, the run reads the file
 once more, sends any change before its final event, and deletes `auth.json`.
 The triage agent's session files stay in `$HOME/.codex/sessions` for resume.
-A review run's home is in its private `/tmp` and is discarded anyway.
+A review run's or commit review's home is in its private `/tmp` and is
+discarded anyway.
 
 **Each copy a run sends back is checked before it is saved,** because the
 run's home belongs to an agent that a log may mislead:
@@ -806,7 +867,13 @@ out, it is `signed_by_a_trusted_key_or_reviewed`, the check this section
 describes, so a settings file written before the key keeps working. The other
 value is `every_commit_on_origin`:
 
-Use `every_commit_on_origin` only when origin is on the team's own server and only keys that already hold root on every server can push to it. With origin on a Git host such as GitHub, it would give everyone who can push there root on every server.
+Use `every_commit_on_origin` only when origin is on the team's own server,
+only keys that already hold root on every server can push to it, and the
+`triage` user cannot write to it. With origin on a Git host such as GitHub,
+it would give everyone who can push there root on every server. The agent
+logs in to the servers as `triage`, so if origin is a repository on one of
+them that `triage` can write, such as through a group, the agent could push
+a commit that MMX then runs as root.
 
 With `every_commit_on_origin`, every commit on origin's branch passes. MMHotline
 reads no signature, no commit waits, and no warning or commit review run
@@ -818,6 +885,9 @@ nothing. Commits that waited before a switch to `every_commit_on_origin` no
 longer stop an MMX run, but stay on Approvals, with their warnings open, until
 a person marks them reviewed. Reason: a switch happens once, and recording the
 settings as a reviewer would change the database format for that one moment.
+Switching back to `signed_by_a_trusted_key_or_reviewed` does not check the
+commits that arrived while every commit passed: the checked-through commit
+already moved past them, and the check starts after it.
 
 The reason is who can push. A team whose origin is a bare repository owned by
 root on its own server, where only keys that already have root on every
@@ -1067,7 +1137,8 @@ told about yet. The check that records the commit changes the database, so
 the next background visit starts the run. No coding agent starts when no
 commit waits for the agent. The run needs what every run in the systems
 repository needs: the triage agent's setup, its sandbox, and MMHotline's
-copy.
+copy. It starts in a [new empty home](#what-a-run-leaves-for-the-next), so
+nothing an earlier run left in the agent's home steers its decision.
 
 One run covers every such commit, oldest found first. MMHotline gives the
 commits to the run in the transaction that records the run, so any later
@@ -1109,7 +1180,9 @@ agent may still read the servers and send other reports.
 - for each commit: its full ID, author, commit date, the time MMHotline
   found it, its message, its changed paths, and its diff. The message and
   the diff are quoted line by line with `> `, so the agent sees where the
-  commit's own text starts and ends.
+  commit's own text starts and ends. An author or a path that holds a line
+  break or another character that does not print is shown in Go's quoted
+  form, such as `"a\nb"`.
 
 Each diff is cut at 16 KiB, measured as the prompt carries it in JSON, with
 "[and N more lines of the diff, which MMHotline left out to keep this prompt
@@ -2136,7 +2209,11 @@ after a run that had ended 31 minutes before; with the times in the task,
 it computes instead of guessing.
 
 The message is quoted line by line, so the agent sees where the alert's own
-text starts and ends. Each alert's message is cut at 2,000 characters so a long message cannot
+text starts and ends. Every line break a reader may honor counts: `\r\n`,
+`\r`, `\v`, `\f`, `\x1c` to `\x1e`, U+0085, U+2028, and U+2029 each become
+`\n` before quoting, as in every prompt that quotes text. Otherwise a lone
+`\r` could start a line of its own, such as a fake "Notes from the team:"
+section. Each alert's message is cut at 2,000 characters so a long message cannot
 push the remaining alerts out of the prompt. The agent reads the servers for
 details.
 The prompt is at most 64 KiB as it travels in JSON on the run socket: the

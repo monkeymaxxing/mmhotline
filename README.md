@@ -228,10 +228,14 @@ Rules in the settings file say which fixes the triage agent may run without
 a person, and which fixes a person must approve.
 
 MMHotline runs the triage agent as a separate Unix user in a systemd
-sandbox. The
-triage agent cannot read MMHotline's database or the secrets of the sending
-services, and every connection that it makes goes through a proxy that logs
-it. The triage agent is optional.
+sandbox. The triage agent cannot read MMHotline's database or the secrets
+of the sending services, unless the team lets it run every fix without a
+person
+([why](docs/how-to/decide-what-the-triage-agent-may-do.md#set-the-rules)).
+Every connection it opens from MMHotline's server goes through a proxy that
+logs it. On the team's servers it logs in as the user `triage`, and a
+connection that a command there opens does not pass the proxy. The triage
+agent is optional.
 
 ### The right alert wakes the right person
 

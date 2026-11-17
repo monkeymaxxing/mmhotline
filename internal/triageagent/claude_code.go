@@ -11,19 +11,31 @@ func (claudeCode) info() CodingAgentInfo {
 }
 
 func (claudeCode) command(request Request) []string {
-	args := []string{"claude", "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--model", request.Model, "--effort", request.ReasoningEffort}
+	// --strict-mcp-config without --mcp-config starts no MCP server, so no
+	// server that a run added to ~/.claude.json starts in a later run.
+	args := []string{"claude", "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--strict-mcp-config", "--model", request.Model, "--effort", request.ReasoningEffort}
 	if request.Action == "resume" {
 		args = append(args, "--resume", request.SessionID)
 	}
 	return args
 }
 
+// env turns off Claude Code's auto memory, which it loads into every later
+// session: the agent keeps notes in the systems repository's
+// triage_agent_notes/, where the commit check judges them.
 func (claudeCode) env(request Request, _ string) []string {
-	values := []string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"}
+	values := []string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"}
 	if request.CredentialType == "api_key" {
 		return append(values, "ANTHROPIC_API_KEY="+request.Credential)
 	}
 	return append(values, "CLAUDE_CODE_OAUTH_TOKEN="+request.Credential)
+}
+
+// plantablePaths: Claude Code reads the CLAUDE.md files of the working
+// directory's parents, and the agent's copy is in its home. Session files in
+// ~/.claude/projects/ stay for resume.
+func (claudeCode) plantablePaths() []string {
+	return []string{"CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", ".claude/rules", ".claude/settings.json", ".claude/agents", ".claude/commands", ".claude/skills", ".claude/output-styles", ".claude/plugins"}
 }
 
 func (claudeCode) serviceHosts(string) []ListedHost {

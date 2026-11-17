@@ -443,7 +443,7 @@ triage agent's setup.
 
 | Key | Required | Type and allowed values |
 | --- | --- | --- |
-| `triage_agent.trusted_commits` | Optional; left out means `signed_by_a_trusted_key_or_reviewed` | Which commits on origin MMHotline lets MMX and the triage agent's copy use. `signed_by_a_trusted_key_or_reviewed`: a commit passes when a trusted key signed it, or when a person (or, when allowed, the triage agent) reviewed it. `every_commit_on_origin`: every commit on origin's branch passes with no check, so none waits. Use `every_commit_on_origin` only when origin is on the team's own server and only keys that already hold root on every server can push to it. With origin on a Git host such as GitHub, it would give everyone who can push there root on every server. |
+| `triage_agent.trusted_commits` | Optional; left out means `signed_by_a_trusted_key_or_reviewed` | Which commits on origin MMHotline lets MMX and the triage agent's copy use. `signed_by_a_trusted_key_or_reviewed`: a commit passes when a trusted key signed it, or when a person (or, when allowed, the triage agent) reviewed it. `every_commit_on_origin`: every commit on origin's branch passes with no check, so none waits. Use `every_commit_on_origin` only when origin is on the team's own server, only keys that already hold root on every server can push to it, and the `triage` user on the servers cannot write to it. With origin on a Git host such as GitHub, it would give everyone who can push there root on every server. Switching back does not check the commits that arrived meanwhile. |
 | `triage_agent.commit_signing_public_key` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | The public key line the triage agent signs its commits with, from `/var/lib/mmhotline-triage-agent/.ssh/id_ed25519.pub`. The agent's own commits pass only within `one_time_playbooks/` and `triage_agent_notes/`. |
 | `triage_agent.trusted_commit_signing_public_keys` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | The public key lines of the team's people and machines, such as each person's desk and util01. A commit no listed key signed waits for a review before any MMX run goes past it. Never the triage agent's own key. May be `[]`. |
 | `triage_agent.commits_without_a_trusted_signature_are_approved_by` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | `a_person`, or `a_person_or_the_triage_agent`: the triage agent then reviews each such commit and approves an ordinary change |
@@ -464,9 +464,11 @@ triage agent's setup.
 How `warn_waits_for_the_agent_minutes` works:
 
 - MMHotline delivers a held warning at the end of the wait.
-- If the agent asked for a playbook run or sent a report in that session
-  meanwhile, the agent's request or report takes the warning over, and
-  MMHotline sends nothing for the warning.
+- If the agent asked for a playbook run or sent a report of any severity,
+  even `info`, in that session meanwhile, the agent's request or report
+  takes the warning over, and MMHotline sends nothing for the warning. So
+  an agent that a log misleads into reporting "all fine" also keeps the
+  warning from people.
 - MMHotline delivers the warning at once when the agent cannot take it: the
   agent is not set up, its sandbox is not installed, MMHotline's copy of the
   systems repository is missing, or its run fails or ends without a request

@@ -25,8 +25,13 @@ const (
 
 // Request is the first line MMHotline sends.
 type Request struct {
-	Action         string `json:"action"`
-	AgentRole      string `json:"agent_role"`
+	Action    string `json:"action"`
+	AgentRole string `json:"agent_role"`
+	// NewEmptyHome, on a triage agent run, starts the coding agent in a new
+	// empty home in the run's private /tmp, as every review agent run starts:
+	// a commit review decides which commits MMX may run, so nothing a misled
+	// earlier run planted in the agent's home may reach it.
+	NewEmptyHome   bool   `json:"new_empty_home,omitempty"`
 	CodingAgent    string `json:"coding_agent"`
 	CredentialType string `json:"credential_type"`
 	Credential     string `json:"credential,omitempty"`
