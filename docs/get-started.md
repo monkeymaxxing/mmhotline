@@ -236,15 +236,18 @@ in your own.
 
 6. **Connect Pushover.** On the Pushover website, create an application
    named MMHotline, as [the Pushover guide](how-to/connect-pushover.md)
-   shows, and copy its API token. Then save it in the settings file and
-   apply the file:
+   shows, and copy its API token. Then run this command, which saves the
+   token in the settings file and applies the file:
 
    ```sh
    sudo mmhotline settings set-secret sending_services.pushover.application_token --apply
    ```
 
-   The command waits for the token: paste it, then press Enter. Nothing
-   shows as you paste. A coding agent pipes the token in instead, from
+   RUN THE COMMAND FIRST. PASTE THE TOKEN ONLY WHEN IT WAITS FOR IT.
+
+   Pasted at the shell prompt instead, the token runs as a command and
+   stays in the shell history. The command waits for the token: paste it,
+   then press Enter. Nothing shows as you paste. A coding agent pipes the token in instead, from
    where the person put it. Reason: a token typed on the command line
    would stay in the shell history and show in the list of running
    processes.
@@ -270,6 +273,12 @@ in your own.
      --contact-method-type pushover_notification \
      --pushover-user-key-file -
    ```
+
+   Pushover sends to every device on your account. For alerts on one
+   device only, such as your phone and not a tablet, add
+   `--pushover-device-name NAME` with the device's name from the Pushover
+   website, as [Send to one device only](how-to/connect-pushover.md#send-to-one-device-only)
+   says.
 
    The command waits for the key: paste it, then press Enter. Nothing
    shows as you paste. A coding agent pipes the key in instead, from where
