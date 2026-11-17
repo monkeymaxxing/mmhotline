@@ -496,7 +496,7 @@ func (a *App) claimOrResolveIncidentCommand(ctx context.Context, p Principal, ac
 		}
 		switch {
 		case i.Status == "resolved":
-			message = fmt.Sprintf("%s claimed SOS incident %s. It was a test, so MMHotline resolved it after the claim. Nothing more to do.", claimer.Name, i.ID)
+			message = fmt.Sprintf("%s claimed SOS incident %s. It was a test, so MMHotline resolved it after the claim. A claim from the terminal does not show that the phone woke: only Acknowledge on the phone does, so the contact method's emergency test is unchanged.", claimer.Name, i.ID)
 		case taken != "":
 			message = fmt.Sprintf("%s took over SOS incident %s from %s. MMHotline contacts nobody else about it. Next: when the problem is fixed, run: sudo mmhotline incidents resolve --incident-id %s", claimer.Name, i.ID, taken, i.ID)
 		default:

@@ -2269,7 +2269,10 @@ Barbara Example now owns SOS incident acc896d49ce5b2ef40cd2c944da4f08f. MMHotlin
   message says so.
 - A test SOS resolves itself after the claim, and a waiting
   `incidents send-test-sos` sees the claim. The message says
-  `It was a test, so MMHotline resolved it after the claim.`
+  `It was a test, so MMHotline resolved it after the claim.` It adds that a
+  claim from the terminal does not show that the phone woke, so the
+  contact method's emergency test is unchanged: only Acknowledge on the
+  phone proves that.
 - The command refuses, changes nothing, and exits non-zero when
   `--sign-in-email-address` is missing or not a member's, when no incident
   has the ID (`no SOS incident has ID ID`), and when the incident is

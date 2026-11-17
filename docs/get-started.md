@@ -221,7 +221,9 @@ in your own.
    Next: set up cloudflared and a Cloudflare Access application for https://ops.example.com, ...
    ```
 
-   **Check:** the output ends with the `MMHotline:` and `Next:` lines, and
+   **Check:** the output ends with the `MMHotline:` line, followed by a
+   `Next:` line when `web_url` starts with `https://` (with
+   `http://localhost:8480`, nothing follows), and
    `mmhotline version` prints the release, such as
    `mmhotline 0.4.0 (COMMIT, linux/amd64, modified=false)`, with the
    release's full commit hash in place of `COMMIT`.

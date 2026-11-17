@@ -130,7 +130,7 @@ func TestIncidentsClaimCommandResolvesATestSOSAndEndsTheWait(t *testing.T) {
 	id := r.sendTestSOS(t)
 	backgroundRounds(t, r.a)
 	result, _ := claimCommand(t, r, "claim", id, r.s.Principal.SignInEmailAddress, "", 200)
-	if result.Incident.Status != "resolved" || result.Message != "Responder claimed SOS incident "+id+". It was a test, so MMHotline resolved it after the claim. Nothing more to do." {
+	if result.Incident.Status != "resolved" || result.Message != "Responder claimed SOS incident "+id+". It was a test, so MMHotline resolved it after the claim. A claim from the terminal does not show that the phone woke: only Acknowledge on the phone does, so the contact method's emergency test is unchanged." {
 		t.Fatalf("result: %+v %q", result.Incident, result.Message)
 	}
 	if !inOrder(r.history(t, id), "Claimed by Responder with the mmhotline command, run by alice", "Resolved by MMHotline after the claim, because this incident was a test") {
