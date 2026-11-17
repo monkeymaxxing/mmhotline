@@ -504,11 +504,18 @@ func (a *App) approvalsPageHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	slices.SortStableFunc(warned, func(x, y ApprovalRequestView) int { return x.RunTime().Compare(y.RunTime()) })
-	RenderPage(w, 200, "Approvals", approvalsPageBody, struct {
-		Waiting, Warned, Decided          []ApprovalRequestView
-		Commits, ApprovedByTheTriageAgent []CommitReview
-		CSRF                              string
-	}{waiting, warned, decided, commits, approvedByTheTriageAgent, a.CSRFToken(w, r)})
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, 200, "Approvals", frame, nil, approvalsPageBody(frame, approvalsPageData{waiting, warned, decided, commits, approvedByTheTriageAgent, a.CSRFToken(w, r)}))
+}
+
+// approvalsPageData is what the Approvals page shows (playbook_run_approvals.templ).
+type approvalsPageData struct {
+	Waiting, Warned, Decided          []ApprovalRequestView
+	Commits, ApprovedByTheTriageAgent []CommitReview
+	CSRF                              string
 }
 
 // renderApprovalRequestPage shows one approval request or warned run, with
@@ -523,11 +530,19 @@ func (a *App) renderApprovalRequestPage(w http.ResponseWriter, r *http.Request, 
 		HTTPError(w, err)
 		return
 	}
-	RenderPage(w, status, v.Question(), approvalRequestPageBody, struct {
-		Request                 ApprovalRequestView
-		CSRF, Error             string
-		MaximumReasonCharacters int
-	}{v, a.CSRFToken(w, r), message, maximumRefusalReasonCharacters})
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	title := v.Question()
+	renderPage(w, status, title, frame, approvalRequestHeading(frame, title, v), approvalRequestPageBody(frame, approvalRequestPageData{v, a.CSRFToken(w, r), message, maximumRefusalReasonCharacters}))
+}
+
+// approvalRequestPageData is what one approval request's page shows (playbook_run_approvals.templ).
+type approvalRequestPageData struct {
+	Request                 ApprovalRequestView
+	CSRF, Error             string
+	MaximumReasonCharacters int
 }
 
 // decideApprovalHTTP approves, refuses, or stops through the one operation
@@ -563,52 +578,3 @@ func (a *App) decideApprovalHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
-
-// approvalsPageBody lists, first and amber, the approval requests that wait
-// for a person, each with Review; then the warned runs with their run time
-// and Stop, one press, because the run goes ahead by itself; then, quiet,
-// what was decided or run lately. Each section is live, so it stays current.
-const approvalsPageBody = commitReviewsListBody + `<section id="open-approvals" data-live class="panel{{if .Waiting}} warn{{end}}"><div class="panel-head"><h2>Waiting for a person</h2>{{with .Waiting}}<span class="tag warn">{{len .}} waiting</span>{{end}}</div>` +
-	`{{with .Waiting}}<ul class="items">{{range .}}<li><div class="what"><a class="title" href="/approvals/{{.ID}}">{{.Question}}</a><span class="faint small">{{.StateTag}} · asked at {{clock .AskedAt}}, {{relativeTime .AskedAt}}{{with .IncidentTitle}} · for the SOS {{.}}{{end}}</span></div><div class="do"><a class="btn primary" href="/approvals/{{.ID}}">Review</a></div></li>{{end}}</ul>` +
-	`<p class="panel-foot">Open a playbook run request to read the proposed changes, then approve or refuse the request. Any team member may decide.</p>{{else}}<div class="panel-body"><p class="muted">No playbook run waits for a person's approval.</p></div>{{end}}</section>` +
-	`<section id="warned-playbook-runs" data-live class="panel"><div class="panel-head"><h2>Runs unless someone presses Stop</h2></div>` +
-	`{{with .Warned}}<ul class="items">{{range .}}<li><div class="what"><a class="title" href="/approvals/{{.ID}}">{{.Question}}</a><span class="faint small">{{if .Stoppable}}Runs at {{clock .RunTime}}, {{relativeTime .RunTime}}{{else}}{{.StateTag}}{{end}}{{with .IncidentTitle}} · for the SOS {{.}}{{end}}</span></div>{{if .Stoppable}}<form class="do" method="post" action="/approvals/{{.ID}}/stop"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn">Stop</button></form>{{end}}</li>{{end}}</ul>` +
-	`<p class="panel-foot">MMHotline starts each playbook run at the scheduled time. Press Stop before the scheduled time to cancel the playbook run.</p>{{else}}<div class="panel-body"><p class="muted">No playbook run waits for its run time.</p></div>{{end}}</section>` +
-	`<section id="decided-approvals" data-live class="panel quiet"><div class="panel-head"><h2>Decided or run lately</h2></div>` +
-	`{{with .Decided}}<ul class="items">{{range .}}<li><div class="what"><a href="/approvals/{{.ID}}">{{.Question}}</a><span class="faint small">{{if .Warned}}Warned{{else}}Asked{{end}} at {{clock .AskedAt}} · last change at {{clock .ChangedAt}}</span></div><span class="tag {{.Tone}}">{{.StateTag}}</span></li>{{end}}</ul>` +
-	`{{else}}<div class="panel-body"><p class="faint">No playbook run was decided, stopped, or run yet.</p></div>{{end}}</section>` +
-	commitsTheTriageAgentApprovedBody
-
-// approvalRequestPageBody is one approval request or warned run. The heading
-// asks the question. The box below it says what MMHotline does next and
-// holds the decision, or, once decided, says what happened. The facts, the
-// warnings that make a person decide, why the triage agent asks, and each
-// step follow; the playbook's text and the identifiers are folded.
-const approvalRequestPageBody = `{{define "heading"}}{{with .Data.Request}}<div class="approval-head"><p class="crumbs"><a href="/dashboard">Dashboard</a> / <a href="/approvals">Approvals</a> / {{.Title}}</p>` +
-	`<div id="approval-state" data-live class="tags"><span class="tag {{.Tone}}">{{.StateTag}}</span></div><h1>{{.Question}}</h1>` +
-	`<p class="meta">The triage agent asked{{if .FromSoftwareReview}} during a software review{{end}} at {{clock .AskedAt}}, {{relativeTime .AskedAt}}{{if .IncidentID}}, for the SOS <a href="/incidents/{{.IncidentID}}">{{.IncidentTitle}}</a>{{end}}.</p></div>{{end}}{{end}}` +
-	`{{define "reviewTag"}}{{if eq . "approved"}}<span class="tag ok">Approved</span>{{else if eq . "refused"}}<span class="tag warn">Refused</span>{{else}}<span class="tag warn">Could not review</span>{{end}}{{end}}` +
-	`{{with .Error}}<p class="form-error" role="alert">{{capitalize .}}</p>{{end}}{{with .Request}}` +
-	`{{if and .Open (not .Warned)}}<section id="approval-decision" data-live class="decide warn approval" aria-label="Your decision"><div class="say"><strong>{{.WhatAnApprovalDoes}}</strong>{{with .AlsoApproves}}<p><strong>{{.}}</strong></p>{{end}}<p class="muted">{{.Where}} The result appears on the playbook run page{{if .IncidentID}} and on the incident{{end}}.</p></div>` +
-	`<div class="do">{{if not .ApprovedByYou}}<form method="post" action="/approvals/{{.ID}}/approve"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn primary big block">Approve and run</button></form>{{end}}` +
-	`<form method="post" action="/approvals/{{.ID}}/refuse" class="refuse"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input name="reason" required maxlength="{{$.MaximumReasonCharacters}}" aria-label="Reason for refusing" placeholder="Reason for refusing"><button class="btn">Refuse</button></form>` +
-	`<p class="faint small">{{if .FromSoftwareReview}}One refusal ends the request. Your refusal reason stays on the playbook run page and in the incident history.{{else}}One refusal ends the request. The triage agent gets your reason, and may ask again with another fix.{{end}}</p></div></section>` +
-	`{{else if .Stoppable}}<section id="approval-decision" data-live class="decide warn approval" aria-label="Your decision"><div class="say"><strong>MMHotline runs the playbook at {{clock .RunTime}}, {{relativeTime .RunTime}}, unless someone presses Stop.</strong><p class="muted">{{.Where}} The playbook run needs no approval because the rule is {{.RuleTitle}}.</p></div>` +
-	`<form class="do" method="post" action="/approvals/{{.ID}}/stop"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input name="reason" maxlength="{{$.MaximumReasonCharacters}}" aria-label="Reason for stopping, optional" placeholder="Reason for stopping (optional)"><button class="btn primary big block">Stop</button><p class="faint small">Then nothing runs{{if not .FromSoftwareReview}}, and MMHotline tells the triage agent you stopped the playbook run{{end}}.</p></form></section>` +
-	`{{else}}<section id="approval-decision" data-live class="panel" aria-label="What happened"><div class="panel-head"><h2>{{.StateLabel}}</h2><span class="faint small">{{clock .ChangedAt}}</span></div><div class="panel-body">` +
-	`{{with .CoveredBy}}<p>Approved without a new request: {{.}} <a href="/approvals/{{$.Request.CoveredByApprovalRequestID}}">Open the earlier approval</a></p>{{end}}` +
-	`{{range .Decisions}}<p>{{.Decision}} by {{.MemberName}} at {{clock .At}}{{with .Reason}}: {{.}}{{end}}</p>{{end}}{{with .StoppedBy}}<p>Stopped by {{.}} at {{clock $.Request.ChangedAt}}{{with $.Request.StopReason}}: {{.}}{{end}}</p>{{end}}` +
-	`{{with .ResultMessage}}<div class="result">{{.}}</div>{{else}}{{if or (eq .State "approved") (eq .State "running") .Open}}<p class="muted">The result appears on the playbook run page when the run ends.</p>{{end}}{{end}}{{with .ResultForTheAgent}}<p class="faint small">{{.}}</p>{{end}}</div></section>{{end}}` +
-	`<div class="facts"><div class="fact"><div class="k">Can change</div><div class="v">{{with .Servers}}{{.}}{{else}}No server{{end}}</div></div><div class="fact"><div class="k">Inventory</div><div class="v">{{.Inventory}}</div></div><div class="fact"><div class="k">Steps</div><div class="v">{{len .Tasks}}</div></div>{{with .ReviewOutcome}}<div class="fact"><div class="k">Review agent</div><div class="v">{{template "reviewTag" .}}</div></div>{{end}}</div>` +
-	`<div class="cols"><div class="col-main">` +
-	`{{with .UnrecognizedTasks}}<section class="panel warn"><div class="panel-head"><h2>Steps MMHotline did not recognize</h2></div><div class="panel-body"><p>MMHotline cannot check what the unrecognized steps do, so a person decides.</p><ul>{{range .}}<li><code>{{.Path}}</code> ({{.Action}}): {{.Reason}}</li>{{end}}</ul></div></section>{{end}}` +
-	`{{with .TasksOnServicesWhoseChangesAPersonMustApprove}}<section class="panel warn"><div class="panel-head"><h2>Steps on services whose changes a person must approve</h2></div><div class="panel-body"><p>A person decides every change to a service on the list below.</p><ul>{{range .}}<li><code>{{.Path}}</code> ({{.Action}}) {{.Reason}}</li>{{end}}</ul><p class="faint small">An administrator changes the list in <code>services_whose_changes_a_person_must_approve</code> in MMHotline's settings file, and the <a href="/agent-playbook-rules">Rules for running the agent's playbooks</a> page shows the list.</p></div></section>{{end}}` +
-	`{{if .Diagnosis}}<section class="panel"><div class="panel-head"><h2>Why the triage agent asks</h2></div><div class="panel-body">{{with .DiagnosisSummary}}<p class="agent-summary">{{.}}</p><details class="more"><summary>The agent's whole diagnosis</summary><div class="body"><pre>{{$.Request.Diagnosis}}</pre></div></details>{{else}}<pre>{{$.Request.Diagnosis}}</pre>{{end}}<p class="faint small">MMHotline has not checked the triage agent's claims.</p></div></section>{{end}}` +
-	`<section class="panel"><div class="panel-head"><h2>What the playbook changes, step by step</h2><span class="faint small">as <code>mmx explain</code> lists the steps</span></div>{{with .Tasks}}<ol class="changes">{{range .}}<li><span class="t">{{.Kind}}</span><span class="tag nodot">{{.Node}}</span><span class="h"><code>{{.Path}}</code> · {{.Module}}{{if eq .Status "conditional"}} · only if the step's condition holds at run time{{else if eq .Status "skipped"}} · MMX skips the step{{end}}{{range .Arguments}}<br><code>{{.}}</code>{{end}}</span></li>{{end}}</ol>{{else}}<div class="panel-body"><p class="muted">MMX lists no step.</p></div>{{end}}</section>` +
-	`<div class="folds">{{with .EarlierVersionsRefused}}<details class="more"><summary>Earlier versions the review agent refused ({{len .}})</summary><div class="body"><p class="faint small">The triage agent revised its fix after each refusal and asked again. After the review agent's third refusal in a row, a person decides. Oldest first:</p><ol class="earlier">{{range .}}<li><p><code>{{.Playbook}}</code> in the inventory “{{.Inventory}}”, at commit <code>{{.CommitID}}</code></p><p>Review agent's reason: {{.Reason}}</p>` +
-	`<details class="more"><summary>Why the triage agent asked</summary><div class="body"><pre>{{.Diagnosis}}</pre></div></details><details class="more"><summary>The playbook's text the review agent saw</summary><div class="body"><pre>{{.PlaybookText}}</pre></div></details></li>{{end}}</ol></div></details>{{end}}` +
-	`<details class="more"><summary>The playbook's text, and any files it copies, at commit {{.ShortCommitID}}</summary><div class="body"><pre>{{.PlaybookText}}</pre></div></details>` +
-	`<details class="more"><summary>Identifiers</summary><div class="body"><dl class="kv"><dt>Playbook</dt><dd><code>{{.Playbook}}</code></dd><dt>Inventory</dt><dd><code>{{.Inventory}}</code></dd><dt>Commit MMHotline checked</dt><dd><code>{{.CommitID}}</code></dd><dt>Request</dt><dd><code>{{.ID}}</code></dd>{{with .TriageSessionID}}<dt>Triage session</dt><dd><a href="/triage-sessions/{{.}}">{{.}}</a></dd>{{end}}</dl></div></details></div></div>` +
-	`<div class="col-side"><section class="panel"><div class="panel-head"><h2>{{if .Warned}}Why MMHotline warns first{{else}}Why the playbook needs a person{{end}}</h2></div><div class="panel-body"><dl class="kv"><dt>Kinds of change</dt><dd>{{range $index, $kind := .Kinds}}{{if $index}}, {{end}}{{$kind}}{{else}}None{{end}}</dd><dt>Rule</dt><dd><strong>{{.RuleTitle}}</strong></dd></dl>` +
-	`<p class="small muted">{{with .ListedPlaybookRule}}{{.}}{{else}}The strictest rule of the playbook's kinds of change in the inventory “{{.Inventory}}” applies.{{end}}</p>{{if .TasksOnServicesWhoseChangesAPersonMustApprove}}<p class="small">A step acts on a service whose changes a person must approve.</p>{{end}}{{if and .ReviewOutcome (ne .ReviewOutcome "approved")}}<p class="small">The review agent did not approve the playbook.</p>{{end}}</div><div class="panel-foot"><a href="/agent-playbook-rules">Rules for running the agent's playbooks</a></div></section>` +
-	`{{with .Review}}<section class="panel"><div class="panel-head"><h2>Review agent</h2>{{template "reviewTag" $.Request.ReviewOutcome}}</div><div class="panel-body"><p class="small muted">{{.}}</p><p class="faint small">A second AI agent that checks each playbook before it runs.</p></div></section>{{end}}</div></div>{{end}}`

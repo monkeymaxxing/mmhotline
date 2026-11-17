@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"mmhotline/internal/cloudflareaccess"
 )
 
@@ -240,7 +242,7 @@ func HTTPError(w http.ResponseWriter, err error) {
 }
 
 func renderSignInUnavailable(w http.ResponseWriter) {
-	RenderPage(w, 503, "Cannot check sign-ins right now", `<section class="panel"><div class="panel-body"><p>MMHotline cannot check Cloudflare Access sign-ins right now.</p><p>Use a sign-in link created on the server to reach MMHotline during the outage.</p><details class="fold"><summary>Create a sign-in link on the server</summary><p>Someone with SSH access to the server runs <code>sudo mmhotline people create-sign-in-link --sign-in-email-address ADDRESS</code>, using your sign-in email address. Follow the command's SSH forwarding instructions, then open the new link.</p></details><a href="/dashboard">Try the dashboard again</a></div></section>`, true)
+	renderSimplePage(w, 503, "Cannot check sign-ins right now", signInUnavailableBody())
 }
 
 func renderBrowserError(w http.ResponseWriter, err error, r *http.Request) {
@@ -286,7 +288,28 @@ func renderBrowserError(w http.ResponseWriter, err error, r *http.Request) {
 			target, label = "/triage-sessions/"+id, "Back to the triage session"
 		}
 	}
-	RenderPage(w, status, title, `<section class="panel"><div class="panel-body"><p role="alert">{{.Reason}}</p><a href="{{.Target}}">{{.Label}}</a></div></section>`, struct{ Reason, Target, Label string }{reason, target, label})
+	renderSimplePage(w, status, title, browserErrorBody(reason, target, label))
+}
+
+// renderSimplePage writes a templ page that has the frame's own heading.
+func renderSimplePage(w http.ResponseWriter, status int, title string, body templ.Component) {
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, status, title, frame, nil, body)
+}
+
+// signInPageData is what the sign-in page shows (http.templ).
+type signInPageData struct {
+	WebURL, SSHForwardCommand string
+	AccessConfigured          bool
+}
+
+// notATeamMemberPageData is what the not-a-team-member page shows (http.templ).
+type notATeamMemberPageData struct {
+	SignInEmailAddress, TeamName string
+	settingsFileNoticeView
 }
 
 // IntakeHandler exposes only signed sender requests.
@@ -303,10 +326,7 @@ func (a *App) browserAccessError(w http.ResponseWriter, r *http.Request, err err
 		if a.AccessVerifier != nil {
 			title = "Sign in through Cloudflare Access"
 		}
-		RenderPage(w, 401, title, `<section class="panel"><div class="panel-body">{{if .AccessConfigured}}<p>Open MMHotline through Cloudflare Access to sign in.</p><p><a href="{{.WebURL}}">Open {{.WebURL}}</a></p><details class="fold"><summary>Sign in during an outage</summary>{{end}}<p>{{if .AccessConfigured}}Someone{{else}}To get a sign-in link, ask someone{{end}} with SSH access to the MMHotline server {{if .AccessConfigured}}runs{{else}}to run{{end}} <code>sudo mmhotline people create-sign-in-link --sign-in-email-address ADDRESS</code> with your sign-in email address.</p><p>On your computer, run <code>{{.Forward}}</code> with your SSH destination in place of <code>YOUR_SSH_HOST</code>, then open the new link.</p>{{if .AccessConfigured}}</details>{{end}}</div></section>`, struct {
-			WebURL, Forward  string
-			AccessConfigured bool
-		}{a.WebURL, forward, a.AccessVerifier != nil})
+		renderSimplePage(w, 401, title, signInPageBody(signInPageData{a.WebURL, forward, a.AccessVerifier != nil}))
 		return
 	}
 	if errors.Is(err, ErrForbidden) {
@@ -321,10 +341,7 @@ func (a *App) browserAccessError(w http.ResponseWriter, r *http.Request, err err
 		log.Printf("Sign-in refused: %s is not a member of the team", principal.SignInEmailAddress)
 		notice := a.settingsFileNoticeView()
 		notice.SettingsFile = a.SettingsFilePath()
-		RenderPage(w, 403, "Not a team member", `<section class="panel"><div class="panel-body"><p>The sign-in email address <strong>{{.Login}}</strong> is not a member of {{.Team}}.</p><p>Ask an administrator to add your sign-in email address to <code>people</code> in MMHotline's settings file and apply the file.</p><details class="fold"><summary>Where team members are set</summary>`+settingsFileNotice("<code>people</code>")+`</details><a href="/dashboard">Try the dashboard again</a></div></section>`, struct {
-			Login, Team string
-			settingsFileNoticeView
-		}{principal.SignInEmailAddress, teamName, notice})
+		renderSimplePage(w, 403, "Not a team member", notATeamMemberBody(notATeamMemberPageData{principal.SignInEmailAddress, teamName, notice}))
 		return
 	}
 	HTTPError(w, err)

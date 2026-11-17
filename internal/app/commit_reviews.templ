@@ -1,0 +1,196 @@
+package app
+
+// commitReviewsList is the Approvals page's section of commits waiting for
+// review. The section stays in the page, hidden, when none waits, so the
+// live refresh can fill it.
+templ commitReviewsList(frame pageFrame, commits []CommitReview) {
+	<section
+		id="commit-reviews"
+		data-live
+		if len(commits) > 0 {
+			class="panel warn"
+		} else {
+			hidden
+		}
+	>
+		if len(commits) > 0 {
+			<div class="panel-head">
+				<h2>Commits waiting for review</h2>
+				<span class="tag warn">{ len(commits) } waiting</span>
+			</div>
+			<ul class="items">
+				for _, commit := range commits {
+					<li>
+						<div class="what">
+							<a class="title" href={ commit.URL() }>{ commit.Question() }</a><span class="faint small">Found at { frame.Clock(commit.FoundAt) }, { frame.RelativeTime(commit.FoundAt) }</span>
+						</div>
+						<div class="do">
+							<a class="btn primary" href={ commit.URL() }>Review</a>
+						</div>
+					</li>
+				}
+			</ul>
+			<p class="panel-foot">Read each commit's changes before allowing MMX runs past the commit. Any team member may review a commit.</p>
+		}
+	</section>
+}
+
+// commitsTheTriageAgentApproved lists the commits the triage agent marked
+// reviewed, newest first, each with its report's title, so a person can
+// read what the agent let through.
+templ commitsTheTriageAgentApproved(frame pageFrame, commits []CommitReview) {
+	<section id="commits-the-triage-agent-approved" data-live class="panel quiet">
+		<div class="panel-head">
+			<h2>Commits the triage agent approved</h2>
+		</div>
+		if len(commits) > 0 {
+			<ul class="items">
+				for _, commit := range commits {
+					<li>
+						<div class="what">
+							<a href={ commit.URL() }>
+								if commit.TriageAgentReview != nil && commit.TriageAgentReview.ReportTitle() != "" {
+									Commit { commit.ShortID() }: { commit.TriageAgentReview.ReportTitle() }
+								} else {
+									Commit { commit.ShortID() }
+								}
+							</a><span class="faint small">Marked reviewed by the triage agent at { frame.Clock(commit.ReviewedAt) }</span>
+						</div>
+					</li>
+				}
+			</ul>
+		} else {
+			<div class="panel-body">
+				<p class="faint">The triage agent has approved no commit.</p>
+			</div>
+		}
+	</section>
+}
+
+// commitReviewHeading is the commit review page's own heading, with
+// breadcrumbs.
+templ commitReviewHeading(title string, review CommitReview) {
+	<div class="approval-head">
+		<p class="crumbs"><a href="/dashboard">Dashboard</a> / <a href="/approvals">Approvals</a> / Commit { review.ShortID() }</p>
+		<h1>{ title }</h1>
+	</div>
+}
+
+// commitReviewPageBody is one commit's review page. A commit no trusted key
+// signed has only its diff to review, so the diff starts open; the triage
+// agent's commit lists its paths that need review.
+templ commitReviewPageBody(frame pageFrame, data commitReviewPageData) {
+	if data.Error != "" {
+		<p class="form-error" role="alert">{ data.Error }</p>
+	}
+	{{ review := data.Review }}
+	<section
+		id="commit-review-decision"
+		data-live
+		if review.Reviewed() {
+			class="panel quiet"
+		} else {
+			class="decide warn approval"
+		}
+	>
+		if review.Reviewed() {
+			<div class="panel-body">
+				if review.ReviewerKind == "triage_agent" {
+					<p>Marked reviewed by the triage agent at { frame.Clock(review.ReviewedAt) }.</p>
+				} else {
+					<p>Commit { review.ShortID() } was reviewed by { review.ReviewedBy } at { frame.Clock(review.ReviewedAt) }.</p>
+				}
+				<p class="muted">MMHotline can run MMX past the reviewed commit on the next playbook run request, and the triage agent's next run starts past it.</p>
+			</div>
+		} else {
+			<div class="say">
+				<h2>MMX runs wait for a person's review</h2>
+				if review.NotSignedByATrustedKey() {
+					<p>No key the team trusts signed commit { review.ShortID() }: the commit is unsigned, or a key the settings file does not list signed it. Until a person reviews the commit, the triage agent works from the commit before it.</p>
+					<p>If you or a teammate made the commit, for example with the merge button of your Git host's web page, read its changes in the diff below, then mark it reviewed.</p>
+					<p><strong>A commit nobody on the team made is a possible break-in.</strong> Then do not mark it reviewed: follow your team's break-in procedure.</p>
+				} else {
+					<p>Commit { review.ShortID() }, signed by the triage agent's key, changes paths the triage agent may not change without a person's review.</p>
+					<p>MMHotline then allows MMX runs past commit { review.ShortID() }. If a commit change is wrong, revert the wrong change with your own commit first.</p>
+				}
+				<p class="small muted">Review starts no playbook run. The triage agent must request the playbook run again.</p>
+			</div>
+			<form class="do" method="post" action={ review.URL() + "/review" }>
+				<input type="hidden" name="csrf" value={ data.CSRF }/><button class="btn primary big block">Mark commit reviewed</button>
+			</form>
+		}
+	</section>
+	if review.TriageAgentReview != nil {
+		<section id="triage-agent-commit-review" class="panel">
+			<div class="panel-head">
+				<h2>The triage agent's review</h2>
+			</div>
+			<div class="panel-body stack">
+				<p>
+					if review.TriageAgentReview.NeedsAPerson() {
+						The triage agent decided that a person must review the commit, and sent its report at alert severity { review.TriageAgentReview.AlertSeverity }
+					} else {
+						The triage agent approved the commit
+					}
+					at { frame.Clock(review.TriageAgentReview.DecidedAt) }, in the commit review run <code>{ review.TriageAgentReview.RunID }</code> (<a href="/triage-agent#latest-commit-review">latest commit review</a>).
+				</p>
+				<pre>{ review.TriageAgentReview.Report }</pre>
+			</div>
+		</section>
+	}
+	<section class="panel">
+		<div class="panel-head">
+			<h2>Commit facts</h2>
+		</div>
+		<div class="panel-body stack">
+			<dl class="kv">
+				<dt>Full commit ID</dt>
+				<dd><code>{ review.ID }</code></dd>
+				<dt>Author</dt>
+				<dd>{ review.Author }</dd>
+				<dt>Commit date</dt>
+				<dd>{ frame.Clock(review.CommittedAt) }</dd>
+				<dt>Found by MMHotline</dt>
+				<dd>{ frame.Clock(review.FoundAt) }</dd>
+			</dl>
+			<div>
+				<h3>Commit message</h3>
+				<p class="result">{ review.Message }</p>
+			</div>
+		</div>
+	</section>
+	if len(review.Paths) > 0 {
+		<section
+			if review.Reviewed() {
+				class="panel quiet"
+			} else {
+				class="panel warn"
+			}
+		>
+			<div class="panel-head">
+				<h2>Paths that need review</h2>
+			</div>
+			<div class="panel-body">
+				<ul>
+					for _, path := range review.Paths {
+						<li><code>{ path.Path }</code> { path.Reason }.</li>
+					}
+				</ul>
+			</div>
+		</section>
+	}
+	<details
+		class="more"
+		if review.NotSignedByATrustedKey() {
+			open
+		}
+	>
+		<summary>Commit diff</summary>
+		<div class="body">
+			if review.DiffTruncated {
+				<p class="small muted">MMHotline shows only the first 128 KiB of the commit diff to keep the review page readable. Read the full diff in your systems repository before reviewing the commit.</p>
+			}
+			<pre>{ review.Diff }</pre>
+		</div>
+	</details>
+}

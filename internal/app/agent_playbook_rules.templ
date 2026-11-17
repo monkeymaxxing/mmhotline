@@ -1,0 +1,144 @@
+package app
+
+import (
+	"strings"
+
+	"mmhotline/internal/actionkinds"
+)
+
+// agentPlaybookRulesPageBody shows the rules for running the agent's
+// playbooks, which the settings file sets.
+templ agentPlaybookRulesPageBody(frame pageFrame, data agentPlaybookRulesPageData) {
+	<div class="settings-page stack">
+		<p class="muted">The rules for running the agent's playbooks decide which fixes the triage agent may run without a person's approval.</p>
+		<section class="panel" id="services-whose-changes-a-person-must-approve">
+			<div class="panel-head">
+				<h2>Services whose changes a person must approve</h2>
+			</div>
+			<div class="panel-body">
+				if len(data.ServicesWhoseChangesAPersonMustApprove.ServiceNames) > 0 {
+					<p>On every inventory, a playbook with a task that starts, stops, restarts, or changes a listed systemd service waits for a person, whatever the rules of its kinds of action below, unless the playbook is listed by name below:</p>
+					<ul class="bullets">
+						for _, name := range data.ServicesWhoseChangesAPersonMustApprove.ServiceNames {
+							<li><code>{ name }</code></li>
+						}
+					</ul>
+					<p class="small muted">MMHotline cannot check a service against the list when the service name is known only when the playbook runs. A person must approve the playbook.</p>
+				} else {
+					<p>No services are listed. The rules below decide whether a playbook waits for a person.</p>
+				}
+				if data.ServicesWhoseChangesAPersonMustApprove.ChangedAt != nil {
+					<p class="faint small">Changed { frame.Clock(*data.ServicesWhoseChangesAPersonMustApprove.ChangedAt) } by { data.ServicesWhoseChangesAPersonMustApprove.ChangedBy }.</p>
+				} else {
+					<p class="faint small">Never set.</p>
+				}
+			</div>
+		</section>
+		for _, inventory := range data.Inventories {
+			<section class="panel">
+				<div class="panel-head">
+					<h2>The inventory “{ inventory.Inventory }”</h2>
+				</div>
+				if !inventory.InventoryFileExists {
+					<div class="panel-body">
+						<p class="line-warn small">MMHotline's copy of the systems repository has no inventories/{ inventory.Inventory }.yml.</p>
+					</div>
+				}
+				<ul class="settings-rules">
+					for _, kind := range inventory.ActionKinds {
+						<li>
+							if kind.ChangedAt != nil {
+								<strong>{ kind.ActionKindTitle }</strong><span>{ kind.RuleTitle }</span><span class="faint small">Changed { frame.Clock(*kind.ChangedAt) } by { kind.ChangedBy }</span>
+							} else {
+								<strong>{ kind.ActionKindTitle }</strong><span>{ kind.RuleTitle }</span><span class="faint small">No rule saved. A person must approve { strings.ToLower(kind.ActionKindTitle) } tasks until the settings file lists a rule.</span>
+							}
+						</li>
+					}
+				</ul>
+				if len(inventory.ListedPlaybooks) > 0 {
+					<div class="panel-body">
+						<h3>Playbooks listed by name</h3>
+						<p class="small muted">Each listed playbook takes its own rule instead of the rules of its kinds of action, even when a step acts on a service whose changes a person must approve.</p>
+					</div>
+					<ul class="settings-rules">
+						for _, playbook := range inventory.ListedPlaybooks {
+							<li>
+								if len(playbook.ItsApprovalAlsoApprovesInTheSameSession) > 0 {
+									<strong><code>playbooks/{ playbook.PlaybookName }.yml</code></strong><span>{ playbook.RuleTitle }</span><span class="small">{ "Its approval also approves, once each later in the same triage session: " }
+										@alsoApprovedPlaybookNames(playbook.ItsApprovalAlsoApprovesInTheSameSession)
+									</span><span class="faint small">Changed { frame.Clock(playbook.ChangedAt) } by { playbook.ChangedBy }</span>
+								} else {
+									<strong><code>playbooks/{ playbook.PlaybookName }.yml</code></strong><span>{ playbook.RuleTitle }</span><span class="faint small">Changed { frame.Clock(playbook.ChangedAt) } by { playbook.ChangedBy }</span>
+								}
+							</li>
+						}
+					</ul>
+				}
+			</section>
+		}
+		if len(data.Inventories) == 0 {
+			<section class="panel">
+				<div class="panel-body">
+					<p>MMHotline's copy of the systems repository has no inventories yet, and no rules for running the agent's playbooks are saved.</p>
+				</div>
+			</section>
+		}
+		<details class="more" id="kinds-of-action">
+			<summary>What MMHotline counts as each kind of action</summary>
+			<div class="body stack">
+				<p class="small muted">Each playbook uses the strictest rule among the playbook's kinds of action.</p>
+				<p class="result small">{ data.AcceptedTasksRules }</p>
+				for _, accepted := range data.AcceptedTasks {
+					<div class="stack">
+						<h3>{ accepted.Kind.Title() }</h3>
+						<ul class="bullets">
+							for _, module := range accepted.Modules {
+								<li>
+									<code>{ module.Module }</code>{ acceptedModuleText(module) }
+									@acceptedExamples(module.Examples)
+								</li>
+							}
+						</ul>
+					</div>
+				}
+			</div>
+		</details>
+		<details class="more">
+			<summary>Where the rules are set</summary>
+			<div class="body">
+				@settingsFileNoticeLine(data.settingsFileNoticeView) {
+					<code>rules_for_running_agent_playbooks</code> and <code>services_whose_changes_a_person_must_approve</code>
+				}
+			</div>
+		</details>
+	</div>
+}
+
+// alsoApprovedPlaybookNames lists the playbooks an approval also approves,
+// separated by commas.
+templ alsoApprovedPlaybookNames(names []string) {
+	for i, name := range names {
+		if i == 0 {
+			<code>{ name }</code>
+		} else {
+			, <code>{ name }</code>
+		}
+	}
+}
+
+// acceptedModuleText says, after a module's name, which arguments and
+// conditions its accepted tasks have.
+func acceptedModuleText(module actionkinds.AcceptedModule) string {
+	text := ". Arguments: " + module.ArgumentsText() + "."
+	if len(module.Conditions) > 0 {
+		text += " Conditions: " + strings.Join(module.Conditions, "; ") + "."
+	}
+	return text
+}
+
+// acceptedExamples shows each example task of a module.
+templ acceptedExamples(examples []string) {
+	for _, example := range examples {
+		<pre class="settings-code" tabindex="0">{ example }</pre>
+	}
+}

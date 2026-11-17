@@ -78,7 +78,7 @@ func (a *App) signInLinkHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if errors.Is(err, ErrUnauthorized) {
 		log.Print("Sign-in link refused: the link was already used or has expired")
-		RenderPage(w, 401, "Sign-in link unavailable", `<section class="panel"><div class="panel-body"><p>This sign-in link was already used or has expired.</p><p>Ask someone with SSH access to the server for a new sign-in link.</p><details class="fold"><summary>Create a new sign-in link</summary><p>On the server, run <code>sudo mmhotline people create-sign-in-link --sign-in-email-address ADDRESS</code>, using your sign-in email address. Follow the command's SSH forwarding instructions, then open the new link.</p></details><a href="/dashboard">Try the dashboard again</a></div></section>`, true)
+		renderSimplePage(w, 401, "Sign-in link unavailable", signInLinkUnavailableBody())
 		return
 	}
 	if err != nil {
