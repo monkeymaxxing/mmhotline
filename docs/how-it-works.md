@@ -421,7 +421,9 @@ The agent runs inside a fence:
   inventory and kind of action, whether that playbook runs at once, after
   a warning, or only after a person approves.
 - MMX runs only commits signed by a key the team trusts, or commits a
-  person or the review agent approved.
+  person or, when the team allows it, the triage agent approved. A team
+  whose systems repository is on its own server can trust every commit
+  there instead (`triage_agent.trusted_commits`).
 - A second agent, the review agent, can check each playbook first, as its
   own user, `mmhotline-review-agent`.
 
