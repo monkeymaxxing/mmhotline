@@ -324,10 +324,13 @@ func (s senderSignature) verify(body []byte, secrets [][]byte, now time.Time) (s
 	if matched == nil {
 		return "", nil, errWrongSignature
 	}
+	replayKey := "signature:" + s.timestamp + ":" + hex.EncodeToString(s.digest)
 	// The clock is checked after the signature, so a correctly signed request
-	// from a sender with a wrong clock can be told apart and reported.
+	// from a sender with a wrong clock can be told apart and reported. The
+	// replay key comes with it, so a resent request that MMHotline already
+	// received can be told apart too.
 	if delta := now.Unix() - s.seconds; delta < -300 || delta > 300 {
-		return "", matched, errSenderClockOff
+		return replayKey, matched, errSenderClockOff
 	}
-	return "signature:" + s.timestamp + ":" + hex.EncodeToString(s.digest), matched, nil
+	return replayKey, matched, nil
 }

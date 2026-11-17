@@ -129,6 +129,37 @@ func TestRefusedSignedSOSOpensOneMmhotlineSOS(t *testing.T) {
 	}
 }
 
+// A request captured on the private network and sent again after the
+// 5-minute signature window is refused like any old signature. It repeats an
+// SOS MMHotline already received, so it opens no SOS of MMHotline's own:
+// otherwise each resend after the incident is resolved would wake the person
+// on call again.
+func TestAResentSOSThatWasReceivedOpensNoMmhotlineSOS(t *testing.T) {
+	a, p, s := alertFixture(t)
+	for _, sos := range []string{
+		`{"sender_alert_id":"captured","sender_incident_key":"disk","severity":"sos","title":"Disk full","message":""}`,
+		// Without a sender_alert_id, the signature is the replay key.
+		`{"sender_incident_key":"cpu","severity":"sos","title":"CPU","message":""}`,
+	} {
+		signedAt := a.Now()
+		alertReceipt(t, intakeHTTP(a, p, s, sos, signedAt))
+		start := a.Now()
+		for _, later := range []time.Duration{10 * time.Minute, 48 * time.Hour} {
+			a.Now = func() time.Time { return start.Add(later) }
+			if w := intakeHTTP(a, p, s, sos, signedAt); w.Code != 401 {
+				t.Fatalf("a resent SOS %s later: %d %s", later, w.Code, w.Body.String())
+			}
+		}
+		a.Now = func() time.Time { return start }
+	}
+	if n := scalarTeam(t, a, `SELECT count(*) FROM alerts WHERE title LIKE 'MMHotline is refusing SOS alerts%'`); n != 0 {
+		t.Fatalf("a resent SOS opened %d SOS alerts of MMHotline's own", n)
+	}
+	if n := scalarTeam(t, a, `SELECT count(*) FROM alerts WHERE source_id=?`, s.Source.ID); n != 2 {
+		t.Fatalf("alerts from the alert source: %d", n)
+	}
+}
+
 func TestMmhotlineSOSOpensAtTheUnresolvedIncidentLimit(t *testing.T) {
 	a, p, s := alertFixture(t)
 	ctx := context.Background()

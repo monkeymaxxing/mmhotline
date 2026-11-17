@@ -28,11 +28,16 @@ const (
 )
 
 var (
-	errWrongSignature      = fmt.Errorf("%w: wrong signature", ErrUnauthorized)
-	errSenderClockOff      = fmt.Errorf("%w: the sender's clock is more than 5 minutes off", ErrUnauthorized)
-	errTooManyAlerts       = fmt.Errorf("%w: too many alerts", ErrRateLimited)
-	errTooManyIncidents    = fmt.Errorf("%w: this installation has %d unresolved SOS incidents", ErrRateLimited, maxUnresolvedIncidents)
-	errPendingDeliveryFull = fmt.Errorf("%w: the limit of pending notification deliveries has been reached", ErrRateLimited)
+	errWrongSignature = fmt.Errorf("%w: wrong signature", ErrUnauthorized)
+	errSenderClockOff = fmt.Errorf("%w: the sender's clock is more than 5 minutes off", ErrUnauthorized)
+	// errResentAfterTheSignatureWindow refuses a request whose signature is
+	// more than 5 minutes off and whose alert MMHotline already received. It
+	// opens no SOS of MMHotline's own, unlike errSenderClockOff: the alert
+	// was handled when it first arrived.
+	errResentAfterTheSignatureWindow = fmt.Errorf("%w: the sender's clock is more than 5 minutes off, and MMHotline already received this alert", ErrUnauthorized)
+	errTooManyAlerts                 = fmt.Errorf("%w: too many alerts", ErrRateLimited)
+	errTooManyIncidents              = fmt.Errorf("%w: this installation has %d unresolved SOS incidents", ErrRateLimited, maxUnresolvedIncidents)
+	errPendingDeliveryFull           = fmt.Errorf("%w: the limit of pending notification deliveries has been reached", ErrRateLimited)
 	// errAlertSourcePendingSOSFull refuses an SOS from an alert source that
 	// already has its share of SOS notifications waiting to be sent.
 	errAlertSourcePendingSOSFull = fmt.Errorf("%w: this alert source already has %d SOS notifications waiting to be sent", ErrRateLimited, maxPendingSOSDeliveriesPerAlertSource)
@@ -52,7 +57,7 @@ func rejectionReason(err error) string {
 		return rejectedTooManyAlerts
 	case errors.Is(err, errWrongSignature):
 		return rejectedWrongSignature
-	case errors.Is(err, errSenderClockOff):
+	case errors.Is(err, errSenderClockOff), errors.Is(err, errResentAfterTheSignatureWindow):
 		return rejectedClockOff
 	case errors.Is(err, ErrInvalid):
 		return rejectedInvalidAlert

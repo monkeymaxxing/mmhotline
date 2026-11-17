@@ -382,7 +382,9 @@ SOS incident dad26ba76b59defe382db9a14f5fd5c8: MMHotline is refusing SOS alerts 
 
 This happens for an invalid alert, a clock more than 5 minutes off, and
 the limits on incidents and waiting notifications. Further refusals join
-the source's open refusal incident. A request with a wrong signature never
+the source's open refusal incident. A copy of an alert MMHotline already
+received, sent again with its old signature more than 5 minutes later,
+gets `401` and opens nothing. A request with a wrong signature never
 opens anything, so a stranger who knows an alert source ID cannot wake the
 team.
 

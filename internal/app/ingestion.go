@@ -208,6 +208,15 @@ func (a *App) AdmitGeneric(ctx context.Context, sourceID, signature string, body
 		if errors.Is(err, errSenderClockOff) {
 			// Correctly signed: read the severity so a refused SOS is reported.
 			in.SenderAlertID, in.Severity = refusedAlertFields(body)
+			if in.SenderAlertID != "" {
+				replayKey = "sender:" + in.SenderAlertID
+			}
+			// A copy of an alert MMHotline already received, such as a request
+			// captured on the private network and sent again later, opens no
+			// SOS of MMHotline's own, so it cannot wake people again and again.
+			if _, findErr := readAlertBy(ctx, tx, "source_id=? AND replay_key=?", sourceID, replayKey); findErr == nil {
+				return errResentAfterTheSignatureWindow
+			}
 		}
 		if err != nil {
 			return err

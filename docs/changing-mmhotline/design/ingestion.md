@@ -233,6 +233,16 @@ alert is committed.
   "MMHotline is refusing SOS alerts from “{source}”: {reason}".
   Further refusals from the source whose SOS was refused join the source's
   open refusal incident.
+  A request whose signature is more than 5 minutes off, and whose alert
+  MMHotline already received, opens nothing: the alert was handled when it
+  first arrived. Its replay key, the `sender_alert_id` or else the
+  signature, is kept with the alert. Without this rule, someone who captured
+  an SOS request on the private network could send it again after each
+  refusal incident is resolved and wake the person on call each time. A
+  sender's retry signs the body again with the current time
+  ([retries](../../reference/alert-requests.md#retries)), so this changes
+  nothing for an honest sender. A new alert from a sender whose clock is
+  off still opens the refusal incident.
 
   The refusal incident is exempt from the unresolved incident limit, with
   at most one open refusal incident per alert source. It is also exempt
