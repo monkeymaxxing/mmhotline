@@ -85,6 +85,47 @@ The run's sandbox:
 - `MemoryDenyWriteExecute` is not set, because Claude Code runs on a
   JavaScript engine that compiles code at run time.
 
+### What a run leaves for the next
+
+A log line can mislead the agent, and a misled run can write into the
+agent's home. A file there that a coding agent reads at every start would
+then steer every later run. So each run limits what reaches the next:
+
+- **A commit review starts in a new empty home** in the run's private
+  `/tmp`, with the agent's copy of the systems repository inside it, as a
+  [review agent's run](#how-a-review-runs) does. A commit review decides
+  which commits MMX may run, so nothing an earlier run planted may reach it.
+- **Every other run in the agent's home removes, before the coding agent
+  starts,** each supported coding agent's instructions and settings:
+  `CLAUDE.md` and `CLAUDE.local.md` in the home, and `CLAUDE.md`, `rules/`,
+  `settings.json` (with its hooks), `agents/`, `commands/`, `skills/`,
+  `output-styles/`, and `plugins/` in `~/.claude/`; `AGENTS.md`,
+  `AGENTS.override.md`, `config.toml`, `hooks.json`, `prompts/`, `skills/`,
+  and `rules/` in `~/.codex/`. Every supported agent's files go, because the
+  team may switch agents.
+- **Claude Code starts with `--strict-mcp-config`,** so no MCP server that a
+  run added to `~/.claude.json` starts, and with
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. The agent's notes belong in
+  `triage_agent_notes/`, where the [commit check](#checking-commits-before-mmx-and-triage-agent-runs)
+  judges them.
+- **The agent's copy of the systems repository** drops every file the
+  starting commit lacks, ignored files too (`git clean -ffdx`).
+
+What stays, and why:
+
+- The coding agents' session files, `~/.claude/projects/` and
+  `~/.codex/sessions/`, because the next run of a triage session resumes
+  its session from them.
+- The agent's SSH key and Git settings, `~/.ssh/id_ed25519` and
+  `~/.gitconfig`, which the team's setup made.
+- No sign-in: a credential reaches each run in its request, and a ChatGPT
+  sign-in's `auth.json` is deleted when the run ends
+  ([Codex with a ChatGPT sign-in](#codex-with-a-chatgpt-sign-in)).
+
+A run could still leave other files, such as a shell's `~/.profile`, for
+later triage runs. Those runs already have the same powers as the run that
+planted them. Only the commit review crosses a line, and it starts empty.
+
 ### Every connection goes through MMHotline's logging proxy
 
 The run has its own network namespace with only a loopback interface
@@ -547,7 +588,8 @@ reads the file once a second and sends each change at once as a
 `chatgpt_sign_in_changed` event. After Codex exits, the run reads the file
 once more, sends any change before its final event, and deletes `auth.json`.
 The triage agent's session files stay in `$HOME/.codex/sessions` for resume.
-A review run's home is in its private `/tmp` and is discarded anyway.
+A review run's or commit review's home is in its private `/tmp` and is
+discarded anyway.
 
 **Each copy a run sends back is checked before it is saved,** because the
 run's home belongs to an agent that a log may mislead:
@@ -1067,7 +1109,8 @@ told about yet. The check that records the commit changes the database, so
 the next background visit starts the run. No coding agent starts when no
 commit waits for the agent. The run needs what every run in the systems
 repository needs: the triage agent's setup, its sandbox, and MMHotline's
-copy.
+copy. It starts in a [new empty home](#what-a-run-leaves-for-the-next), so
+nothing an earlier run left in the agent's home steers its decision.
 
 One run covers every such commit, oldest found first. MMHotline gives the
 commits to the run in the transaction that records the run, so any later

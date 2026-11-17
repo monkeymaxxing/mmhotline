@@ -68,6 +68,10 @@ func (r *triageSessionRig) nextCommitReview(t *testing.T) fakeTriageRun {
 	if run.request.Action != "start" || run.request.SessionID != "" || !strings.Contains(run.request.Prompt, commitReviewTask) {
 		t.Fatalf("not a commit review:\n%.400s", run.request.Prompt)
 	}
+	// Nothing an earlier, misled run left in the agent's home reaches it.
+	if !run.request.NewEmptyHome {
+		t.Fatal("the commit review does not start in a new empty home")
+	}
 	return run
 }
 

@@ -390,6 +390,12 @@ them each time:
 | `systems_repository/` | | The agent's own copy of the systems repository, at the commit MMHotline hands the run; the agent's new commits go back to MMHotline from here |
 | `.codex/` | | Codex's own files, with Codex as the coding agent |
 
+Each run also removes the coding agents' instruction and settings files
+from the home, such as `~/.claude/CLAUDE.md`, `~/.claude/settings.json`,
+and `~/.codex/AGENTS.md`, so a run that a log misled cannot steer the next
+([what a run leaves for the next](../changing-mmhotline/design/triage-agent.md#what-a-run-leaves-for-the-next)).
+A commit review starts in a new empty home in its private `/tmp`.
+
 Each run also makes `/tmp/mmhotline-triage-agent-requests-*/request.sock`,
 mode `0600`, in its private `/tmp`, where the agent sends its requests,
 such as a playbook run. systemd discards it with the run.

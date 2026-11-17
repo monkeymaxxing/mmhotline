@@ -344,6 +344,9 @@ func (a *App) startTriageAgentRun(ctx context.Context, purpose, startedBy string
 		return nil, fmt.Errorf("%w: %s", ErrConflict, busy)
 	}
 	request.AgentRole = triageagent.TriageAgentRole
+	// A commit review decides which commits MMX may run, so nothing that an
+	// earlier, misled run left in the agent's home may reach it.
+	request.NewEmptyHome = purpose == "commit_review"
 	socket := runtime.runSocketPath
 	if reviewAgentPurpose(purpose) {
 		request.AgentRole = triageagent.ReviewAgentRole

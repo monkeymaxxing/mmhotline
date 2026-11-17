@@ -38,8 +38,9 @@ func PrepareAgentCopy(ctx context.Context, directory string, bundle []byte, base
 		{"read MMHotline's bundle", []string{"bundle", "unbundle", path}},
 		// --force discards changes to tracked files and any merge in progress.
 		{"check out the base commit", []string{"checkout", "--quiet", "--force", "-B", "main", baseCommitID}},
-		// -ff also removes repositories the agent cloned inside the copy.
-		{"remove files the base commit does not have", []string{"clean", "--quiet", "-ffd"}},
+		// -ff also removes repositories the agent cloned inside the copy; -x
+		// also removes ignored files, such as a planted CLAUDE.local.md.
+		{"remove files the base commit does not have", []string{"clean", "--quiet", "-ffdx"}},
 	} {
 		if _, err := runGit(ctx, directory, nil, step.args...); err != nil {
 			return fmt.Errorf("%s: %w", step.doing, err)

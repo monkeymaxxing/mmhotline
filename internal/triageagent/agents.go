@@ -31,6 +31,11 @@ type codingAgent interface {
 	env(request Request, home string) []string
 	serviceHosts(string) []ListedHost
 	readLine([]byte, *agentStream) ([]Event, error)
+	// plantablePaths are the coding agent's files and directories in the
+	// agent's home, relative to it, that would steer every later run in that
+	// home: instructions, settings with hooks, skills, commands, and
+	// MCP servers. Each run in the agent's home removes them at its start.
+	plantablePaths() []string
 }
 
 func codingAgents() []codingAgent { return []codingAgent{claudeCode{}, codex{}} }
