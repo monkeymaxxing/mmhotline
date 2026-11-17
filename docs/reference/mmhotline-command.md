@@ -536,6 +536,7 @@ it. It runs as root, on the MMHotline server.
 ```sh
 sudo mmhotline settings set-secret sending_services.pushover.application_token
 sudo mmhotline settings set-secret 'alert_sources[monitoring].signing_secrets' --make-new --write-to-file /root/monitoring-signing-secret
+sudo mmhotline settings set-secret 'alert_sources[monitoring].signing_secrets' --drop-earlier-secrets
 ```
 
 `KEY_PATH` is the key's path, written as in the settings check's
@@ -593,6 +594,7 @@ does not have yet, the command lists them and does not say to apply.
 | `--settings-file FILE` | The settings file to change. Default `/etc/mmhotline/mmhotline_settings.yml` |
 | `--make-new` | Only for `alert_sources[ID].signing_secrets`: MMHotline makes 32 random bytes and saves them as 64 lowercase hexadecimal characters, the form that MMWatchdog requires |
 | `--write-to-file PATH` | With `--make-new`: write the new value and a line break to the new file `PATH`, owner root, mode 0600. If `PATH` exists, the command stops and changes nothing; remove the file first |
+| `--drop-earlier-secrets` | Only for `alert_sources[ID].signing_secrets`: keep the source's latest signing secret, remove the others, and make or read no new value. See [Drop the earlier signing secrets](#drop-the-earlier-signing-secrets) |
 | `--apply` | Run [`settings apply`](#mmhotline-settings-apply) after saving, when the file has no problems |
 
 With `--write-to-file`, the command names the file and says the monitoring
@@ -610,6 +612,36 @@ IT SHOWS THE VALUE ONLY ON A PERSON'S TERMINAL. WITH ANY OTHER OUTPUT, IT REFUSE
 
 The refusal says: `MMHotline shows a new signing secret only on a person's terminal, so it never passes through a coding agent's chat. Run this command yourself, or use --write-to-file PATH.` Reason: a lasting secret must not pass through a coding agent's chat.
 
+### Drop the earlier signing secrets
+
+After a signing secret leaks, add a new one first, switch the sender to it,
+and only then drop the old one. `--drop-earlier-secrets` keeps the source's
+latest signing secret, the last one in its list, and removes the others. It
+makes no new value and reads none.
+
+```sh
+sudo mmhotline settings set-secret 'alert_sources[monitoring].signing_secrets' --drop-earlier-secrets --apply
+```
+
+```text
+Dropped 1 earlier signing secret(s) of alert source monitoring. Only the latest one still works: make sure its sender uses it.
+The settings file /etc/mmhotline/mmhotline_settings.yml has no problems.
+```
+
+Then it prints `Run: sudo mmhotline settings apply`, or applies with `--apply`.
+Comments, key order, owner, and mode stay. It never prints a secret.
+
+It refuses, and changes nothing:
+
+- with a value on standard input, with `--make-new`, or with `--write-to-file`;
+- for any key except `alert_sources[ID].signing_secrets`;
+- when the source has only one signing secret: "there is nothing to drop".
+
+Reason for the order: a sender that still uses the dropped secret has its
+alerts refused. The
+[leaked secret steps](../how-to/change-the-settings.md#a-signing-secret-has-leaked)
+check the sender first.
+
 A team whose deploy tool renders the settings file from a vault, such as
 MMX, sets secrets in that vault instead. The next deploy overwrites the file.
 
@@ -617,7 +649,7 @@ MMX, sets secrets in that vault instead. The next deploy overwrites the file.
 | --- | --- |
 | `0` | The secret is saved |
 | `1` | The secret is saved, but with `--apply` the file has problems or a part did not apply |
-| `4` | A refusal: not a secret key, an unknown alert source, an invalid or empty value, a wrong flag, or an existing `--write-to-file` file. Nothing changed |
+| `4` | A refusal: not a secret key, an unknown alert source, an invalid or empty value, a wrong flag, an existing `--write-to-file` file, or a refused `--drop-earlier-secrets` (see above). Nothing changed |
 
 ## mmhotline settings show
 

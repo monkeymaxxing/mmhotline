@@ -220,3 +220,90 @@ func closedPipeWith(t *testing.T, text string) *os.File {
 	t.Cleanup(func() { reader.Close() })
 	return reader
 }
+
+const (
+	leakedSecret = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	newerSecret  = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
+// twoSecretsFile is the source file with a leaked secret and a newer one.
+func twoSecretsFile() string {
+	return strings.Replace(setSecretSourceFile, `["YOUR_64_HEXADECIMAL_CHARACTER_SIGNING_SECRET"]`, `["`+leakedSecret+`", "`+newerSecret+`"]`, 1)
+}
+
+func runDropEarlier(t *testing.T, fileText, input string, args ...string) (string, *setSecretRun) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "mmhotline_settings.yml")
+	if err := os.WriteFile(path, []byte(fileText), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	os.Chmod(path, 0o640)
+	run := &setSecretRun{}
+	run.err = settingsSetSecret(append(args, "--settings-file", path), setSecretTerminalsFor(t, run, false, input))
+	return path, run
+}
+
+func TestDropEarlierSecretsKeepsOnlyTheLatestAndKeepsCommentsAndModeAndNeverShowsAValue(t *testing.T) {
+	path, run := runDropEarlier(t, twoSecretsFile(), "", "alert_sources[monitoring].signing_secrets", "--drop-earlier-secrets")
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	text := readFile(t, path)
+	info, _ := os.Stat(path)
+	if !strings.Contains(text, `signing_secrets: ["`+newerSecret+`"]`) || strings.Contains(text, leakedSecret) {
+		t.Fatalf("settings file:\n%s", text)
+	}
+	if !strings.Contains(text, "# Written by hand. Comments stay.") || !strings.Contains(text, "# the monitoring tool") || info.Mode().Perm() != 0o640 {
+		t.Fatalf("comments or mode lost (mode %v):\n%s", info.Mode(), text)
+	}
+	for _, secret := range []string{leakedSecret, newerSecret, leakedSecret[:12], newerSecret[:12]} {
+		if strings.Contains(run.everything(), secret) {
+			t.Fatalf("a secret is in the output: %s", run.everything())
+		}
+	}
+	want := "Dropped 1 earlier signing secret(s) of alert source monitoring. Only the latest one still works: make sure its sender uses it.\n" +
+		"The settings file " + path + " has no problems.\nRun: sudo mmhotline settings apply\n"
+	if run.stdout.String() != want || run.applied {
+		t.Fatalf("output: %q", run.stdout.String())
+	}
+	_, run = runDropEarlier(t, twoSecretsFile(), "", "alert_sources[monitoring].signing_secrets", "--drop-earlier-secrets", "--apply")
+	if run.err != nil || !run.applied || strings.Contains(run.stdout.String(), "Run: sudo") {
+		t.Fatalf("err=%v applied=%t output=%s", run.err, run.applied, run.stdout.String())
+	}
+}
+
+func TestDropEarlierSecretsRefusesAndChangesNothing(t *testing.T) {
+	signing := "alert_sources[monitoring].signing_secrets"
+	for _, test := range []struct {
+		name, file, input string
+		args              []string
+		message           string
+	}{
+		{"a value on standard input", twoSecretsFile(), exampleSecret + "\n", []string{signing, "--drop-earlier-secrets"}, "takes no value"},
+		{"with make-new", twoSecretsFile(), "", []string{signing, "--drop-earlier-secrets", "--make-new"}, "works alone"},
+		{"with write-to-file", twoSecretsFile(), "", []string{signing, "--drop-earlier-secrets", "--write-to-file", "x"}, "works alone"},
+		{"another secret key", twoSecretsFile(), "", []string{"sending_services.pushover.application_token", "--drop-earlier-secrets"}, "works only for a signing secret"},
+		{"a key that is not a secret", twoSecretsFile(), "", []string{"team_name", "--drop-earlier-secrets"}, "is not a secret key"},
+		{"unknown alert source", twoSecretsFile(), "", []string{"alert_sources[nope].signing_secrets", "--drop-earlier-secrets"}, "no alert source with the ID nope"},
+		{"only one secret", strings.Replace(setSecretSourceFile, "YOUR_64_HEXADECIMAL_CHARACTER_SIGNING_SECRET", newerSecret, 1), "", []string{signing, "--drop-earlier-secrets"}, "nothing to drop"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path, run := runDropEarlier(t, test.file, test.input, test.args...)
+			if run.err == nil || !strings.Contains(run.err.Error(), test.message) {
+				t.Fatalf("err=%v", run.err)
+			}
+			if readFile(t, path) != test.file || run.applied {
+				t.Fatal("the settings file changed")
+			}
+			entries, _ := os.ReadDir(filepath.Dir(path))
+			if len(entries) != 1 {
+				t.Fatalf("files left: %v", entries)
+			}
+			for _, secret := range []string{leakedSecret, newerSecret, exampleSecret} {
+				if strings.Contains(run.everything(), secret) {
+					t.Fatalf("a secret is in the output: %s", run.everything())
+				}
+			}
+		})
+	}
+}

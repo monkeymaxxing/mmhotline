@@ -134,16 +134,11 @@ func EditSettingsSecret(raw []byte, keyPath, value string) (SettingsSecretEdit, 
 			return edit, nil, err
 		}
 	}
-	var buffer bytes.Buffer
-	encoder := yaml.NewEncoder(&buffer)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&document); err != nil {
-		return edit, nil, fmt.Errorf("MMHotline cannot write the settings file: %w", err)
+	text, err := encodeSettingsDocument(&document)
+	if err != nil {
+		return edit, nil, err
 	}
-	if err := encoder.Close(); err != nil {
-		return edit, nil, fmt.Errorf("MMHotline cannot write the settings file: %w", err)
-	}
-	edit.Text = buffer.Bytes()
+	edit.Text = text
 	_, all, _ := parseSettings(edit.Text)
 	var problems []SettingsProblem
 	for _, problem := range all {
@@ -283,4 +278,53 @@ func WriteSettingsFileText(path string, text []byte) (err error) {
 		return err
 	}
 	return os.Rename(temporary.Name(), path)
+}
+
+func encodeSettingsDocument(document *yaml.Node) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := yaml.NewEncoder(&buffer)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(document); err != nil {
+		return nil, fmt.Errorf("MMHotline cannot write the settings file: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, fmt.Errorf("MMHotline cannot write the settings file: %w", err)
+	}
+	return buffer.Bytes(), nil
+}
+
+var signingSecretsKeyPathPattern = regexp.MustCompile(`^alert_sources\[([^\]]+)\]\.signing_secrets$`)
+
+// DropEarlierSigningSecrets keeps only the latest signing secret of the
+// alert source in keyPath (alert_sources[ID].signing_secrets), the last one
+// of its list, and removes the others. It makes and reads no value. It
+// returns the new text of the settings file and how many secrets it
+// dropped, and an error, which never contains a secret, when keyPath is not
+// a signing secrets key, the source is unknown, or the source has only one
+// secret, so there is nothing to drop.
+func DropEarlierSigningSecrets(raw []byte, keyPath string) (text []byte, dropped int, err error) {
+	match := signingSecretsKeyPathPattern.FindStringSubmatch(keyPath)
+	if match == nil {
+		return nil, 0, errors.New("--drop-earlier-secrets works only for a signing secret: alert_sources[ID].signing_secrets, where ID is the alert source's ID")
+	}
+	sourceID := match[1]
+	var document yaml.Node
+	if err := yaml.Unmarshal(raw, &document); err != nil {
+		return nil, 0, fmt.Errorf("the settings file is not valid YAML: %s", strings.TrimPrefix(err.Error(), "yaml: "))
+	}
+	if len(document.Content) == 0 || document.Content[0].Kind != yaml.MappingNode {
+		return nil, 0, errors.New("the settings file must be a section of keys, each on its own line as key: value")
+	}
+	source, _, err := alertSourceMapping(document.Content[0], "alert_sources", sourceID)
+	if err != nil {
+		return nil, 0, err
+	}
+	list := mappingValue(source, "signing_secrets")
+	if list == nil || list.Kind != yaml.SequenceNode || len(list.Content) < 2 {
+		return nil, 0, fmt.Errorf("alert source %s has only one signing secret, so there is nothing to drop. MMHotline changed nothing.", sourceID)
+	}
+	dropped = len(list.Content) - 1
+	list.Content = list.Content[dropped:]
+	text, err = encodeSettingsDocument(&document)
+	return text, dropped, err
 }
