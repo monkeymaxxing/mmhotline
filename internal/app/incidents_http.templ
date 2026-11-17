@@ -1,0 +1,15 @@
+package app
+
+// manualSOSErrorBody is the page that says why an SOS raised by hand failed,
+// above the form with what the person typed.
+templ manualSOSErrorBody(reason, csrf, title, message string) {
+	<section class="panel">
+		<div class="panel-body">
+			<p class="form-error" role="alert">{ reason }</p>
+			<form class="stack manual-sos-form" method="post" action="/incidents/new">
+				<input type="hidden" name="csrf" value={ csrf }/><label class="field">Title<input name="title" value={ title } maxlength="256" required/></label><label class="field">Message<textarea name="message">{ message }</textarea></label>
+				<div class="row"><button class="btn primary">Raise the SOS</button><a href="/dashboard">Back to the dashboard</a></div>
+			</form>
+		</div>
+	</section>
+}

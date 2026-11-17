@@ -187,7 +187,11 @@ func TestTriageSessionPageStatesAndTeamTimes(t *testing.T) {
 			render := func() string {
 				response = httptest.NewRecorder()
 				writer.ResponseWriter = response
-				RenderPage(writer, 200, "Triage session", triageSessionBody, data)
+				frame, ok := readFrameForPage(writer)
+				if !ok {
+					t.Fatal(response.Body.String())
+				}
+				renderPage(writer, 200, "Triage session", frame, triageSessionHeading("Triage session"), triageSessionBody(frame, data.TriageSessionPage, data.CSRF))
 				if response.Code != 200 {
 					t.Fatal(response.Body.String())
 				}

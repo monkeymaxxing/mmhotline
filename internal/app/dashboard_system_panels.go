@@ -417,32 +417,26 @@ func addVerificationInterval(t time.Time, interval string) (time.Time, bool) {
 	}
 }
 
-// systemPanelsBody is the servers, then what changed beside the checklist.
-// A failing server gets a red tile with why; a healthy one a small chip. The
-// checklist shows its next item, and folds the others.
-const systemPanelsBody = `{{define "unavailable"}}<p class="small">{{.Reason}}</p>{{with .Detail}}<details class="fold"><summary>Details</summary><p class="small">{{.}}</p></details>{{end}}{{end}}` +
-	`{{define "checklistItem"}}<div class="todo"><div class="row"><strong>{{.Title}}</strong><span class="tag nodot">{{.Status}}</span></div>` +
-	`{{if not .DueAgainSince.IsZero}}<p class="small muted">Last verified {{clock .LastVerifiedAt}}; due again since {{clock .DueAgainSince}} (every {{.VerifyAgainEvery}}).</p>{{else if .Detail}}<p class="small muted">{{.Detail}}</p>{{else if not .LastVerifiedAt.IsZero}}<p class="small muted">Verified {{clock .LastVerifiedAt}}.</p>{{end}}` +
-	`{{with .ProtectsAgainst}}<p class="small faint">Protects against: {{.}}</p>{{end}}` +
-	`<p><button type="button" class="btn small" data-copy-question="{{.Question}}">Copy a question for your coding agent</button> <span role="status" class="small"></span></p></div>{{end}}` +
-	`<section id="system-servers" data-live class="panel" aria-labelledby="servers-heading"><div class="panel-head"><h2 id="servers-heading">Servers</h2>{{with .System}}{{if .ServersNeedingAttention}}<span class="tag sos">{{.ServersSummary}}</span>{{else if .HealthyServers}}<span class="tag ok">{{.ServersSummary}}</span>{{end}}{{end}}</div><div class="panel-body">` +
-	`{{with .System}}{{if .ServersUnavailable.Reason}}{{template "unavailable" .ServersUnavailable}}{{else}}` +
-	`{{with .ServersNeedingAttention}}<div class="servers">{{range .}}{{$server := .}}<div class="server"><div class="name">{{.Name}}</div>{{with .Groups}}<div class="faint small">{{.}}</div>{{end}}` +
-	`{{if .Silent}}<div class="why">Silent: {{if .LastReportReceivedAt.IsZero}}no report since the server joined{{else}}the server's last report arrived at {{clock .LastReportReceivedAt}}{{end}}</div>{{end}}` +
-	`{{range .Checks}}<div class="why">{{if $server.Silent}}Last known: {{end}}{{.Check}}{{with .Finding}}, {{.}}{{end}} {{.State}}{{if not .Since.IsZero}} since {{clock .Since}}{{end}}{{with .Message}}: {{.}}{{end}}</div>{{end}}` +
-	`{{if not (or .Silent .Checks)}}<div class="why">Needs attention (exit code {{.ExitCode}}) without a failing check; the fleet view on this server shows why.</div>{{end}}</div>{{end}}</div>{{end}}` +
-	`{{with .HealthyServers}}<div class="chips">{{range .}}<span class="chip">{{.Name}}{{with .Groups}} <span class="group">{{.}}</span>{{end}}</span>{{end}}</div>{{end}}` +
-	`{{end}}{{end}}</div></section>` +
-	`<div class="cols">` +
-	`<section id="system-changes" data-live class="panel quiet col-main" aria-labelledby="changes-heading"><div class="panel-head"><h2 id="changes-heading">Recent changes to the systems repository</h2></div><div class="panel-body">{{with .System}}{{if .ChangesUnavailable.Reason}}{{template "unavailable" .ChangesUnavailable}}{{else}}<ul class="commits">{{range .Changes}}<li>{{.Subject}} <span class="faint small">· {{clock .CommittedAt}} · <code>{{.ShortID}}</code></span></li>{{end}}</ul>{{end}}{{end}}</div></section>` +
-	`<section id="system-checklist" data-live class="panel quiet col-side" aria-labelledby="checklist-heading"><div class="panel-head"><h2 id="checklist-heading">Checklist</h2></div><div class="panel-body">{{with .System}}{{if .ChecklistUnavailable.Reason}}{{template "unavailable" .ChecklistUnavailable}}{{else}}` +
-	`{{if .ChecklistTotal}}<div class="countdown"><div class="row spread small"><span>Setup: <strong>{{.ChecklistDone}} of {{.ChecklistTotal}}</strong> done</span><span class="faint">{{.ChecklistOpen}} open{{with .ChecklistDeviated}} · {{.}} done another way{{end}}</span></div><progress class="bar ok" value="{{.ChecklistDone}}" max="{{.ChecklistTotal}}" aria-hidden="true"></progress></div>{{end}}` +
-	`{{with .ChecklistNext}}<p class="faint small">Next:</p>{{template "checklistItem" .}}{{end}}` +
-	`{{with .ChecklistOthers}}<details class="fold"><summary>Show {{len .}} more</summary>{{range .}}{{template "checklistItem" .}}{{end}}</details>{{end}}` +
-	`{{if not .ChecklistItems}}<p class="small">Every setup item is done, and none is due to be verified again.</p>{{end}}` +
-	`{{with .ChecklistLater}}<details class="fold"><summary>Later, when it happens: {{len .}} {{if eq (len .) 1}}item{{else}}items{{end}}{{with $.System.ChecklistLaterDueAgain}} · {{.}} due to be verified again{{end}}</summary><p class="small faint">Do each of these when its time comes, such as a new team member or a planned drill. None is unfinished setup.</p>{{range .}}{{template "checklistItem" .}}{{end}}</details>{{end}}` +
-	`{{end}}{{end}}</div></section></div>` +
-	`<script src="/assets/copy-question.js" defer></script>`
+// attentionLine says what one check of a server that needs attention found.
+// clock writes a time as the page shows it.
+func attentionLine(serverSilent bool, check fleetViewAttention, clock func(time.Time) string) string {
+	var line string
+	if serverSilent {
+		line = "Last known: "
+	}
+	line += check.Check
+	if check.Finding != "" {
+		line += ", " + check.Finding
+	}
+	line += " " + check.State
+	if !check.Since.IsZero() {
+		line += " since " + clock(check.Since)
+	}
+	if check.Message != "" {
+		line += ": " + check.Message
+	}
+	return line
+}
 
 // copyQuestionScript copies an item's question. It listens on the document,
 // because the refresh replaces the sections and their buttons. Without the

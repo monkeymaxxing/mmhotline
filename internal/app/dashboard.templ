@@ -1,0 +1,411 @@
+package app
+
+import "strconv"
+
+// alertSeverityOptions are the alert history's severity filter, after "All
+// severities".
+var alertSeverityOptions = []struct{ Value, Label string }{
+	{"info", "Info"},
+	{"warn", "Warning"},
+	{"sos", "SOS"},
+	{"resolved-info", "Resolved info"},
+	{"resolved-warn", "Resolved warning"},
+	{"resolved-sos", "Resolved SOS"},
+}
+
+// alertSeverityTag is the class of an alert's severity tag.
+func alertSeverityTag(severity string) string {
+	switch severity {
+	case "sos":
+		return "tag sos"
+	case "warn":
+		return "tag warn"
+	}
+	return "tag "
+}
+
+// alertsBody is the alert history: the filter form, then the alerts.
+templ alertsBody(frame pageFrame, data alertsPageData) {
+	<form method="get" action="/alerts" class="panel panel-body alert-pages">
+		<div class="alert-filters">
+			<label class="field">Search title or message<input type="search" name="q" value={ data.Query } maxlength="256"/></label><label class="field">Severity<select name="severity"><option value="">All severities</option>
+					for _, option := range alertSeverityOptions {
+						<option
+							value={ option.Value }
+							if data.Severity == option.Value {
+								selected
+							}
+						>{ option.Label }</option>
+					}
+				</select></label><label class="field">From date<input type="date" name="from" value={ data.From }/></label><label class="field">Through date<input type="date" name="until" value={ data.Until }/></label>
+		</div>
+		<div class="row spread"><button class="btn">Filter alerts</button></div>
+	</form>
+	<section class="panel alert-pages" aria-label="Alert history">
+		if len(data.Alerts) > 0 {
+			<ul class="items">
+				for _, alert := range data.Alerts {
+					<li>
+						<div class="what">
+							<div class="row">
+								<span class={ alertSeverityTag(alert.Severity) }>{ severityLabel(alert.Severity) }</span><span class="small faint">Received { frame.Clock(alert.ReceivedAt) }, { frame.RelativeTime(alert.ReceivedAt) }</span>
+							</div>
+							<a class="title" href={ "/alerts/" + alert.ID }>@withBreaksAfterSeparators(alert.Title)</a>
+							<p class="small muted">
+								if alert.IncidentID != "" {
+									{ alert.Outcome }: <a href={ "/incidents/" + alert.IncidentID }>@withBreaksAfterSeparators(alert.IncidentTitle)</a>
+								} else {
+									{ alert.Outcome }
+								}
+							</p>
+							if alert.SourceID == "system" {
+								<p class="small faint">Notice from MMHotline</p>
+							}
+						</div>
+					</li>
+				}
+			</ul>
+		} else {
+			<p class="panel-body">No alerts match these filters.</p>
+		}
+		if data.Next != "" {
+			<p class="panel-foot"><a href={ data.Next }>Load older alerts</a></p>
+		}
+	</section>
+}
+
+// alertHeading is the one alert's heading: breadcrumbs, then the title.
+templ alertHeading(title string) {
+	<div>
+		<p class="crumbs"><a href="/alerts">Alert history</a> / Alert</p>
+		<h1>{ title }</h1>
+	</div>
+}
+
+// alertBody is the one alert: its severity, outcome, message, and IDs.
+templ alertBody(frame pageFrame, alert alertView) {
+	<div class="stack alert-pages">
+		<section class="panel">
+			<div class="panel-head">
+				<span class={ alertSeverityTag(alert.Severity) }>{ severityLabel(alert.Severity) }</span><span class="small faint">Received { frame.Clock(alert.ReceivedAt) }, { frame.RelativeTime(alert.ReceivedAt) }</span>
+			</div>
+			<div class="panel-body">
+				<p>{ capitalize(severityMeaning(alert.Severity)) }.</p>
+				<p>
+					if alert.IncidentID != "" {
+						{ alert.Outcome }: <a href={ "/incidents/" + alert.IncidentID }>@withBreaksAfterSeparators(alert.IncidentTitle)</a>
+					} else {
+						{ alert.Outcome }
+					}
+				</p>
+				if held := alert.HeldWarn; held != nil {
+					<p id="held-warning" data-live>
+						if held.Held {
+							if held.SOSTitle != "" {
+								{ held.JoinedSentence(frame.Clock(held.HeldUntil)) }
+							} else {
+								{ held.Sentence() } It is held until { frame.Clock(held.HeldUntil) }.
+							}
+						} else if held.Resolved {
+							MMHotline sent nothing for this warning. { held.OutcomeReason }
+						} else if held.TakenOver {
+							Taken over by <a href={ held.TakenOverLink }>{ held.TakenOverByText() }</a> at { frame.Clock(held.Ended) }. MMHotline sent nothing for this warning.
+						} else {
+							MMHotline delivered this warning at { frame.Clock(held.Ended) }. { held.OutcomeReason }
+						}
+					</p>
+				}
+				if later := alert.ReceivedLater(); later != "" {
+					<p class="line-warn small">The sender reports the alert happened at { frame.Clock(alert.HappenedAt) }. MMHotline received the alert at { frame.Clock(alert.ReceivedAt) } ({ later }).</p>
+				}
+				if alert.Notes != "" && alert.Severity != "resolved-sos" {
+					<p class="small muted">{ alert.Notes }</p>
+				}
+				if alert.SourceID == "system" {
+					<p class="small faint">Notice from MMHotline</p>
+				}
+			</div>
+		</section>
+		<details class="more" open>
+			<summary>Full alert message</summary>
+			<div class="body">
+				if alert.Message != "" {
+					<div class="result">{ alert.Message }</div>
+				} else {
+					<p class="small muted">The alert has no message.</p>
+				}
+			</div>
+		</details>
+		<details class="more">
+			<summary>Alert IDs and sender details</summary>
+			<div class="body">
+				<dl class="kv">
+					<dt>Alert ID</dt>
+					<dd><code>{ alert.ID }</code></dd>
+					<dt>Alert source ID</dt>
+					<dd><code>{ alert.SourceID }</code></dd>
+					if alert.SenderAlertID != "" {
+						<dt>Sender alert ID</dt>
+						<dd><code>{ alert.SenderAlertID }</code></dd>
+					}
+					if alert.SenderIncidentKey != "" {
+						<dt>Sender incident key</dt>
+						<dd><code>{ alert.SenderIncidentKey }</code></dd>
+					}
+					if !alert.HappenedAt.IsZero() {
+						<dt>Sender's event time</dt>
+						<dd>{ frame.Clock(alert.HappenedAt) }</dd>
+					}
+				</dl>
+			</div>
+		</details>
+	</div>
+}
+
+// dashboardHeading is the dashboard's heading: the title, the moment the page
+// was read, and the folded form that raises an SOS by hand.
+templ dashboardHeading(frame pageFrame, view dashboardView) {
+	<div class="head flush">
+		<div>
+			<h1>Dashboard</h1>
+			<p id="dashboard-updated" data-live class="meta">Updated { frame.Clock(frame.Now) }. This page updates by itself.</p>
+		</div>
+		<details class="raise">
+			<summary class="btn">Raise an SOS by hand</summary>
+			<form method="post" action="/incidents/new" class="panel panel-body">
+				<input type="hidden" name="csrf" value={ view.CSRF }/>
+				<p class="small muted">Raise an SOS for a problem no tool sent an alert about. The manually raised SOS wakes the person on call like any other SOS.</p>
+				<label class="field">Title<input name="title" required maxlength="256"/></label><label class="field">Message<textarea name="message" maxlength="16384"></textarea></label>
+				<p><button class="btn primary">Raise the SOS</button></p>
+			</form>
+		</details>
+	</div>
+}
+
+// dashboardBody is the dashboard below its heading: settings that did not
+// apply, what needs a person, what is handled, who is on call, the triage
+// agent, the MMHotline-down alarm, and the system's parts.
+templ dashboardBody(frame pageFrame, view dashboardView) {
+	if len(view.SettingsFailures) > 0 {
+		<section id="settings-failures" class="decide list warn" role="alert" aria-labelledby="settings-failures-heading">
+			<div class="panel-head">
+				<h2 id="settings-failures-heading">Parts of the settings file did not apply</h2>
+				<span class="tag warn">For administrators</span>
+			</div>
+			<div class="panel-body">
+				<p>MMHotline keeps the earlier setting of each part below until the file is fixed.</p>
+				<ul class="bullets">
+					for _, failure := range view.SettingsFailures {
+						<li><code>{ failure.Part }</code>: { failure.FailureReason }</li>
+					}
+				</ul>
+				<details class="fold">
+					<summary>Where to change the settings</summary>
+					<p class="small">
+						if view.SettingsFileFirstLine != "" {
+							In <code>{ view.SettingsFile }</code>. The file's first line says: { view.SettingsFileFirstLine } <code>sudo mmhotline settings show</code> on the server lists every part.
+						} else {
+							In <code>{ view.SettingsFile }</code>. An administrator edits the settings file with sudoedit, then runs <code>sudo mmhotline settings apply</code>. <code>sudo mmhotline settings show</code> on the server lists every part.
+						}
+					</p>
+				</details>
+			</div>
+		</section>
+	}
+	<div id="incident-list" data-live class="stack">
+		if view.NeedsAPerson() > 0 {
+			<section id="needs-a-person" class={ "decide list", templ.KV("warn", len(view.Waiting) == 0) } aria-labelledby="needs-a-person-heading">
+				<div class="panel-head">
+					<h2 id="needs-a-person-heading">Needs a person</h2>
+					<span class={ "tag", templ.KV("sos", len(view.Waiting) > 0), templ.KV("warn", len(view.Waiting) == 0) }>{ view.NeedsAPerson() } waiting</span>
+				</div>
+				<ul class="items">
+					for _, incident := range view.Waiting {
+						<li>
+							<div class="what">
+								<div class="row">
+									<span class="tag sos">SOS</span><span class="faint small">
+										if incident.HeldForTriageAgent {
+											Opened { frame.Clock(incident.CreatedAt) }, { frame.RelativeTime(incident.CreatedAt) }. The triage agent looks into the incident first, so nobody is woken yet.
+										} else if incident.Waking != "" {
+											Opened { frame.Clock(incident.CreatedAt) }, { frame.RelativeTime(incident.CreatedAt) }. MMHotline is waking { incident.Waking }.
+										} else {
+											Opened { frame.Clock(incident.CreatedAt) }, { frame.RelativeTime(incident.CreatedAt) }
+										}
+									</span>
+								</div>
+								<a href={ "/incidents/" + incident.ID } class="title">{ incident.Title }</a>
+								<div class="countdown">
+									<div class="row spread small">
+										if incident.Countdown.TimeLeft != "" {
+											<span>{ incident.Countdown.Sentence }</span><span class="faint num">{ incident.Countdown.TimeLeft }</span>
+										} else {
+											<span>{ incident.Countdown.Sentence }</span>
+										}
+									</div>
+									if incident.Countdown.StepSeconds != 0 {
+										<progress class="bar" value={ strconv.FormatInt(incident.Countdown.ElapsedSeconds, 10) } max={ strconv.FormatInt(incident.Countdown.StepSeconds, 10) } aria-hidden="true"></progress>
+									}
+								</div>
+							</div>
+							<div class="do">
+								<form method="post" action={ "/incidents/" + incident.ID + "/claim" }>
+									<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="revision" value={ strconv.FormatInt(incident.Revision, 10) }/><button class="btn primary">Claim the incident</button>
+								</form>
+								<a href={ "/incidents/" + incident.ID } class="btn">Open</a>
+							</div>
+						</li>
+					}
+					for _, approval := range view.Approvals {
+						<li>
+							<div class="what">
+								<div class="row">
+									if approval.Warned {
+										<span class="tag warn">Runs by itself</span><span class="faint small">
+											if approval.Stoppable {
+												Runs at { frame.Clock(approval.RunsAt) }, { frame.RelativeTime(approval.RunsAt) }, unless someone presses Stop.
+											} else {
+												Runs now.
+											}
+										</span>
+									} else {
+										<span class="tag warn">{ approval.Label }</span><span class="faint small">{ approval.AskedBy } at { frame.Clock(approval.AskedAt) }. { approval.Needs }</span>
+									}
+								</div>
+								<a href={ approval.ReviewURL } class="title">{ approval.Question }</a><span class="small muted">{ approval.Where }</span>
+							</div>
+							<div class="do">
+								if approval.Warned {
+									if approval.Stoppable {
+										<form method="post" action={ "/approvals/" + approval.ID + "/stop" }>
+											<input type="hidden" name="csrf" value={ view.CSRF }/><button class="btn">Stop</button>
+										</form>
+									}
+									<a href={ approval.ReviewURL } class="btn">Open</a>
+								} else {
+									<a href={ approval.ReviewURL } class="btn">Review</a>
+								}
+							</div>
+						</li>
+					}
+				</ul>
+				if len(view.Waiting) > 0 {
+					<p class="panel-foot">Claiming an incident tells the team you are handling the incident and stops MMHotline waking anyone else.</p>
+				}
+			</section>
+		}
+		if len(view.Handled) > 0 {
+			<section id="being-handled" class="panel" aria-labelledby="being-handled-heading">
+				<div class="panel-head">
+					<h2 id="being-handled-heading">Being handled</h2>
+					<span class="tag work">{ len(view.Handled) } claimed</span>
+				</div>
+				<ul class="items handled">
+					for _, incident := range view.Handled {
+						<li>
+							<div class="what">
+								<div class="row"><span class="tag work">Claimed</span><span class="faint small">{ incident.ClaimedBy } claimed the incident at { frame.Clock(incident.ClaimedAt) }. Opened { frame.Clock(incident.CreatedAt) }.</span></div>
+								<a href={ "/incidents/" + incident.ID } class="title">{ incident.Title }</a>
+							</div>
+						</li>
+					}
+				</ul>
+			</section>
+		}
+		if len(view.HeldWarns) > 0 {
+			<section id="held-warnings" class="panel" aria-labelledby="held-warnings-heading">
+				<div class="panel-head">
+					<h2 id="held-warnings-heading">Warnings held for the triage agent</h2>
+					<span class="tag work">{ len(view.HeldWarns) } held</span>
+				</div>
+				<ul class="items handled">
+					for _, held := range view.HeldWarns {
+						<li>
+							<div class="what">
+								<div class="row"><span class="tag warn">Warning</span><span class="faint small">Received { frame.Clock(held.Received) }. Held until { frame.Clock(held.HeldUntil) }.</span></div>
+								<a href={ "/alerts/" + held.AlertID } class="title">@withBreaksAfterSeparators(held.Title)</a>
+								<p class="small muted">
+									if held.SOSTitle != "" {
+										{ held.JoinedSentence(frame.Clock(held.HeldUntil)) }
+									} else {
+										{ held.Sentence() }
+									}
+								</p>
+							</div>
+						</li>
+					}
+				</ul>
+			</section>
+		}
+		if len(view.CommitsTheTriageAgentReviews) > 0 {
+			<section id="commits-the-triage-agent-reviews" class="panel" aria-labelledby="commits-the-triage-agent-reviews-heading">
+				<div class="panel-head">
+					<h2 id="commits-the-triage-agent-reviews-heading">The triage agent reviews</h2>
+					<span class="tag work">{ countText(len(view.CommitsTheTriageAgentReviews), "commit", "commits") }</span>
+				</div>
+				<ul class="items handled">
+					for _, commit := range view.CommitsTheTriageAgentReviews {
+						<li>
+							<div class="what">
+								<div class="row"><span class="tag work">Commit review</span><span class="faint small">MMHotline found the commit at { frame.Clock(commit.FoundAt) }. MMX runs wait until the triage agent decides; if it hands the commit to a person, or cannot review it, MMHotline sends an alert.</span></div>
+								<a href={ commit.URL() } class="title">Commit { commit.ShortID() }, { commit.Reason() }</a>
+							</div>
+						</li>
+					}
+				</ul>
+			</section>
+		}
+		if view.NeedsAPerson() == 0 && len(view.Handled) == 0 {
+			<section id="all-clear" class="panel all-clear-box" aria-labelledby="all-clear-heading">
+				<h2 id="all-clear-heading"><span class="tag ok">All clear</span></h2>
+				<p class="say">Nothing needs a person.</p>
+				if last := view.LastSOS; last != nil {
+					<p class="faint small">The last SOS was resolved at { frame.Clock(last.ResolvedAt) } by { last.ResolvedBy }: <a href={ "/incidents/" + last.ID }>{ last.Title }</a></p>
+				}
+			</section>
+		}
+	</div>
+	<div class="grid3">
+		<section id="coverage-summary" data-live class="panel" aria-labelledby="on-call-heading">
+			<div class="panel-head">
+				<h2 id="on-call-heading">On call</h2>
+				<a href="/on-call" class="small">Schedule</a>
+			</div>
+			<div class="panel-body">
+				<div class="row">
+					if view.OnCall.Initial != "" {
+						<span class="avatar" aria-hidden="true">{ view.OnCall.Initial }</span>
+					}
+					<div>
+						if view.OnCall.People != "" && !view.OnCall.Until.IsZero() {
+							<strong class="who">{ view.OnCall.Who }</strong><br/><span class="faint small">{ view.OnCall.People }</span><br/><span class="faint small">Until { frame.Clock(view.OnCall.Until) }, then { view.OnCall.Then }</span>
+						} else if view.OnCall.People != "" {
+							<strong class="who">{ view.OnCall.Who }</strong><br/><span class="faint small">{ view.OnCall.People }</span>
+						} else if !view.OnCall.Until.IsZero() {
+							<strong class="who">{ view.OnCall.Who }</strong><br/><span class="faint small">Until { frame.Clock(view.OnCall.Until) }, then { view.OnCall.Then }</span>
+						} else {
+							<strong class="who">{ view.OnCall.Who }</strong>
+						}
+					</div>
+				</div>
+				if view.OnCall.Reason != "" {
+					<p class="faint small">{ view.OnCall.Reason }</p>
+				}
+				if view.OnCall.Backup != "" {
+					<p class="small">If nobody claims an SOS within { view.OnCall.EscalateIfUnclaimedAfter }, MMHotline also wakes { view.OnCall.Backup }.</p>
+				}
+				if !view.OnCall.MutedUntil.IsZero() {
+					<p class="line-warn small">The whole team is muted until { frame.Clock(view.OnCall.MutedUntil) }: no Pushover notification or automated voice call goes out, even for an SOS.</p>
+				}
+			</div>
+		</section>
+		if view.TriageAgent != nil {
+			@triageAgentAtWorkPanel(frame, *view.TriageAgent)
+		}
+		if view.DownAlarm != nil {
+			// MERGE: replace with @downAlarmPanel(frame, *data.DownAlarm, data.CSRF, data.SettingsFileNotice) from lane B
+			@downAlarmCardPlaceholder(frame, view)
+		}
+	</div>
+	@systemPanelsBody(frame, view.System)
+}

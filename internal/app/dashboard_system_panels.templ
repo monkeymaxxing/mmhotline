@@ -1,0 +1,166 @@
+package app
+
+import "strconv"
+
+// unavailablePartLines says why a part has nothing to show, with the
+// technical cause folded away.
+templ unavailablePartLines(part unavailablePart) {
+	<p class="small">{ part.Reason }</p>
+	if part.Detail != "" {
+		<details class="fold">
+			<summary>Details</summary>
+			<p class="small">{ part.Detail }</p>
+		</details>
+	}
+}
+
+// checklistItemBlock is one checklist item that needs a person, or is for
+// later.
+templ checklistItemBlock(frame pageFrame, item checklistItemView) {
+	<div class="todo">
+		<div class="row"><strong>{ item.Title }</strong><span class="tag nodot">{ item.Status }</span></div>
+		if !item.DueAgainSince.IsZero() {
+			<p class="small muted">Last verified { frame.Clock(item.LastVerifiedAt) }; due again since { frame.Clock(item.DueAgainSince) } (every { item.VerifyAgainEvery }).</p>
+		} else if item.Detail != "" {
+			<p class="small muted">{ item.Detail }</p>
+		} else if !item.LastVerifiedAt.IsZero() {
+			<p class="small muted">Verified { frame.Clock(item.LastVerifiedAt) }.</p>
+		}
+		if item.ProtectsAgainst != "" {
+			<p class="small faint">Protects against: { item.ProtectsAgainst }</p>
+		}
+		<p><button type="button" class="btn small" data-copy-question={ item.Question }>Copy a question for your coding agent</button> <span role="status" class="small"></span></p>
+	</div>
+}
+
+// systemPanelsBody is the servers, then what changed beside the checklist.
+// A failing server gets a red tile with why; a healthy one a small chip. The
+// checklist shows its next item, and folds the others.
+templ systemPanelsBody(frame pageFrame, panels systemPanels) {
+	<section id="system-servers" data-live class="panel" aria-labelledby="servers-heading">
+		<div class="panel-head">
+			<h2 id="servers-heading">Servers</h2>
+			if len(panels.ServersNeedingAttention) > 0 {
+				<span class="tag sos">{ panels.ServersSummary() }</span>
+			} else if len(panels.HealthyServers) > 0 {
+				<span class="tag ok">{ panels.ServersSummary() }</span>
+			}
+		</div>
+		<div class="panel-body">
+			if panels.ServersUnavailable.Reason != "" {
+				@unavailablePartLines(panels.ServersUnavailable)
+			} else {
+				if len(panels.ServersNeedingAttention) > 0 {
+					<div class="servers">
+						for _, server := range panels.ServersNeedingAttention {
+							<div class="server">
+								<div class="name">{ server.Name }</div>
+								if server.Groups != "" {
+									<div class="faint small">{ server.Groups }</div>
+								}
+								if server.Silent {
+									<div class="why">
+										if server.LastReportReceivedAt.IsZero() {
+											Silent: no report since the server joined
+										} else {
+											Silent: the server's last report arrived at { frame.Clock(server.LastReportReceivedAt) }
+										}
+									</div>
+								}
+								for _, check := range server.Checks {
+									<div class="why">{ attentionLine(server.Silent, check, frame.Clock) }</div>
+								}
+								if !server.Silent && len(server.Checks) == 0 {
+									<div class="why">Needs attention (exit code { server.ExitCode }) without a failing check; the fleet view on this server shows why.</div>
+								}
+							</div>
+						}
+					</div>
+				}
+				if len(panels.HealthyServers) > 0 {
+					<div class="chips">
+						for _, server := range panels.HealthyServers {
+							<span class="chip">
+								if server.Groups != "" {
+									{ server.Name } <span class="group">{ server.Groups }</span>
+								} else {
+									{ server.Name }
+								}
+							</span>
+						}
+					</div>
+				}
+			}
+		</div>
+	</section>
+	<div class="cols">
+		<section id="system-changes" data-live class="panel quiet col-main" aria-labelledby="changes-heading">
+			<div class="panel-head"><h2 id="changes-heading">Recent changes to the systems repository</h2></div>
+			<div class="panel-body">
+				if panels.ChangesUnavailable.Reason != "" {
+					@unavailablePartLines(panels.ChangesUnavailable)
+				} else {
+					<ul class="commits">
+						for _, change := range panels.Changes {
+							<li>{ change.Subject } <span class="faint small">· { frame.Clock(change.CommittedAt) } · <code>{ change.ShortID }</code></span></li>
+						}
+					</ul>
+				}
+			</div>
+		</section>
+		<section id="system-checklist" data-live class="panel quiet col-side" aria-labelledby="checklist-heading">
+			<div class="panel-head"><h2 id="checklist-heading">Checklist</h2></div>
+			<div class="panel-body">
+				if panels.ChecklistUnavailable.Reason != "" {
+					@unavailablePartLines(panels.ChecklistUnavailable)
+				} else {
+					if panels.ChecklistTotal > 0 {
+						<div class="countdown">
+							<div class="row spread small">
+								<span>Setup: <strong>{ panels.ChecklistDone() } of { panels.ChecklistTotal }</strong> done</span><span class="faint">
+									if panels.ChecklistDeviated() > 0 {
+										{ panels.ChecklistOpen() } open · { panels.ChecklistDeviated() } done another way
+									} else {
+										{ panels.ChecklistOpen() } open
+									}
+								</span>
+							</div>
+							<progress class="bar ok" value={ strconv.Itoa(panels.ChecklistDone()) } max={ strconv.Itoa(panels.ChecklistTotal) } aria-hidden="true"></progress>
+						</div>
+					}
+					if next := panels.ChecklistNext(); next != nil {
+						<p class="faint small">Next:</p>
+						@checklistItemBlock(frame, *next)
+					}
+					if others := panels.ChecklistOthers(); len(others) > 0 {
+						<details class="fold">
+							<summary>Show { len(others) } more</summary>
+							for _, item := range others {
+								@checklistItemBlock(frame, item)
+							}
+						</details>
+					}
+					if len(panels.ChecklistItems) == 0 {
+						<p class="small">Every setup item is done, and none is due to be verified again.</p>
+					}
+					if len(panels.ChecklistLater) > 0 {
+						<details class="fold">
+							<summary>
+								if panels.ChecklistLaterDueAgain() > 0 {
+									Later, when it happens: { countText(len(panels.ChecklistLater), "item", "items") } · { panels.ChecklistLaterDueAgain() } due to be verified again
+								} else {
+									Later, when it happens: { countText(len(panels.ChecklistLater), "item", "items") }
+								}
+							</summary>
+							<p class="small faint">Do each of these when its time comes, such as a new team member or a planned drill. None is unfinished setup.</p>
+							for _, item := range panels.ChecklistLater {
+								@checklistItemBlock(frame, item)
+							}
+						</details>
+					}
+				}
+			</div>
+		</section>
+	</div>
+	<script src="/assets/copy-question.js" defer></script>
+}
