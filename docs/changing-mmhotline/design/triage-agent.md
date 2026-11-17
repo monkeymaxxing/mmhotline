@@ -801,7 +801,46 @@ The three workflows:
   signed it and that a commit nobody on the team made is a possible
   break-in. The page points to the team's break-in procedure.
 
-The required setting `triage_agent.commit_signing_public_key` is one OpenSSH
+The optional setting `triage_agent.trusted_commits` chooses the check. Left
+out, it is `signed_by_a_trusted_key_or_reviewed`, the check this section
+describes, so a settings file written before the key keeps working. The other
+value is `every_commit_on_origin`:
+
+Use `every_commit_on_origin` only when origin is on the team's own server and only keys that already hold root on every server can push to it. With origin on a Git host such as GitHub, it would give everyone who can push there root on every server.
+
+With `every_commit_on_origin`, every commit on origin's branch passes. MMHotline
+reads no signature, no commit waits, and no warning or commit review run
+starts. The checked-through commit moves to origin's tip, and MMHotline's
+checkout moves there through the same one function as before. `commit-reviews
+check` answers the tip and nothing waiting, and `commit-reviews trust-through`
+still works. A settings file without a `triage_agent` section still trusts
+nothing. Commits that waited before a switch to `every_commit_on_origin` no
+longer stop an MMX run, but stay on Approvals, with their warnings open, until
+a person marks them reviewed. Reason: a switch happens once, and recording the
+settings as a reviewer would change the database format for that one moment.
+
+The reason is who can push. A team whose origin is a bare repository owned by
+root on its own server, where only keys that already have root on every
+server can push, gains nothing from signatures: whoever could forge a commit
+there could already change every server, and the signing keys and the
+reviews would be work with no protection. A Git host on the internet
+differs. Anyone who gets into the host, with a stolen password or a stolen
+token, could put a commit in front of MMX, which would run it as the
+`mmhotline` user. The default stays for that team.
+
+With `every_commit_on_origin`, the four settings
+`triage_agent.commit_signing_public_key`,
+`triage_agent.trusted_commit_signing_public_keys`,
+`triage_agent.commits_without_a_trusted_signature_are_approved_by`, and
+`triage_agent.paths_only_a_person_may_approve` must be left out, because
+nothing reads them, and the settings check refuses each one that is present.
+With the default value they stay required. The push filter, not signatures,
+limits the triage agent's own commits: a commit of the agent that changes
+anything outside `one_time_playbooks/` and `triage_agent_notes/`, such as
+`AGENTS.md`, is not pushed and stays under MMHotline's private ref for a
+person, with either value.
+
+With the default value, the required setting `triage_agent.commit_signing_public_key` is one OpenSSH
 public key line, the public half of the SSH key the triage agent uses to sign
 commits. The required setting
 `triage_agent.trusted_commit_signing_public_keys` is a list of such lines,

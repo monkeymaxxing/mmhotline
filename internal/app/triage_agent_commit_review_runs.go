@@ -166,6 +166,11 @@ func (a *App) whyTheTriageAgentCannotReview(ctx context.Context, tx *sql.Tx) (st
 // which a commit review run reviews. So each commit gets one alert: the
 // warning, or the agent's approval or report.
 func (a *App) commitsForTheTriageAgent(ctx context.Context, tx *sql.Tx) ([]CommitReview, error) {
+	// With every_commit_on_origin no commit is checked, so no commit review
+	// run starts and no warning goes out.
+	if every, err := trustsEveryCommitOnOrigin(ctx, tx); err != nil || every {
+		return nil, err
+	}
 	waiting, err := readCommitReviews(ctx, tx, `c.reviewed_at IS NULL AND c.alert_sent='' ORDER BY c.found_at,c.commit_id`)
 	if err != nil || len(waiting) == 0 {
 		return nil, err

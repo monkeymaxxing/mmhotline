@@ -243,6 +243,10 @@ type TriageAgentView struct {
 	// a public key; absent while none is applied. sudo mmhotline triage-agent
 	// check-preparation compares it with the agent's own git settings.
 	CommitSigningPublicKey string `json:"commit_signing_public_key,omitempty"`
+	// TrustsEveryCommitOnOrigin is true when the applied
+	// triage_agent.trusted_commits is every_commit_on_origin: no commit
+	// signing key is applied then, and none is needed.
+	TrustsEveryCommitOnOrigin bool `json:"trusts_every_commit_on_origin,omitempty"`
 	// InventoryServersNotListedBecause says why the latest run in the systems
 	// repository could not list every inventory server, if it could not.
 	InventoryServersNotListedBecause string `json:"inventory_servers_not_listed_because,omitempty"`
@@ -584,6 +588,9 @@ func (a *App) TriageAgentState(ctx context.Context, p Principal) (TriageAgentVie
 		}
 		err = tx.QueryRowContext(ctx, `SELECT commit_signing_public_key FROM triage_agent_commit_check_state WHERE id=1`).Scan(&view.CommitSigningPublicKey)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if view.TrustsEveryCommitOnOrigin, err = trustsEveryCommitOnOrigin(ctx, tx); err != nil {
 			return err
 		}
 		var listedAt int64

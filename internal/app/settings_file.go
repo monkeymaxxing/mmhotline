@@ -74,20 +74,26 @@ type SettingsCodingAgent struct {
 
 // SettingsTriageAgent is the triage agent's section.
 type SettingsTriageAgent struct {
-	SettingsCodingAgent    `yaml:",inline"`
-	CommitSigningPublicKey string `yaml:"commit_signing_public_key"`
+	SettingsCodingAgent `yaml:",inline"`
+	// TrustedCommits is signed_by_a_trusted_key_or_reviewed or
+	// every_commit_on_origin; left out it is the first, so settings files
+	// written before the key keep working. With every_commit_on_origin the
+	// four keys that follow it are left out: no commit is checked.
+	TrustedCommits         string `yaml:"trusted_commits" settings:"optional"`
+	CommitSigningPublicKey string `yaml:"commit_signing_public_key" settings:"optional"`
 	// TrustedCommitSigningPublicKeys are the keys of the team's people and
 	// machines whose commits pass the check before MMX and triage agent runs.
-	TrustedCommitSigningPublicKeys []string `yaml:"trusted_commit_signing_public_keys"`
+	// A nil list is a key left out; [] is an empty list.
+	TrustedCommitSigningPublicKeys []string `yaml:"trusted_commit_signing_public_keys" settings:"optional"`
 	// CommitsWithoutATrustedSignatureAreApprovedBy is a_person, or
 	// a_person_or_the_triage_agent: the triage agent then reviews each commit
 	// no trusted key signed, except those that change a path of
 	// PathsOnlyAPersonMayApprove, and approves an ordinary change.
-	CommitsWithoutATrustedSignatureAreApprovedBy string `yaml:"commits_without_a_trusted_signature_are_approved_by"`
+	CommitsWithoutATrustedSignatureAreApprovedBy string `yaml:"commits_without_a_trusted_signature_are_approved_by" settings:"optional"`
 	// PathsOnlyAPersonMayApprove are repository paths, an entry ending in "/"
 	// a directory, such as the files that set the triage agent's own powers
 	// and the trusted keys.
-	PathsOnlyAPersonMayApprove []string             `yaml:"paths_only_a_person_may_approve"`
+	PathsOnlyAPersonMayApprove []string             `yaml:"paths_only_a_person_may_approve" settings:"optional"`
 	InternetAccess             string               `yaml:"internet_access"`
 	ListedHosts                []SettingsListedHost `yaml:"listed_hosts"`
 	// SoftwareReviewIntervalHours is off, or 1 to 8760 hours between

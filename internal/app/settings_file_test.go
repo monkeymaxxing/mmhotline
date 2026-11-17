@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -126,6 +127,31 @@ func TestTheExampleSettingsFileHasNoProblems(t *testing.T) {
 	}
 }
 
+// TestEveryCommitOnOriginNeedsNoSigningKeys checks the two good forms of
+// triage_agent.trusted_commits: every_commit_on_origin with the four keys
+// left out, and the first value written out, and that a list written as []
+// still counts as present with the first value.
+func TestEveryCommitOnOriginNeedsNoSigningKeys(t *testing.T) {
+	fourKeys := regexp.MustCompile(`(?m)^  (commit_signing_public_key|trusted_commit_signing_public_keys|commits_without_a_trusted_signature_are_approved_by|paths_only_a_person_may_approve):.*\n`)
+	withoutKeys := fourKeys.ReplaceAllString(exampleSettingsYAML, "")
+	for name, yaml := range map[string]string{
+		"every commit on origin":  strings.Replace(withoutKeys, "triage_agent:\n", "triage_agent:\n  trusted_commits: every_commit_on_origin\n", 1),
+		"the default written out": strings.Replace(exampleSettingsYAML, "triage_agent:\n", "triage_agent:\n  trusted_commits: signed_by_a_trusted_key_or_reviewed\n", 1),
+		"empty lists with the default": strings.NewReplacer(
+			`trusted_commit_signing_public_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKkV3VQGyLmAYtl/HR7x93Qw22ugM6k9OhTepuWlHFPr Barbara, a person the team trusts"]`, "trusted_commit_signing_public_keys: []",
+			"paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md, roles/every_server/files/]", "paths_only_a_person_may_approve: []").Replace(exampleSettingsYAML),
+	} {
+		if _, problems := ReadSettingsFile(writeSettingsFile(t, yaml), nil); len(problems) != 0 {
+			t.Errorf("%s: %q", name, problemTexts(problems))
+		}
+	}
+	// Left out, the key is the first value, and the four keys are required.
+	_, problems := ReadSettingsFile(writeSettingsFile(t, withoutKeys), nil)
+	if got := problemTexts(problems); len(got) != 4 || !strings.HasSuffix(got[0], "triage_agent.commit_signing_public_key: required") {
+		t.Errorf("trusted_commits left out: %q", got)
+	}
+}
+
 // TestEachSettingsProblemNamesItsKeyPath changes the example in one place
 // and checks the problems the check reports, each with its key path.
 func TestEachSettingsProblemNamesItsKeyPath(t *testing.T) {
@@ -183,6 +209,15 @@ func TestEachSettingsProblemNamesItsKeyPath(t *testing.T) {
 		{"trusted keys with a key cut short and the triage agent's key", "  trusted_commit_signing_public_keys: [", "  trusted_commit_signing_public_keys: [\"ssh-ed25519 AAAA\", \"" + testTriageAgentCommitSigningPublicKey + "\", ",
 			[]string{"triage_agent.trusted_commit_signing_public_keys[0]: has a key that is cut short: copy the whole line of the .pub file",
 				"triage_agent.trusted_commit_signing_public_keys[1]: is the triage agent's key, triage_agent.commit_signing_public_key; list only the keys of the team's people and machines, because the triage agent's commits may change only one_time_playbooks/ and triage_agent_notes/"}},
+		{"trusted commits with another value", "triage_agent:\n", "triage_agent:\n  trusted_commits: every_commit\n",
+			[]string{"triage_agent.trusted_commits: must be signed_by_a_trusted_key_or_reviewed or every_commit_on_origin"}},
+		{"missing approval and paths with the default", "  commits_without_a_trusted_signature_are_approved_by: a_person_or_the_triage_agent\n  paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md, roles/every_server/files/]\n", "  trusted_commits: signed_by_a_trusted_key_or_reviewed\n",
+			[]string{"triage_agent.commits_without_a_trusted_signature_are_approved_by: required", "triage_agent.paths_only_a_person_may_approve: required"}},
+		{"every commit on origin with the four keys", "triage_agent:\n", "triage_agent:\n  trusted_commits: every_commit_on_origin\n",
+			[]string{"triage_agent.commit_signing_public_key: used only with triage_agent.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it",
+				"triage_agent.trusted_commit_signing_public_keys: used only with triage_agent.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it",
+				"triage_agent.commits_without_a_trusted_signature_are_approved_by: used only with triage_agent.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it",
+				"triage_agent.paths_only_a_person_may_approve: used only with triage_agent.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it"}},
 		{"approval by another", "approved_by: a_person_or_the_triage_agent", "approved_by: the_review_agent",
 			[]string{"triage_agent.commits_without_a_trusted_signature_are_approved_by: must be a_person or a_person_or_the_triage_agent"}},
 		{"missing paths only a person may approve", "  paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md, roles/every_server/files/]\n", "",

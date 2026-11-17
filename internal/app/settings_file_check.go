@@ -18,7 +18,6 @@ import (
 	"mmhotline/internal/actionkinds"
 	"mmhotline/internal/cloudflareaccess"
 	"mmhotline/internal/statuspage"
-	"mmhotline/internal/systemsrepository"
 	"mmhotline/internal/triageagent"
 )
 
@@ -58,23 +57,7 @@ func checkSettings(s Settings, problems *settingsProblems) {
 	}
 	if agent := s.TriageAgent; agent != nil {
 		checkCodingAgentSettings("triage_agent", agent.SettingsCodingAgent, problems)
-		triageAgentKey, err := systemsrepository.CommitSigningKeyFingerprint(agent.CommitSigningPublicKey)
-		if err != nil {
-			problems.addError("triage_agent.commit_signing_public_key", err)
-		}
-		for index, key := range agent.TrustedCommitSigningPublicKeys {
-			path := fmt.Sprintf("triage_agent.trusted_commit_signing_public_keys[%d]", index)
-			fingerprint, err := systemsrepository.CommitSigningKeyFingerprint(key)
-			switch {
-			case err != nil:
-				problems.addError(path, err)
-			case fingerprint == triageAgentKey:
-				// A trusted key's commits pass whatever they change, so the
-				// triage agent's commits would leave its two folders unchecked.
-				problems.add(path, "is the triage agent's key, triage_agent.commit_signing_public_key; list only the keys of the team's people and machines, because the triage agent's commits may change only one_time_playbooks/ and triage_agent_notes/")
-			}
-		}
-		checkCommitApprovalSettings(*agent, problems)
+		checkCommitSigningSettings(*agent, problems)
 		if agent.InternetAccess != "listed_hosts_only" && agent.InternetAccess != "any_site" {
 			problems.add("triage_agent.internet_access", "must be listed_hosts_only or any_site")
 		}

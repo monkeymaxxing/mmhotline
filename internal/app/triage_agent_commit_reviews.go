@@ -64,6 +64,98 @@ CREATE TABLE triage_agent_refused_commits (
 );
 `
 
+// The values of triage_agent.trusted_commits. Left out, the key is the
+// first value, so settings files from before the key keep working; it is
+// what every earlier release did.
+const (
+	commitsTrustedWhenSignedByATrustedKeyOrReviewed = "signed_by_a_trusted_key_or_reviewed"
+	commitsTrustedEveryCommitOnOrigin               = "every_commit_on_origin"
+)
+
+// trustedCommitsOf is the value of triage_agent.trusted_commits with the
+// default filled in; other text stays as written.
+func trustedCommitsOf(agent SettingsTriageAgent) string {
+	if agent.TrustedCommits == "" {
+		return commitsTrustedWhenSignedByATrustedKeyOrReviewed
+	}
+	return agent.TrustedCommits
+}
+
+// settingsTrustedCommitsPart keeps triage_agent.trusted_commits as an applied
+// value, which trustsEveryCommitOnOrigin reads: only the applied value
+// counts. Without the triage_agent section the value is null, and nothing is
+// trusted, as before.
+var settingsTrustedCommitsPart = settingsFilePart{
+	name:        "triage_agent.trusted_commits",
+	value:       triageAgentValue(func(agent SettingsTriageAgent) any { return trustedCommitsOf(agent) }),
+	apply:       func(context.Context, *App, Settings) error { return nil },
+	keepsValues: true,
+}
+
+// trustsEveryCommitOnOrigin says whether the applied settings trust every
+// commit on origin's branch (every_commit_on_origin). Before the settings
+// file applies the key, and without a triage_agent section, they do not.
+func trustsEveryCommitOnOrigin(ctx context.Context, db rowQuerier) (bool, error) {
+	var trustedCommits string
+	_, err := appliedSettingsValue(ctx, db, settingsTrustedCommitsPart.name, &trustedCommits)
+	return trustedCommits == commitsTrustedEveryCommitOnOrigin, err
+}
+
+// checkCommitSigningSettings checks triage_agent.trusted_commits and the
+// four keys that go with the first value: with every_commit_on_origin they
+// must be left out, since nothing reads them, and with the first value they
+// are required.
+func checkCommitSigningSettings(agent SettingsTriageAgent, problems *settingsProblems) {
+	const trustedCommits = "triage_agent.trusted_commits"
+	// A text key is left out when it is empty and a list key when it is nil;
+	// a list written as [] is present.
+	keysPresent := []struct {
+		path    string
+		present bool
+	}{
+		{"triage_agent.commit_signing_public_key", agent.CommitSigningPublicKey != ""},
+		{"triage_agent.trusted_commit_signing_public_keys", agent.TrustedCommitSigningPublicKeys != nil},
+		{"triage_agent.commits_without_a_trusted_signature_are_approved_by", agent.CommitsWithoutATrustedSignatureAreApprovedBy != ""},
+		{"triage_agent.paths_only_a_person_may_approve", agent.PathsOnlyAPersonMayApprove != nil},
+	}
+	switch trustedCommitsOf(agent) {
+	case commitsTrustedEveryCommitOnOrigin:
+		for _, key := range keysPresent {
+			if key.present {
+				problems.add(key.path, "used only with "+trustedCommits+": "+commitsTrustedWhenSignedByATrustedKeyOrReviewed+"; remove it")
+			}
+		}
+		problems.note(trustedCommits, "MMHotline trusts every commit on origin: it checks no signature, no commit waits for review, and the triage agent reviews no commit. Use this only when origin is on the team's own server and only keys that already hold root on every server can push to it.")
+		return
+	case commitsTrustedWhenSignedByATrustedKeyOrReviewed:
+	default:
+		problems.add(trustedCommits, "must be "+commitsTrustedWhenSignedByATrustedKeyOrReviewed+" or "+commitsTrustedEveryCommitOnOrigin)
+		return
+	}
+	for _, key := range keysPresent {
+		if !key.present {
+			problems.add(key.path, "required")
+		}
+	}
+	triageAgentKey, err := systemsrepository.CommitSigningKeyFingerprint(agent.CommitSigningPublicKey)
+	if err != nil {
+		problems.addError("triage_agent.commit_signing_public_key", err)
+	}
+	for index, key := range agent.TrustedCommitSigningPublicKeys {
+		path := fmt.Sprintf("triage_agent.trusted_commit_signing_public_keys[%d]", index)
+		fingerprint, err := systemsrepository.CommitSigningKeyFingerprint(key)
+		switch {
+		case err != nil:
+			problems.addError(path, err)
+		case fingerprint == triageAgentKey:
+			// A trusted key's commits pass whatever they change, so the
+			// triage agent's commits would leave its two folders unchecked.
+			problems.add(path, "is the triage agent's key, triage_agent.commit_signing_public_key; list only the keys of the team's people and machines, because the triage agent's commits may change only one_time_playbooks/ and triage_agent_notes/")
+		}
+	}
+	checkCommitApprovalSettings(agent, problems)
+}
+
 // The keys apply without an outside service test. A changed key leaves the
 // checked-through commit as it is: every commit through it passed with the
 // keys of its time, and checking the history again with new keys would make
@@ -92,6 +184,9 @@ func commitSigningKeysSettingsNotes(ctx context.Context, tx *sql.Tx) ([]string, 
 	var triageAgentSetUp bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM triage_agent_setup)`).Scan(&triageAgentSetUp); err != nil || !triageAgentSetUp {
 		return nil, err
+	}
+	if every, err := trustsEveryCommitOnOrigin(ctx, tx); err != nil || every {
+		return []string{"The settings trust every commit on origin, so MMHotline checks no commit signing keys."}, err
 	}
 	var triageAgent, trustedJSON string
 	err := tx.QueryRowContext(ctx, `SELECT commit_signing_public_key,trusted_commit_signing_public_keys_json FROM triage_agent_commit_check_state WHERE id=1`).Scan(&triageAgent, &trustedJSON)
@@ -189,16 +284,34 @@ func (a *App) checkCommitsThrough(ctx context.Context, target string) (CommitChe
 	var keys systemsrepository.CommitSigningKeys
 	var trusted, last string
 	err := a.Store.db.QueryRowContext(ctx, `SELECT commit_signing_public_key,trusted_commit_signing_public_keys_json,last_checked_commit_id FROM triage_agent_commit_check_state WHERE id=1`).Scan(&keys.TriageAgent, &trusted, &last)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && keys.TriageAgent == "") {
-		return check, errCommitSigningKeysNotSet
+	noState := errors.Is(err, sql.ErrNoRows)
+	if noState {
+		err = nil
 	}
 	if err != nil {
 		return check, err
 	}
-	if err := json.Unmarshal([]byte(trusted), &keys.Trusted); err != nil {
+	every, err := trustsEveryCommitOnOrigin(ctx, a.Store.db)
+	if err != nil {
 		return check, err
 	}
 	directory := filepath.Join(a.Store.Dir, systemsrepository.DirectoryName)
+	if every {
+		// The settings trust every commit on origin: no signature is read,
+		// no commit waits, and the checkpoint moves to the tip.
+		trustedThrough, checkpoint, err := systemsrepository.TrustedThrough(ctx, directory, last, target, nil)
+		if err != nil {
+			return check, err
+		}
+		check.TrustedThroughCommitID = trustedThrough
+		return check, a.moveCommitCheckpoint(ctx, last, checkpoint)
+	}
+	if noState || keys.TriageAgent == "" {
+		return check, errCommitSigningKeysNotSet
+	}
+	if err := json.Unmarshal([]byte(trusted), &keys.Trusted); err != nil {
+		return check, err
+	}
 	refused, err := systemsrepository.CommitsThatNeedReview(ctx, directory, last, target, keys)
 	if err != nil {
 		return check, err
@@ -242,13 +355,24 @@ func (a *App) checkCommitsThrough(ctx context.Context, target string) (CommitChe
 		return check, err
 	}
 	check.TrustedThroughCommitID = trustedThrough
-	if checkpoint != "" && checkpoint != last {
-		err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `UPDATE triage_agent_commit_check_state SET last_checked_commit_id=? WHERE id=1`, checkpoint)
-			return err
-		})
+	return check, a.moveCommitCheckpoint(ctx, last, checkpoint)
+}
+
+// moveCommitCheckpoint saves checkpoint, the commit every commit through
+// which is trusted, when it differs from last. The state row may not exist
+// yet: with every_commit_on_origin no keys are applied to make it.
+func (a *App) moveCommitCheckpoint(ctx context.Context, last, checkpoint string) error {
+	if checkpoint == "" || checkpoint == last {
+		return nil
 	}
-	return check, err
+	return a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+		return setCommitCheckpointTx(ctx, tx, checkpoint)
+	})
+}
+
+func setCommitCheckpointTx(ctx context.Context, tx *sql.Tx, commitID string) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO triage_agent_commit_check_state(id,commit_signing_public_key,trusted_commit_signing_public_keys_json,last_checked_commit_id) VALUES(1,'','[]',?) ON CONFLICT(id) DO UPDATE SET last_checked_commit_id=excluded.last_checked_commit_id`, commitID)
+	return err
 }
 
 // trustedCommit is the commit check as the copy asks for it whenever it
@@ -631,11 +755,17 @@ func (a *App) trustCommitsThrough(ctx context.Context, p Principal, commitID str
 	}
 	var key, last string
 	err = a.Store.db.QueryRowContext(ctx, `SELECT commit_signing_public_key,last_checked_commit_id FROM triage_agent_commit_check_state WHERE id=1`).Scan(&key, &last)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && key == "") {
-		return CommitCheck{}, "", errCommitSigningKeysNotSet
+	noState := errors.Is(err, sql.ErrNoRows)
+	if noState {
+		err = nil
 	}
 	if err != nil {
 		return CommitCheck{}, "", err
+	}
+	if every, err := trustsEveryCommitOnOrigin(ctx, a.Store.db); err != nil {
+		return CommitCheck{}, "", err
+	} else if !every && (noState || key == "") {
+		return CommitCheck{}, "", errCommitSigningKeysNotSet
 	}
 	short := commitID[:7]
 	message := ""
@@ -678,7 +808,7 @@ func (a *App) trustCommitsThrough(ctx context.Context, p Principal, commitID str
 			if err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE triage_agent_commit_check_state SET last_checked_commit_id=? WHERE id=1`, commitID); err != nil {
+			if err := setCommitCheckpointTx(ctx, tx, commitID); err != nil {
 				return err
 			}
 			for _, review := range before {

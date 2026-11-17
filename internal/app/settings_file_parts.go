@@ -70,6 +70,7 @@ var settingsFileParts = append([]settingsFilePart{
 	{name: "alert_sources", value: fileValue(func(s Settings) any { return s.AlertSources }), apply: func(ctx context.Context, a *App, s Settings) error {
 		return a.applyAlertSourceSettings(ctx, s.AlertSources)
 	}},
+	settingsTrustedCommitsPart,
 	settingsCommitSigningPublicKeysPart,
 	settingsCommitApprovalPart,
 	settingsTriageAgentSetupPart,
@@ -185,10 +186,15 @@ var settingsSOSWaitsForAServerReplacementPart = settingsFilePart{
 	keepsValues: true,
 }
 
+// rowQuerier is a transaction or the database: where one row is read from.
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // appliedSettingsValue reads the value a part that keeps its values last
 // applied into value, and says whether there was one. A part applied
 // without its section kept null, which leaves value as it was.
-func appliedSettingsValue(ctx context.Context, tx *sql.Tx, part string, value any) (bool, error) {
+func appliedSettingsValue(ctx context.Context, tx rowQuerier, part string, value any) (bool, error) {
 	var values string
 	err := tx.QueryRowContext(ctx, `SELECT applied_values FROM settings_file_parts WHERE part=?`, part).Scan(&values)
 	if errors.Is(err, sql.ErrNoRows) || values == "" || values == "null" {

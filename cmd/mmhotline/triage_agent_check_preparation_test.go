@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -276,4 +277,26 @@ func equalInts(a, b []int) bool {
 		}
 	}
 	return true
+}
+
+// With every_commit_on_origin the settings trust every commit on origin, so
+// the agent's .gitconfig need not sign: check 3 is present whatever its
+// signing settings are, and says why.
+func TestTheSigningCheckIsSkippedWhenTheSettingsTrustEveryCommitOnOrigin(t *testing.T) {
+	f := newPreparationFixture(t)
+	f.p.appliedSigningKey = ""
+	f.p.trustsEveryCommitOnOrigin = true
+	if err := os.Remove(filepath.Join(f.p.agentHome, ".gitconfig")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	for _, check := range f.p.checks() {
+		if check.Number == 3 && (!check.Present || !strings.Contains(check.Detail, "the settings trust every commit on origin")) {
+			t.Fatalf("check 3: %+v", check)
+		}
+	}
+	// Without the setting, no applied key is still missing.
+	f.p.trustsEveryCommitOnOrigin = false
+	if present, _ := presentNumbers(f.p.checks()); slices.Contains(present, 3) {
+		t.Fatal("check 3 is present without an applied key")
+	}
 }

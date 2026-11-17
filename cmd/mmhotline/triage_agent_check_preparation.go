@@ -132,26 +132,27 @@ func runTriageAgentCheckPreparation(args []string) error {
 		agentHome:     triageAgentHome, mmhotlineHome: installStateDir, mmxSearchPath: app.MMXSearchPath,
 		run: runPreparationCommand, lookupAddresses: net.LookupIP,
 	}
-	p.appliedSigningKey, p.agentSetUp, p.setupProblem = appliedTriageAgentSigningKey("/run/mmhotline/command.sock")
+	p.appliedSigningKey, p.trustsEveryCommitOnOrigin, p.agentSetUp, p.setupProblem = appliedTriageAgentSigningKey("/run/mmhotline/command.sock")
 	return writePreparationReport(os.Stdout, *asJSON, p.checks())
 }
 
 // appliedTriageAgentSigningKey asks the running MMHotline, through the
 // command socket as the other commands do, whether the triage agent is set
-// up and which commit signing public key is applied. The key is public.
-func appliedTriageAgentSigningKey(socket string) (key string, setUp bool, problem string) {
+// up, which commit signing public key is applied (the key is public), and
+// whether the settings trust every commit on origin.
+func appliedTriageAgentSigningKey(socket string) (key string, trustsEveryCommitOnOrigin, setUp bool, problem string) {
 	unixUser := os.Getenv("SUDO_USER")
 	if unixUser == "" {
 		unixUser = "root"
 	}
 	result, err := sendCommand(socket, app.CommandRequest{Group: "triage-agent", Action: "show", UnixUser: unixUser})
 	if err != nil {
-		return "", false, "MMHotline did not answer triage-agent show: " + err.Error()
+		return "", false, false, "MMHotline did not answer triage-agent show: " + err.Error()
 	}
 	if result.TriageAgent == nil || result.TriageAgent.Setup == nil {
-		return "", false, ""
+		return "", false, false, ""
 	}
-	return result.TriageAgent.CommitSigningPublicKey, true, ""
+	return result.TriageAgent.CommitSigningPublicKey, result.TriageAgent.TrustsEveryCommitOnOrigin, true, ""
 }
 
 // The two Unix users the checks run programs as.
@@ -169,6 +170,7 @@ type preparationRunner func(runAs, directory, program string, args ...string) (s
 type preparation struct {
 	copyDirectory, agentHome, mmhotlineHome, mmxSearchPath string
 	appliedSigningKey                                      string
+	trustsEveryCommitOnOrigin                              bool
 	agentSetUp                                             bool
 	setupProblem                                           string // why the applied setup could not be read
 	run                                                    preparationRunner
@@ -307,7 +309,11 @@ func (p preparation) checks() []preparationCheck {
 	add(2, 2, "The triage user accepts the agent's key", "triage@ on "+strings.Join(accepted, ", ")+" accepts "+agentKey, check2...)
 
 	// 3. The agent signs its commits.
-	add(3, 3, "The agent signs its commits", "git signs with the applied commit signing key", p.signingProblem())
+	signingDetail := "git signs with the applied commit signing key"
+	if p.agentSetUp && p.trustsEveryCommitOnOrigin {
+		signingDetail = "not needed: triage_agent.trusted_commits is every_commit_on_origin, so the settings trust every commit on origin and MMHotline checks no signature"
+	}
+	add(3, 3, "The agent signs its commits", signingDetail, p.signingProblem())
 
 	// 4. The rules file.
 	rules := filepath.Join(p.copyDirectory, "triage_agent_rules.md")
@@ -429,6 +435,9 @@ var signingSettingNames = regexp.MustCompile(`^(gpg\.format|commit\.gpgsign|user
 func (p preparation) signingProblem() string {
 	if !p.agentSetUp {
 		return cmp.Or(p.setupProblem, "the triage agent is not set up, so no commit signing key is applied (see triage-agent show)")
+	}
+	if p.trustsEveryCommitOnOrigin {
+		return ""
 	}
 	if p.appliedSigningKey == "" {
 		return "no triage_agent.commit_signing_public_key is applied"

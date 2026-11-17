@@ -123,7 +123,25 @@ has the inventory address `203.0.113.11` and the private address
    lets `triage` read the logs; without it, the agent reports that it
    cannot read the system journal.
 
-3. **Make the agent sign its commits.** On `util01`:
+3. **Choose how MMHotline trusts commits, then make the agent sign its commits.**
+   MMHotline checks each commit on origin before MMX runs it. The setting
+   `triage_agent.trusted_commits` has two values:
+
+   - `signed_by_a_trusted_key_or_reviewed` (the value when you leave the
+     setting out): a commit passes when a key you trust signed it, or when a
+     person reviewed it. This step and the next sign the agent's commits.
+   - `every_commit_on_origin`: every commit on origin passes. Skip the rest
+     of this step and the key settings of
+     [Set up the agent](#set-up-the-agent), step 3: the agent need not sign,
+     and the settings leave out the four signing and approval keys.
+
+   Use `every_commit_on_origin` only when origin is on the team's own server and only keys that already hold root on every server can push to it. With origin on a Git host such as GitHub, it would give everyone who can push there root on every server.
+
+   Reason: where only keys with root on every server can push, a signature
+   adds no protection. Anyone who gets into a Git host on the internet could
+   otherwise put a commit in front of MMX.
+
+   With the first value, on `util01`:
 
    ```sh
    sudo -u mmhotline-triage-agent tee /var/lib/mmhotline-triage-agent/.gitconfig >/dev/null <<'EOF'
@@ -145,12 +163,14 @@ has the inventory address `203.0.113.11` and the private address
    `triage_agent.commit_signing_public_key` in
    [Set up the agent](#set-up-the-agent), step 3.
 
-   Reason: MMHotline pushes the agent's signed commits to
-   `one_time_playbooks/` and `triage_agent_notes/` without a person.
-   Unsigned commits wait for a commit review, and MMHotline reads a
-   requested playbook only at the last trusted commit, where it is not yet.
-   The agent then reports
-   `my start playbook waits for a person to review my commits`.
+   Reason: with the default `triage_agent.trusted_commits`, MMHotline's
+   commit check passes the agent's commits to `one_time_playbooks/` and
+   `triage_agent_notes/` only when this key signed them. Unsigned commits
+   wait for a commit review, and MMHotline reads a requested playbook only at
+   the last trusted commit, where it is not yet. The agent then reports
+   `my start playbook waits for a person to review my commits`. With
+   `every_commit_on_origin`, the agent's commits need no signature, and this
+   step can be left out.
 
 4. **Put the agent's rules and the servers' host keys in the systems
    repository,** on your own computer, in your clone:
@@ -383,6 +403,13 @@ has the inventory address `203.0.113.11` and the private address
        preset: routine_fixes_without_permission
    ```
 
+   - With `trusted_commits: every_commit_on_origin` (see
+     [the choice in the preparation](#prepare-the-servers-and-the-systems-repository),
+     step 3), add that line and leave out `commit_signing_public_key`,
+     `trusted_commit_signing_public_keys`,
+     `commits_without_a_trusted_signature_are_approved_by`, and
+     `paths_only_a_person_may_approve`; the settings check refuses them.
+     The next two notes then do not apply.
    - `commit_signing_public_key`: the agent's public key from
      [step 3 of the preparation](#prepare-the-servers-and-the-systems-repository).
      Never list it under `trusted_commit_signing_public_keys`.
