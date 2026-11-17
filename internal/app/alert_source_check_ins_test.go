@@ -190,6 +190,38 @@ func TestMissingCheckInsWarnThenSOSThenResolve(t *testing.T) {
 	}
 }
 
+// A check-in resent as it was, which its signature still allows for 5
+// minutes, says nothing new: it neither delays the alarm about silence nor
+// ends an alarm already sent. Only a newer sent_at counts.
+func TestAResentCheckInDoesNotDelayTheSilenceAlarm(t *testing.T) {
+	r := newCheckInRig(t)
+	sentAt := r.clock
+	body := `{"sent_at":"` + sentAt.Format(time.RFC3339) + `","sent_by_node_name":"util"}`
+	resend := func() {
+		t.Helper()
+		if w := checkInHTTP(r.a, r.p, r.source, body, sentAt); w.Code != 200 {
+			t.Fatalf("resent check-in: %d %s", w.Code, w.Body.String())
+		}
+	}
+	resend()
+	r.at(t, 90*time.Second)
+	resend()
+	r.at(t, 30*time.Second)
+	if titles := r.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "warn: ") {
+		t.Fatalf("2 minutes after the only check-in, with a resent copy between: %v", titles)
+	}
+	r.at(t, 30*time.Second)
+	resend()
+	r.at(t, time.Second)
+	if titles := r.titles(t); len(titles) != 1 {
+		t.Fatalf("a resent check-in ended the warning: %v", titles)
+	}
+	r.at(t, 149*time.Second)
+	if titles := r.titles(t); len(titles) != 2 || !strings.HasPrefix(titles[1], "sos: ") {
+		t.Fatalf("5 minutes after the only check-in: %v", titles)
+	}
+}
+
 func TestClaimedCheckInIncidentStaysOpen(t *testing.T) {
 	r := newCheckInRig(t)
 	email := savedEmail(t, r.a, r.p, true)
