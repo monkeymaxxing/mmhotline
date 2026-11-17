@@ -427,3 +427,45 @@ func TestStopWhileMMHotlineReadsThePlaybook(t *testing.T) {
 	}
 	noRunnerCall(t, runner)
 }
+
+// A person presses Stop while a playbook the agent asked for runs without a
+// person. The agent's request gets no answer, as its run is stopping, but
+// MMHotline still records how the playbook run went, and the hand-over
+// tells the agent, so its note and report say whether the fix ran.
+func TestHandOverTellsTheResultOfAPlaybookRunTheStopInterrupted(t *testing.T) {
+	r := newTriageSessionRig(t, true)
+	actThenReportReboot(t, r.a)
+	r.a.triageAgent.playbookRunner = r.a
+	directory := t.TempDir()
+	started, release := filepath.Join(directory, "started"), filepath.Join(directory, "release")
+	installFakeMMXRun(t, r.a, "#!/bin/sh\ntouch '"+started+"'\n"+waitForFileInShell(release)+"echo 'PLAY RECAP app002 ok=1'\nexit 0\n")
+	r.alert(t, "sos", "app002 stopped answering", "app002")
+	r.drive(t)
+	run := r.nextRun(t)
+	controls := json.NewDecoder(run.connection)
+	sendTriageEvent(t, run, triageagent.Event{Event: "session", SessionID: "session-one"})
+	sendTriageEvent(t, run, triageagent.Event{Event: "playbook_run_requested", RequestID: "0000000000000001", Playbook: rebootPlaybook, Inventory: "production", Diagnosis: testDiagnosis})
+	waitForCondition(t, "mmx run", fileExists(started))
+	if err := r.a.TakeOverTriageSession(context.Background(), r.p, openTriageSessionID(t, r.a)); err != nil {
+		t.Fatal(err)
+	}
+	r.drive(t)
+	readStop(t, run, controls)
+	if err := os.WriteFile(release, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The run's relay has stopped listening, so this answer reaches nobody.
+	var control triageagent.Control
+	run.connection.SetReadDeadline(time.Now().Add(20 * time.Second))
+	if err := controls.Decode(&control); err != nil || control.Answer == nil || control.Answer.Outcome != triageagent.RanAndSucceeded {
+		t.Fatalf("the answer: %+v %v", control, err)
+	}
+	r.end(t, run, triageagent.Event{Event: "stopped", SessionID: "session-one"})
+	r.drive(t)
+	handOver := r.nextRun(t)
+	for _, want := range []string{"for a hand-over", "MMHotline's record of that request, to run " + playbookInInventoryText(rebootPlaybook, "production"), "MMHotline answered at ", control.Answer.Message, "MMX exited with status 0.", "PLAY RECAP app002 ok=1"} {
+		if !strings.Contains(handOver.request.Prompt, want) {
+			t.Fatalf("the hand-over prompt lacks %q:\n%s", want, handOver.request.Prompt)
+		}
+	}
+}

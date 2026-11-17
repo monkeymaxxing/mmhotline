@@ -1456,6 +1456,32 @@ func TestTriageSessionResumesAfterARestart(t *testing.T) {
 	}
 }
 
+// MMHotline's process ends while a playbook the agent asked for runs. The
+// resumed run hears that the playbook run started and that MMHotline
+// recorded no outcome, so the agent checks the servers instead of guessing.
+func TestResumeAfterARestartTellsOfAPlaybookRunWithNoOutcome(t *testing.T) {
+	test := restartsDuringARun[1]
+	r := newTriageSessionRig(t, true)
+	r.alert(t, "sos", "Database on db001 is down", "db001")
+	r.drive(t)
+	run := r.nextRun(t)
+	sendTriageEvent(t, run, triageagent.Event{Event: "session", SessionID: "session-one"})
+	waitSessionIDSaved(t, r.a, "session-one")
+	// As MMHotline records a request whose MMX run has started.
+	if _, err := r.a.Store.db.Exec(`INSERT INTO triage_agent_requests(run_id,request_id,kind,playbook,inventory,requested_at,playbook_run_started_at) VALUES(?,'0000000000000001','playbook_run',?,'production',?,?)`, lastRunID(t, r.a), rebootPlaybook, r.a.Now().Unix(), r.a.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	r.a = test.stop(t, r.a)
+	r.runs = triageRunFixture(t, r.a)
+	r.drive(t)
+	resumed := r.nextRun(t)
+	for _, want := range []string{"Your last run ended before the work finished: " + test.reason, "MMHotline's record of that request, to run " + playbookInInventoryText(rebootPlaybook, "production"), "was still running when your run stopped. MMHotline recorded no outcome"} {
+		if !strings.Contains(resumed.request.Prompt, want) {
+			t.Fatalf("the prompt lacks %q:\n%s", want, resumed.request.Prompt)
+		}
+	}
+}
+
 // Codex and Claude Code report what their session has used so far, so a
 // resumed session's total includes its earlier runs. Each run records its own
 // use, its total less the total of the session's latest finished run, and
@@ -1652,7 +1678,7 @@ func TestTriageSessionPromptNotesAndSSH(t *testing.T) {
 	contains("start of the first session", triageSessionStartPrompt("util01", "", []string{"servers"}, nil, nil, nil),
 		append([]string{"No earlier triage session left a note in triage_agent_notes/."}, newNote...),
 		[]string{"Do not change the note from the last triage session."})
-	contains("resume", triageSessionResumePrompt("", nil, nil, nil),
+	contains("resume", triageSessionResumePrompt("", "", nil, nil, nil),
 		[]string{"before the run ends, update your note in triage_agent_notes/ and commit it."},
 		[]string{"new file", "last triage session"})
 }
@@ -1667,7 +1693,7 @@ func TestTriageSessionPromptStaysWithinItsLimit(t *testing.T) {
 	}
 	for name, prompt := range map[string]string{
 		"start":  triageSessionStartPrompt("util01", newestNote, []string{"production", "staging"}, nil, nil, alerts),
-		"resume": triageSessionResumePrompt("", nil, nil, alerts),
+		"resume": triageSessionResumePrompt("", "", nil, nil, alerts),
 	} {
 		encoded, err := json.Marshal(prompt)
 		if err != nil {
@@ -1684,7 +1710,7 @@ func TestTriageSessionPromptStaysWithinItsLimit(t *testing.T) {
 			t.Fatalf("%s prompt ends %q, want %q", name, prompt[len(prompt)-100:], want)
 		}
 	}
-	if prompt := triageSessionResumePrompt("", nil, nil, alerts[:3]); !strings.Contains(prompt, "Alert 3 of 3: ") || strings.Contains(prompt, "left out") {
+	if prompt := triageSessionResumePrompt("", "", nil, nil, alerts[:3]); !strings.Contains(prompt, "Alert 3 of 3: ") || strings.Contains(prompt, "left out") {
 		t.Fatalf("three alerts fit:\n%.300s", prompt)
 	}
 }

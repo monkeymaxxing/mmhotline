@@ -103,8 +103,9 @@ This triage session can take several runs: when more alerts arrive, or a playboo
 // triageSessionResumePrompt is the task of a later run of the same session,
 // with what MMHotline did with playbook runs a person decided, the notes from
 // the team it gets, and the alerts that arrived since the last one.
-// lastRunEndedBecause is why the session's last run failed, or "".
-func triageSessionResumePrompt(lastRunEndedBecause string, approvalResults []string, incidentNotes []triageSessionPromptIncidentNote, alerts []triageSessionPromptAlert) string {
+// lastRunEndedBecause is why the session's last run failed, or "";
+// interruptedPlaybookRun is interruptedPlaybookRunText.
+func triageSessionResumePrompt(lastRunEndedBecause, interruptedPlaybookRun string, approvalResults []string, incidentNotes []triageSessionPromptIncidentNote, alerts []triageSessionPromptAlert) string {
 	prompt := "MMHotline resumes your triage session because more alerts arrived."
 	switch {
 	case len(approvalResults) > 0 && len(alerts) > 0:
@@ -118,7 +119,7 @@ func triageSessionResumePrompt(lastRunEndedBecause string, approvalResults []str
 	prompt += `
 
 The same rules apply: follow triage_agent_rules.md; apply fixes only through mmhotline triage-agent request-playbook-run; end this run with mmhotline triage-agent report; and before the run ends, update your note in triage_agent_notes/ and commit it.`
-	return withTriageSessionAlerts(prompt+approvalResultsText(approvalResults)+incidentNotesText(incidentNotes), "The new alerts, oldest first:", alerts)
+	return withTriageSessionAlerts(prompt+interruptedPlaybookRun+approvalResultsText(approvalResults)+incidentNotesText(incidentNotes), "The new alerts, oldest first:", alerts)
 }
 
 // triageSessionHandOverPrompt is the task of the one run that resumes a
@@ -129,7 +130,7 @@ The same rules apply: follow triage_agent_rules.md; apply fixes only through mmh
 // person handles those now, but the results of its playbook runs that wait
 // for it, so its note says how they went, and the notes from the team it
 // gets.
-func triageSessionHandOverPrompt(takenOver, lastRunEndedBecause string, approvalResults []string, incidentNotes []triageSessionPromptIncidentNote) string {
+func triageSessionHandOverPrompt(takenOver, lastRunEndedBecause, interruptedPlaybookRun string, approvalResults []string, incidentNotes []triageSessionPromptIncidentNote) string {
 	prompt := "MMHotline resumes your triage session once more, for a hand-over. A person took this triage session over from you: " + takenOver + ". The person works on the servers now."
 	if lastRunEndedBecause != "" {
 		prompt += " Your last run ended before the work finished: " + lastRunEndedBecause
@@ -146,7 +147,7 @@ In this run:
 3. End your turn.
 
 Start no new work and change nothing. MMHotline refuses every playbook run you ask for in this run. You may read a server over SSH only to say where things stand now. After this run, MMHotline ends the triage session; the next alert starts a new one, which starts from your note.`
-	return prompt + approvalResultsText(approvalResults) + incidentNotesText(incidentNotes)
+	return prompt + interruptedPlaybookRun + approvalResultsText(approvalResults) + incidentNotesText(incidentNotes)
 }
 
 // approvalResultsText tells the agent what MMHotline did with each playbook

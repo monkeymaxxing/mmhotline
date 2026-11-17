@@ -108,9 +108,13 @@ var errTriageSessionEnded = errors.New("the triage session ended before its run 
 // approved or refused playbook runs that wait, by their approval request IDs.
 type triageSessionRunPlan struct {
 	sessionID, action, codingAgentSessionID, lastRunEndedBecause string
-	alerts                                                       []triageSessionPromptAlert
-	throughAlertSequence                                         int64
-	approvalRequestIDs, approvalResults                          []string
+	// interruptedPlaybookRun is MMHotline's record of the playbook run the
+	// session's last run asked for last, when that run ended before it
+	// finished, so an answer it never got still reaches the agent.
+	interruptedPlaybookRun              string
+	alerts                              []triageSessionPromptAlert
+	throughAlertSequence                int64
+	approvalRequestIDs, approvalResults []string
 	// takenOver, for the hand-over run of a session a person took over,
 	// says who took it over and when; it is "" for every other run.
 	takenOver string
@@ -616,6 +620,11 @@ func (a *App) planTriageSessionRun(ctx context.Context, tx *sql.Tx, sessionID, c
 	}
 	waitingOnly := ""
 	if plan.codingAgentSessionID != "" {
+		if plan.interruptedPlaybookRun, err = interruptedPlaybookRunText(ctx, tx, sessionID); err != nil {
+			return nil, err
+		}
+	}
+	if plan.codingAgentSessionID != "" {
 		plan.action = "resume"
 		waitingOnly = ` AND s.sent_in_run_id=''`
 	}
@@ -694,6 +703,45 @@ func resumableCodingAgentSession(ctx context.Context, tx *sql.Tx, sessionID, cod
 	return codingAgentSessionID, lastRunEndedBecause, nil
 }
 
+// interruptedPlaybookRunText returns MMHotline's record of the playbook run
+// the session's last run asked for last, or "". The agent asks for one thing
+// at a time, so only the run's last request can have lost its answer: when
+// a Stop or a restart ended the run while MMX ran, the agent was told the
+// request gets no answer, while MMHotline went on to record the outcome. A
+// run that finished got every answer. The record may repeat an answer the
+// agent already read, which costs less than a fix the agent never hears of.
+func interruptedPlaybookRunText(ctx context.Context, tx *sql.Tx, sessionID string) (string, error) {
+	var kind, playbook, inventory, outcome, message, output string
+	var answeredAt, startedAt, endedAt int64
+	var exitCode sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT q.kind,q.playbook,q.inventory,q.outcome,q.message,q.answered_at,q.playbook_run_started_at,q.playbook_run_ended_at,q.playbook_run_exit_code,q.playbook_run_output FROM triage_agent_requests q JOIN (SELECT id,state FROM triage_agent_runs WHERE triage_session_id=? ORDER BY started_at DESC,rowid DESC LIMIT 1) r ON r.id=q.run_id WHERE r.state IN ('stopped','failed') ORDER BY q.requested_at DESC,q.rowid DESC LIMIT 1`, sessionID).Scan(&kind, &playbook, &inventory, &outcome, &message, &answeredAt, &startedAt, &endedAt, &exitCode, &output)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && kind != "playbook_run" {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	at := func(unix int64) string { return displayTime(time.Unix(unix, 0)) }
+	text := "\n\nYour last run ended before it finished, so the answer to the last playbook run you asked for may not have reached you. MMHotline's record of that request, to run " + playbookInInventoryText(playbook, inventory) + ":\n"
+	switch {
+	case outcome != "":
+		text += "MMHotline answered at " + at(answeredAt) + ": " + message
+	case endedAt > 0:
+		text += "The playbook run started at " + at(startedAt) + " and ended at " + at(endedAt) + ", but MMHotline stopped before it recorded an answer."
+	case startedAt > 0:
+		text += "The playbook run started at " + at(startedAt) + " and was still running when your run stopped. MMHotline recorded no outcome: check the servers to learn how far it got."
+	default:
+		text += "MMHotline recorded no answer, and the playbook run did not start."
+	}
+	if exitCode.Valid {
+		text += fmt.Sprintf("\nMMX exited with status %d.", exitCode.Int64)
+	}
+	if output != "" {
+		text += "\n\nPlaybook run output:\n" + endOfPlaybookRunOutput(output)
+	}
+	return text, nil
+}
+
 // planTriageSessionHandOver returns the hand-over run of a session a person
 // took over: a resume of the agent's session with the results of playbook
 // runs that wait for it, so its note says how they went, and no alert,
@@ -706,6 +754,9 @@ func (a *App) planTriageSessionHandOver(ctx context.Context, tx *sql.Tx, session
 		return nil, err
 	}
 	if plan.approvalRequestIDs, plan.approvalResults, err = approvalResultsForSession(ctx, tx, session.ID); err != nil {
+		return nil, err
+	}
+	if plan.interruptedPlaybookRun, err = interruptedPlaybookRunText(ctx, tx, session.ID); err != nil {
 		return nil, err
 	}
 	if plan.takenOver, err = session.takenOverText(ctx, tx); err != nil {
@@ -724,10 +775,10 @@ func (a *App) planTriageSessionHandOver(ctx context.Context, tx *sql.Tx, session
 // takes the alerts it carries in the transaction that records it, and only
 // while the session is still open.
 func (a *App) startTriageSessionRun(ctx context.Context, plan triageSessionRunPlan) {
-	prompt := triageSessionResumePrompt(plan.lastRunEndedBecause, plan.approvalResults, plan.incidentNotes, plan.alerts)
+	prompt := triageSessionResumePrompt(plan.lastRunEndedBecause, plan.interruptedPlaybookRun, plan.approvalResults, plan.incidentNotes, plan.alerts)
 	switch {
 	case plan.takenOver != "":
-		prompt = triageSessionHandOverPrompt(plan.takenOver, plan.lastRunEndedBecause, plan.approvalResults, plan.incidentNotes)
+		prompt = triageSessionHandOverPrompt(plan.takenOver, plan.lastRunEndedBecause, plan.interruptedPlaybookRun, plan.approvalResults, plan.incidentNotes)
 	case plan.action == "start":
 		serverName, _ := os.Hostname()
 		// A copy Git cannot read fails the run's own fetch too, with the reason.
