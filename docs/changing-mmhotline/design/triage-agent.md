@@ -108,8 +108,13 @@ then steer every later run. So each run limits what reaches the next:
   `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. The agent's notes belong in
   `triage_agent_notes/`, where the [commit check](#checking-commits-before-mmx-and-triage-agent-runs)
   judges them.
-- **The agent's copy of the systems repository** drops every file the
-  starting commit lacks, ignored files too (`git clean -ffdx`).
+- **The agent's copy of the systems repository is made new** at the start
+  of every run, its `.git` directory included, so no file, commit, or Git
+  setting an earlier run left there reaches the next run.
+- **MMHotline's own Git commands in the agent's copy read no user Git
+  settings** ([rules for the Git commands](#rules-for-the-git-commands)).
+- **`~/.mmhotline/bin`, first on the agent's search path, holds only the
+  run's own `ssh`** ([the agent's ssh](#the-agents-ssh)).
 
 What stays, and why:
 
@@ -117,7 +122,9 @@ What stays, and why:
   `~/.codex/sessions/`, because the next run of a triage session resumes
   its session from them.
 - The agent's SSH key and Git settings, `~/.ssh/id_ed25519` and
-  `~/.gitconfig`, which the team's setup made.
+  `~/.gitconfig`, which the team's setup made. Only the coding agent's own
+  Git reads `~/.gitconfig`, for the agent's commit name, email address, and
+  signing key.
 - No sign-in: a credential reaches each run in its request, and a ChatGPT
   sign-in's `auth.json` is deleted when the run ends
   ([Codex with a ChatGPT sign-in](#codex-with-a-chatgpt-sign-in)).
@@ -484,9 +491,13 @@ Codex runs each command in a login shell, `bash -lc`, and on Debian
 `/etc/profile` sets `PATH` anew for every login shell, which removes
 `~/.mmhotline/bin` from the front. So the run also sets `BASH_ENV` to
 `~/.mmhotline/bash_env`, which bash reads after its login files, and which puts
-`~/.mmhotline/bin` first again. The run rewrites `~/.mmhotline/bin/ssh` and
-`~/.mmhotline/bash_env` at the start, as the run rewrites `~/.ssh/config`,
-so a run cannot leave a changed `ssh` for the next run. A review run gets
+`~/.mmhotline/bin` first again. At the start, the run empties
+`~/.mmhotline/bin` and writes `~/.mmhotline/bin/ssh` and
+`~/.mmhotline/bash_env` anew, as the run rewrites `~/.ssh/config`. So a run
+cannot leave a changed `ssh`, or another program in `~/.mmhotline/bin`, such
+as a `git` that would run in place of the real one, for the next run. A
+commit review writes both files in its new empty home, so its search path
+starts in a directory no other run could write. A review run gets
 no `~/.mmhotline/bin` entry on `PATH` and no `BASH_ENV` setting. The review
 run's search path holds nothing the triage agent can change.
 
@@ -1326,11 +1337,11 @@ forward to the new trusted commit.
    commits the team trusts. With no trusted commit at all, the run fails
    before the coding agent starts and says how many commits wait.
 2. The run's request carries the base and the bundle. Inside the sandbox, the
-   run creates the agent's copy when it is missing, checks out the base as
-   `main` with `--force`, and removes the files and directories the base does
-   not have, except those the repository's `.gitignore` names. Work an earlier
-   run did not commit or did not get pushed is discarded, so every run starts
-   from MMHotline's branch. The coding agent
+   run removes the agent's copy an earlier run left, creates it new from the
+   bundle, and checks out the base as `main`. Work an earlier run did not
+   commit or did not get pushed is discarded, with any file or Git setting
+   that run left in the copy, so every run starts from MMHotline's
+   branch. The coding agent
    starts with the agent's copy as its working directory.
 3. When the run ends, whether finished, stopped, or failed, its final event
    carries a bundle of the commits on the agent's `main` after the base. Each
@@ -1395,9 +1406,8 @@ into a private ref, the ref keeps the commits unless the outcome is
   handles the agent's commits. Without
   `core.hooksPath=/dev/null`, a push alone runs `pre-push` and
   `reference-transaction` in MMHotline's copy. The Git host's own hooks
-  still run. In the agent's copy, a hook an earlier run left could change
-  the copy after
-  MMHotline reset it.
+  still run. In the agent's copy, a hook the agent wrote during the run
+  never runs as part of MMHotline's own Git commands.
 - **Fetches leave `FETCH_HEAD` alone** (`--no-write-fetch-head`). A `git pull`
   merges what `FETCH_HEAD` names, and a pull in MMHotline's copy, such as
   a person's helper, must never merge the agent's commits.
@@ -1407,8 +1417,19 @@ into a private ref, the ref keeps the commits unless the outcome is
   waits for a password. MMHotline sets `GIT_CONFIG_NOSYSTEM=1`, so the
   server-wide `/etc/gitconfig` does not apply. MMHotline sets
   `GIT_CEILING_DIRECTORIES` to prevent Git from finding a repository in a
-  parent directory instead of the intended copy. Each user's `~/.gitconfig`
-  still applies.
+  parent directory instead of the intended copy.
+- **In the agent's copy, MMHotline's Git reads no user settings.** MMHotline
+  sets `GIT_CONFIG_GLOBAL=/dev/null` and `core.attributesFile=/dev/null`
+  there, and makes the copy new each run. A misled run can write the agent's
+  `~/.gitconfig`, `~/.config/git/`, and the copy's `.git/config`. A setting
+  there, such as a smudge filter, `core.fsmonitor`, or `diff.external`,
+  names a program that Git would run while MMHotline prepares the next run's
+  copy, before a commit review's coding agent starts; that program could
+  approve the commits under review. The coding agent's own Git still reads
+  `~/.gitconfig`, which holds the agent's commit name, email address, and
+  signing key. In MMHotline's copy, the `mmhotline` user's `~/.gitconfig`
+  still applies, such as settings that sign MMHotline's merges; the agent
+  cannot reach that home.
 - **Each Git command ends after 2 minutes**, so a Git host that stops answering
   cannot hold the one run.
 - **A bundle is at most 64 MiB.** The limit measures the binary bundle before

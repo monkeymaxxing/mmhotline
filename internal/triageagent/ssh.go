@@ -102,10 +102,14 @@ const bashEnvironmentHeader = `# Written by MMHotline at the start of every tria
 // runs mmhotline triage-agent ssh with PATH set back to searchPath, and the
 // file for BASH_ENV, which puts the ssh first again in a bash login shell.
 // It returns the ssh's directory, which goes first on the agent's search
-// path, and that file.
+// path, and that file. It empties the directory first: any other program an
+// earlier run left there would run in place of the command of its name.
 func writeAgentSSH(home, mmhotlineProgram, searchPath string) (directory, bashEnvironmentFile string, err error) {
 	mmhotlineDirectory := filepath.Join(home, ".mmhotline")
 	directory = filepath.Join(mmhotlineDirectory, "bin")
+	if err = os.RemoveAll(directory); err != nil {
+		return "", "", err
+	}
 	ssh := agentSSHHeader + "PATH=" + shellQuoted(searchPath) + "\nexport PATH\nexec " + shellQuoted(mmhotlineProgram) + " triage-agent " + SSHAction + " \"$@\"\n"
 	if err = replaceFile(directory, "ssh", ssh, 0o700); err != nil {
 		return "", "", err

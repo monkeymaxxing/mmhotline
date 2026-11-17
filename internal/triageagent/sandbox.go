@@ -144,13 +144,15 @@ func RunInsideSandbox(ctx context.Context, in io.Reader, out io.Writer, settings
 	}
 	// A review run leaves the agent's SSH settings and its ssh alone: the
 	// triage run that waits for it uses them. Its search path holds nothing
-	// the triage agent can change.
+	// the triage agent can change. The SSH settings stay in the agent's home,
+	// where ssh looks; the agent's ssh goes in the run's home, so a commit
+	// review's search path is new too.
 	environment := []string{"PATH=" + settings.SearchPath}
 	if !reviewAgent {
 		if err := writeSSHSettings(settings.Home, settings.MMHotlineProgram, agentCopy, request.InventoryServers); err != nil {
 			return fail(fmt.Errorf("write the agent's SSH settings: %w", err))
 		}
-		sshDirectory, bashEnvironmentFile, err := writeAgentSSH(settings.Home, settings.MMHotlineProgram, settings.SearchPath)
+		sshDirectory, bashEnvironmentFile, err := writeAgentSSH(home, settings.MMHotlineProgram, settings.SearchPath)
 		if err != nil {
 			return fail(fmt.Errorf("write the agent's ssh: %w", err))
 		}

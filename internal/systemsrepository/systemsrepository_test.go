@@ -358,13 +358,92 @@ func TestAgentCopyStartsExactlyAtBase(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(r.agent, "CLAUDE.local.md")); !os.IsNotExist(err) {
 		t.Fatalf("ignored file survived: %v", err)
 	}
-	if contained := git(t, r.agent, "branch", "--contains", unshared); contained != "" {
-		t.Fatalf("an earlier run's commit is still on %s", contained)
+	if _, err := runTestGit(r.agent, "", "cat-file", "-e", unshared+"^{commit}"); err == nil {
+		t.Fatal("an earlier run's commit is still in the agent's copy")
 	}
 	writeFile(t, r.agent, notePath, "uncommitted\n", 0o644)
 	if bundle, err := AgentCommitsBundle(t.Context(), r.agent, base); err != nil || bundle != nil {
 		t.Fatalf("uncommitted changes must not be bundled: %d bytes, %v", len(bundle), err)
 	}
+}
+
+// A misled run can write the agent's ~/.gitconfig and its copy's .git
+// directory. Git settings there name programs, such as a smudge filter or
+// core.fsmonitor, that Git runs while MMHotline prepares the next run's copy:
+// before a commit review's coding agent starts, so the program could approve
+// the commits under review. MMHotline's Git in the agent's copy reads no such
+// setting, and each run's copy is made new.
+func TestPlantedGitSettingsRunNothingWhenTheAgentCopyIsPrepared(t *testing.T) {
+	r := setUpRepositories(t)
+	home := os.Getenv("HOME")
+	marker := filepath.Join(r.root, "planted-program-ran")
+	planted := "sh -c 'echo ran >> " + marker + "; cat'"
+	plant := func(file string) {
+		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		for _, setting := range [][2]string{{"core.attributesFile", filepath.Join(home, "attributes")}, {"filter.planted.smudge", planted}, {"filter.planted.clean", "cat"}, {"core.fsmonitor", planted}} {
+			git(t, r.root, "config", "--file", file, setting[0], setting[1])
+		}
+	}
+	writeFile(t, home, "attributes", "* filter=planted\n", 0o644)
+	// MMHotline's own copy, with its own home on a server, is prepared first.
+	prepare := func() {
+		t.Helper()
+		base, err := UpdateFromOrigin(t.Context(), r.mmhotline, originIsTrusted)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bundle, err := BundleThrough(t.Context(), r.mmhotline, base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity := readTestFile(t, filepath.Join(home, ".gitconfig"))
+		plant(filepath.Join(home, ".gitconfig"))
+		plant(filepath.Join(home, ".config", "git", "config"))
+		err = PrepareAgentCopy(t.Context(), r.agent, bundle, base)
+		writeFile(t, home, ".gitconfig", identity, 0o644)
+		if removeErr := os.RemoveAll(filepath.Join(home, ".config")); removeErr != nil {
+			t.Fatal(removeErr)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	prepare()
+	if ran, err := os.ReadFile(marker); !os.IsNotExist(err) {
+		t.Fatalf("a program from the agent's ~/.gitconfig ran while the agent's copy was prepared: %s", ran)
+	}
+
+	// The same settings in the copy's own .git, for the next run.
+	writeFile(t, r.agent, ".git/info/attributes", "* filter=planted\n", 0o644)
+	plant(filepath.Join(r.agent, ".git", "config"))
+	r.personPushes(t, "roles/web.yml", "packages: [caddy]\n")
+	r.startRun(t)
+	if ran, err := os.ReadFile(marker); !os.IsNotExist(err) {
+		t.Fatalf("a program from the copy's .git/config ran while the agent's copy was prepared: %s", ran)
+	}
+	if settings := readTestFile(t, filepath.Join(r.agent, ".git", "config")); strings.Contains(settings, "planted") {
+		t.Fatalf("the copy's .git/config kept an earlier run's settings:\n%s", settings)
+	}
+	if _, err := os.Stat(filepath.Join(r.agent, ".git", "info", "attributes")); !os.IsNotExist(err) {
+		t.Fatalf("the copy kept an earlier run's .git/info/attributes: %v", err)
+	}
+	// The agent's own Git still reads its ~/.gitconfig, for its commit identity.
+	writeFile(t, r.agent, notePath, "# Disk full on app002\n", 0o644)
+	commitAll(t, r.agent, "Note the full disk")
+	if author := git(t, r.agent, "log", "-1", "--format=%an <%ae>"); author != "MMHotline triage agent <mmhotline-triage-agent@example.com>" {
+		t.Fatalf("the agent's commit author: %s", author)
+	}
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(content)
 }
 
 func TestAgentPlaybookAndNoteArePushed(t *testing.T) {

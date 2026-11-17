@@ -114,8 +114,8 @@ func exitCode(err error) int {
 // included. In MMHotline's copy a hook runs as the mmhotline user, and nothing
 // of the team's should run while MMHotline handles the agent's commits; a push
 // runs pre-push and reference-transaction there. The Git host's own hooks
-// still run. In the agent's copy, a hook an earlier run left could change the
-// copy after MMHotline reset it.
+// still run. In the agent's copy, a hook the agent wrote during the run never
+// runs as part of MMHotline's own Git commands.
 func runGit(ctx context.Context, directory string, environment []string, args ...string) (string, error) {
 	directory, err := filepath.Abs(directory)
 	if err != nil {
@@ -184,14 +184,15 @@ func IsAncestor(ctx context.Context, directory, ancestor, descendant string) (bo
 	return false, err
 }
 
-// createBundle runs git bundle create for revisions and reads the bundle back.
-func createBundle(ctx context.Context, directory string, revisions ...string) ([]byte, error) {
+// createBundle runs git bundle create for revisions, with environment added to
+// Git's, and reads the bundle back.
+func createBundle(ctx context.Context, directory string, environment []string, revisions ...string) ([]byte, error) {
 	path, remove, err := temporaryBundleFile(nil)
 	if err != nil {
 		return nil, err
 	}
 	defer remove()
-	if _, err := runGit(ctx, directory, nil, append([]string{"bundle", "create", path}, revisions...)...); err != nil {
+	if _, err := runGit(ctx, directory, environment, append([]string{"bundle", "create", path}, revisions...)...); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(path)

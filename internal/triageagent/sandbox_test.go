@@ -445,7 +445,8 @@ printf '%s\n' '{"type":"result","subtype":"success","result":"Done."}'`, request
 	if !strings.HasPrefix(filepath.Base(home), "mmhotline-triage-agent-home-") {
 		t.Fatalf("the commit review's home %s is not a new directory", home)
 	}
-	if listing := strings.TrimSpace(readTestFile(t, filepath.Join(results, "home-listing"))); listing != "systems_repository" {
+	// .mmhotline holds the agent's ssh, which MMHotline writes for this run.
+	if listing := strings.TrimSpace(readTestFile(t, filepath.Join(results, "home-listing"))); listing != ".mmhotline\nsystems_repository" {
 		t.Fatalf("the commit review's home held: %q", listing)
 	}
 	// The run removed its home; /tmp itself may be a symlink.
@@ -464,6 +465,72 @@ printf '%s\n' '{"type":"result","subtype":"success","result":"Done."}'`, request
 	}
 	if _, err := os.Stat(home); !os.IsNotExist(err) {
 		t.Fatalf("the commit review's home outlived the run: %v", err)
+	}
+}
+
+// The commit review's new home is not enough on its own: Git reads the
+// agent's ~/.gitconfig from the run's HOME, and the agent's search path
+// starts with ~/.mmhotline/bin. A misled triage run can write both. A smudge
+// filter there would run while MMHotline prepares the commit review's copy,
+// and a planted git in ~/.mmhotline/bin would run when the reviewing agent
+// runs git; either could approve the commits under review.
+func TestSandboxCommitReviewRunsNothingAMisledRunPlanted(t *testing.T) {
+	agentHome, results := t.TempDir(), t.TempDir()
+	bundle, base := systemsRepositoryBundle(t)
+	marker := filepath.Join(results, "planted-program-ran")
+	planted := `sh -c 'echo ran >> ` + marker + `; cat'`
+	writeTestFiles(t, agentHome, map[string]string{
+		".gitconfig":          "[user]\n\tname = MMHotline triage agent\n[core]\n\tattributesFile = " + filepath.Join(agentHome, "attributes") + "\n\tfsmonitor = \"" + planted + "\"\n[filter \"planted\"]\n\tsmudge = \"" + planted + "\"\n\tclean = cat\n",
+		"attributes":          "* filter=planted\n",
+		".mmhotline/bin/git":  "#!/bin/sh\necho ran >> '" + marker + "'\n",
+		".mmhotline/bin/grep": "#!/bin/sh\necho ran >> '" + marker + "'\n",
+	})
+	if err := os.Chmod(filepath.Join(agentHome, ".mmhotline", "bin", "git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// On a server, the run's HOME is the agent's home.
+	t.Setenv("HOME", agentHome)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	request := testRequest("claude")
+	request.NewEmptyHome = true
+	request.SystemsRepositoryBaseCommitID, request.SystemsRepositoryBundle = base, bundle
+	run := startFakeRunInHome(t, agentHome, "claude", `first="${PATH%%:*}"
+printf '%s\n' "$first" > '`+results+`/first-on-path'
+/bin/ls -A "$first" > '`+results+`/first-on-path-listing'
+git status
+`+claudeSession+`
+printf '%s\n' '{"type":"result","subtype":"success","result":"Done."}'`, request)
+	for event := run.next(t); event.Event == "session"; event = run.next(t) {
+	}
+	run.finish(t)
+	if ran, err := os.ReadFile(marker); !os.IsNotExist(err) {
+		t.Fatalf("a program a misled run planted ran in the commit review: %s", ran)
+	}
+	first := strings.TrimSpace(readTestFile(t, filepath.Join(results, "first-on-path")))
+	if !strings.HasPrefix(filepath.Base(filepath.Dir(filepath.Dir(first))), "mmhotline-triage-agent-home-") {
+		t.Errorf("the commit review's first search path directory %s is not in its new home", first)
+	}
+	if listing := strings.TrimSpace(readTestFile(t, filepath.Join(results, "first-on-path-listing"))); listing != "ssh" {
+		t.Errorf("the commit review's first search path directory held %q", listing)
+	}
+}
+
+// A file a misled run left in ~/.mmhotline/bin, first on the agent's search
+// path, would run in place of the command of that name in every later run.
+func TestSandboxEmptiesTheAgentsSSHDirectory(t *testing.T) {
+	home := t.TempDir()
+	writeTestFiles(t, home, map[string]string{".mmhotline/bin/git": "#!/bin/sh\necho planted\n"})
+	run := startFakeRunInHome(t, home, "claude", claudeSession+`
+printf '%s\n' '{"type":"result","subtype":"success","result":"Done."}'`, testRequest("claude"))
+	for event := run.next(t); event.Event == "session"; event = run.next(t) {
+	}
+	run.finish(t)
+	entries, err := os.ReadDir(filepath.Join(home, ".mmhotline", "bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "ssh" {
+		t.Fatalf("~/.mmhotline/bin holds %v", entries)
 	}
 }
 

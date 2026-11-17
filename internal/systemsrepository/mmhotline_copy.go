@@ -100,7 +100,7 @@ func BundleThrough(ctx context.Context, directory, baseCommitID string) (bundle 
 		if _, err := runGit(ctx, directory, nil, "update-ref", runBaseRef, baseCommitID); err != nil {
 			return err
 		}
-		bundle, err = createBundle(ctx, directory, runBaseRef)
+		bundle, err = createBundle(ctx, directory, nil, runBaseRef)
 		// A ref left behind names a commit already in the copy; it harms nothing.
 		_, _ = runGit(ctx, directory, nil, "update-ref", "-d", runBaseRef)
 		return err

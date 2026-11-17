@@ -385,9 +385,9 @@ them each time:
 | Path in `/var/lib/mmhotline-triage-agent` | Mode | Holds |
 | --- | --- | --- |
 | `.ssh/config` | `0600` | Every host through the logging proxy, as the user `triage`, with the agent's key, the systems repository's `ssh/known_hosts`, and no prompts |
-| `.mmhotline/bin/ssh` | `0700` | The agent's `ssh`, first on its search path, which runs `mmhotline triage-agent ssh` |
+| `.mmhotline/bin/ssh` | `0700` | The agent's `ssh`, first on its search path, which runs `mmhotline triage-agent ssh`; the run removes anything else in `.mmhotline/bin` |
 | `.mmhotline/bash_env` | `0600` | Puts that `ssh` first again in a bash login shell |
-| `systems_repository/` | | The agent's own copy of the systems repository, at the commit MMHotline hands the run; the agent's new commits go back to MMHotline from here |
+| `systems_repository/` | | The agent's own copy of the systems repository, made new at the commit MMHotline hands the run; the agent's new commits go back to MMHotline from here |
 | `.codex/` | | Codex's own files, with Codex as the coding agent |
 
 Each run also removes the coding agents' instruction and settings files
