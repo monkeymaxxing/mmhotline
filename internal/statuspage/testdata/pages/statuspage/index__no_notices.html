@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Example Inc. status</title>
+<style>
+/* The public status page's styles: the rules index.html uses from
+   MMHotline's own stylesheet, internal/app/mmhotline.css, copied as written.
+   A page in an R2 bucket cannot load MMHotline's stylesheet, and must show
+   while MMHotline is down. TestPageStylesAreTheStylesheetsRules fails when a
+   rule here differs from that file; copy the rule from there again. */
+
+:root {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --border: #e3e6eb;
+  --border-strong: #c9ced6;
+  --text: #15181d;
+  --text-2: #444c58;
+  --text-3: #646c79;
+  --link: #2450c2;
+  --accent: #2450c2;
+  --on-accent: #ffffff;
+  --focus: #2450c2;
+  --sos: #b42318;
+  --sos-solid: #c4231c;
+  --sos-bg: #fdecea;
+  --sos-border: #f2b8b3;
+  --sos-ring: rgba(196, 35, 28, 0.09);
+  --warn: #8a5100;
+  --warn-solid: #b86e00;
+  --warn-bg: #fff3dc;
+  --warn-border: #f1d29a;
+  --ok: #146c43;
+  --ok-dot: #1f9d5c;
+  --ok-bg: #e6f5ec;
+  --work: #2348b3;
+  --work-bg: #e9effd;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0d1015;
+    --surface: #161a21;
+    --surface-2: #1e232c;
+    --border: #2a303b;
+    --border-strong: #3b4351;
+    --text: #e9ecf1;
+    --text-2: #b6bdc8;
+    --text-3: #8f97a4;
+    --link: #8fb0ff;
+    --accent: #8fb0ff;
+    --on-accent: #0b1020;
+    --focus: #8fb0ff;
+    --sos: #ff8f86;
+    --sos-solid: #c52a22;
+    --sos-bg: #34181a;
+    --sos-border: #6b2a27;
+    --sos-ring: rgba(255, 110, 100, 0.12);
+    --warn: #f2bb5c;
+    --warn-solid: #d88d14;
+    --warn-bg: #33270f;
+    --warn-border: #5e4716;
+    --ok: #63d49a;
+    --ok-dot: #3fbf7a;
+    --ok-bg: #12291c;
+    --work: #9cb8ff;
+    --work-bg: #1a2443;
+    --shadow: none;
+  }
+}
+body { display: flex; flex-direction: column; margin: 0; background: var(--bg); color: var(--text); min-height: 100vh;
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; }
+*, *::before, *::after { box-sizing: border-box; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+h1 { font-size: 26px; line-height: 1.25; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
+h2 { font-size: 16px; line-height: 1.35; font-weight: 600; margin: 0; }
+p, ul, ol, dl { margin: 0; }
+.faint { color: var(--text-3); }
+.small { font-size: 13px; }
+.stack { display: flex; flex-direction: column; gap: 20px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.spread { justify-content: space-between; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+.tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px;
+  font-size: 12px; font-weight: 650; white-space: nowrap; background: var(--surface-2); color: var(--text-2); }
+.tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.tag.sos { background: var(--sos-bg); color: var(--sos); }
+.tag.ok { background: var(--ok-bg); color: var(--ok); }
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { display: grid; grid-template-columns: 48px 16px minmax(0, 1fr); gap: 0 12px; padding-bottom: 14px; }
+.timeline li:last-child { padding-bottom: 0; }
+.timeline time { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; padding-top: 1px; }
+.timeline .dot { position: relative; display: flex; justify-content: center; }
+.timeline .dot::before { content: ""; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%;
+  border: 2px solid var(--text-3); background: var(--surface); z-index: 1; }
+.timeline .dot::after { content: ""; position: absolute; top: 16px; bottom: -14px; width: 2px; background: var(--border); }
+.timeline li:last-child .dot::after { display: none; }
+.timeline li.sos .dot::before { border-color: var(--sos-solid); background: var(--sos-solid); }
+.timeline li.person .dot::before { border-color: var(--ok-dot); background: var(--ok-dot); }
+.public { width: 100%; max-width: 680px; margin: 0 auto; padding: 56px 20px 48px; }
+.public h1 { font-size: 30px; }
+.state { padding: 24px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+.state.sos { border-color: var(--sos-border); box-shadow: 0 0 0 4px var(--sos-ring); }
+.state.ok { border-color: color-mix(in srgb, var(--ok-dot) 40%, var(--border)); }
+.state .big { font-size: 24px; line-height: 1.25; font-weight: 700; margin-top: 10px; }
+.state .big + p { margin-top: 4px; }
+.public .timeline { margin-top: 18px; }
+.public .timeline li > div { white-space: pre-wrap; overflow-wrap: anywhere; }
+.public .resolved > h2 { font-size: 13px; font-weight: 650; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
+.public .resolved > .panel { padding: 16px 18px; }
+</style>
+</head>
+<body>
+<main class="public stack">
+<h1>Example Inc. status</h1>
+<section class="state ok">
+<span class="tag ok">Working</span>
+<p class="big">Everything is working.</p>
+<p class="faint small">Last updated <time datetime="2026-10-30T12:00:00Z">30 October 2026, 12:00 UTC</time></p>
+</section>
+<footer class="faint small">Times are in UTC. The same notices for programs: <a href="status.json">status.json</a></footer>
+</main>
+</body>
+</html>

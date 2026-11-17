@@ -274,6 +274,15 @@ that calls a private transition directly is not an end-to-end workflow. Test
 the cgo-disabled artifacts; run the race detector separately, as
 [Go tests under stress](#go-tests-that-never-depend-on-the-machines-speed) does.
 
+Golden page tests (`TestGoldenPages` in `internal/app`,
+`internal/statuspage`, and `internal/fakesendingservices`) render each HTML
+page in fixed states and compare it with
+`testdata/pages/<package>/<page>__<state>.html`, apart from whitespace that
+does not show; package `internal/htmlgolden` says exactly what the comparison
+ignores. Each test's `goldenPages` table lists the states it covers and the
+states it does not, with the reason. After an intended page change, run the
+test with `-update` and review the changed golden files.
+
 Platform tests run selected artifacts on the agreed production targets.
 Sending service tests use designated contact methods to establish request
 acceptance, actual notification receipt, and observed call outcomes separately,

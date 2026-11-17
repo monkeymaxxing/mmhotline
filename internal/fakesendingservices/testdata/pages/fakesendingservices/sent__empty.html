@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>What MMHotline would have sent</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;margin:2rem}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:.3rem .6rem;text-align:left;vertical-align:top}pre{margin:0;white-space:pre-wrap}form{display:inline-block;margin:.2rem}</style></head>
+<body><h1>What MMHotline would have sent</h1><p>Nothing here reached a real person. These are the fake sending services used for development and tests.</p>
+<p>Email is not faked here. Set up the mail server against Mailpit to inspect development email.</p>
+<table><thead><tr><th>Sent at (UTC)</th><th>Sending service</th><th>From</th><th>To</th><th>Subject</th><th>Text</th></tr></thead><tbody>
+<tr><td colspan="6">Nothing sent yet.</td></tr>
+</tbody></table>
+<h2>Telegram messages and their buttons</h2><p>Press a button as the Telegram user with this ID. A user MMHotline does not know gets its "does not know your Telegram account" answer.</p>
+<table><thead><tr><th>Chat</th><th>Message</th><th>Text</th><th>Buttons</th></tr></thead><tbody>
+<tr><td colspan="4">No Telegram messages yet.</td></tr>
+</tbody></table>
+<h2>Telegram button answers</h2><ul><li>None yet.</li></ul>
+<h2>Slack connections</h2><p>Set up Slack with bot token <code>xoxb-fake-slack-bot-token</code> and app-level token <code>xapp-fake-slack-app-level-token</code>. Send a connection code as a chosen user.</p>
+<form method="post" action="/fake-api/actions/slack/message"><label>Slack user ID <input name="slack_user_id" value="U0001"></label><label>Conversation ID <input name="slack_conversation_id" value="D0001"></label><label>Message kind <select name="slack_message_kind"><option value="direct_message">Direct message</option><option value="mention">Channel mention (use a C conversation ID)</option></select></label><label>Connection code <input name="slack_message"></label><button>Send to MMHotline</button></form>
+<h2>Slack messages and their buttons</h2><p>Press as the chosen Slack user. Socket Mode delivers the press over MMHotline's outbound connection.</p>
+<table><thead><tr><th>Workspace</th><th>Channel</th><th>Message</th><th>Text</th><th>Buttons</th></tr></thead><tbody>
+<tr><td colspan="5">No Slack messages yet.</td></tr>
+</tbody></table>
+<h2>Slack replies only the presser saw</h2><ul><li>None yet.</li></ul>
+<h2>Pushover emergency receipts</h2><table><thead><tr><th>User key</th><th>Receipt</th><th>Status</th><th>Action</th></tr></thead><tbody><tr><td colspan="4">No Pushover emergency messages yet.</td></tr></tbody></table>
+<h2>Automated voice calls (Twilio)</h2><table><thead><tr><th>Sending service</th><th>To</th><th>What the call says</th><th>Status</th><th>Play the phone</th></tr></thead><tbody>
+<tr><td colspan="5">No calls yet.</td></tr>
+</tbody></table>
+<h2>Phone sending services</h2><p><strong>twilio</strong> <form method="post" action="/fake-api/actions/phone"><input type="hidden" name="action" value="next_request"><input type="hidden" name="sending_service" value="twilio"><input type="hidden" name="behavior" value="lose_next_response"><button>Lose the next response</button></form><form method="post" action="/fake-api/actions/phone"><input type="hidden" name="action" value="next_request"><input type="hidden" name="sending_service" value="twilio"><input type="hidden" name="behavior" value="refuse_next_request"><button>Refuse the next request</button></form></p>
+<form method="post" action="/fake-api/actions/phone"><input type="hidden" name="action" value="number_behavior"><label>Phone number <input name="phone_number" placeholder="+15555550123"></label> <select name="behavior"><option value="">Normal phone</option><option value="invalid_number">Invalid number (permanent failure)</option><option value="geographic">Outside the geographic permissions</option></select> <button>Set</button></form>
+</body></html>
