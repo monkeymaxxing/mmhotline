@@ -189,13 +189,13 @@ func TestSignInLinkExpiryAndCleanup(t *testing.T) {
 
 func TestRemovingPersonRevokesBrowserSignIns(t *testing.T) {
 	a := foundationApp(t)
-	admin := memberFixture(t, a, "admin@example.test").Principal
+	memberFixture(t, a, "admin@example.test")
 	memberFixture(t, a, "member@example.test")
 	link := createBrowserSignInLink(t, a, "member@example.test")
 	cookie := useBrowserSignInLink(t, a, link.SignInLinkURL, 303)
 	pending := createBrowserSignInLink(t, a, "member@example.test")
 	browserCookieRequest(t, a, cookie, 200)
-	if _, err := a.RemovePerson(context.Background(), admin, "member@example.test"); err != nil {
+	if err := removePerson(t, a, "member@example.test"); err != nil {
 		t.Fatal(err)
 	}
 	browserCookieRequest(t, a, cookie, 401)

@@ -91,31 +91,6 @@ func personBySignInEmailAddress(ctx context.Context, tx *sql.Tx, signInEmailAddr
 	return m, err
 }
 
-// AddPerson adds one person; the settings file's people part adds each new
-// person with insertPersonTx, in the transaction of the whole list.
-func (a *App) AddPerson(ctx context.Context, p Principal, signInEmailAddress, name, role string) (Member, error) {
-	var m Member
-	signInEmailAddress, err := normalizeSignInEmailAddress(signInEmailAddress)
-	if err != nil {
-		return m, err
-	}
-	name, err = validatePersonName(name)
-	if err != nil {
-		return m, err
-	}
-	if err = validatePersonRole(role); err != nil {
-		return m, err
-	}
-	err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-		if _, err := RequireMember(ctx, tx, p, true); err != nil {
-			return err
-		}
-		m, err = insertPersonTx(ctx, tx, signInEmailAddress, name, role)
-		return err
-	})
-	return m, err
-}
-
 // insertPersonTx adds a person whose checked sign-in email address no
 // member has.
 func insertPersonTx(ctx context.Context, tx *sql.Tx, signInEmailAddress, name, role string) (Member, error) {
@@ -130,102 +105,11 @@ func insertPersonTx(ctx context.Context, tx *sql.Tx, signInEmailAddress, name, r
 	_, err = tx.ExecContext(ctx, `INSERT INTO members(id,sign_in_email_address,name,role) VALUES(?,?,?,?)`, m.ID, m.SignInEmailAddress, m.Name, m.Role)
 	return m, err
 }
-func protectLastAdministrator(ctx context.Context, tx *sql.Tx, m Member) error {
-	if m.Role != RoleAdministrator {
-		return nil
-	}
-	var administrators int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM members WHERE role='administrator' AND removed_at IS NULL`).Scan(&administrators); err != nil {
-		return err
-	}
-	if administrators == 1 {
-		return fmt.Errorf("%w: add another administrator before removing the last administrator or changing the last administrator to a member", ErrConflict)
-	}
-	return nil
-}
-func (a *App) ChangePerson(ctx context.Context, p Principal, signInEmailAddress string, name, role *string) (Member, error) {
-	var m Member
-	signInEmailAddress, err := normalizeSignInEmailAddress(signInEmailAddress)
-	if err != nil {
-		return m, err
-	}
-	if name == nil && role == nil {
-		return m, fmt.Errorf("%w: provide a name or role to change", ErrInvalid)
-	}
-	var normalizedName string
-	if name != nil {
-		normalizedName, err = validatePersonName(*name)
-		if err != nil {
-			return m, err
-		}
-	}
-	if role != nil {
-		if err = validatePersonRole(*role); err != nil {
-			return m, err
-		}
-	}
-	err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-		if _, err := RequireMember(ctx, tx, p, true); err != nil {
-			return err
-		}
-		var err error
-		m, err = personBySignInEmailAddress(ctx, tx, signInEmailAddress)
-		if err != nil {
-			return err
-		}
-		if role != nil && *role != RoleAdministrator {
-			if err = protectLastAdministrator(ctx, tx, m); err != nil {
-				return err
-			}
-		}
-		if name != nil {
-			m.Name = normalizedName
-		}
-		if role != nil {
-			m.Role = *role
-		}
-		_, err = tx.ExecContext(ctx, `UPDATE members SET name=?,role=? WHERE id=?`, m.Name, m.Role, m.ID)
-		return err
-	})
-	return m, err
-}
-func (a *App) RemovePerson(ctx context.Context, p Principal, signInEmailAddress string) (Member, error) {
-	var m Member
-	signInEmailAddress, err := normalizeSignInEmailAddress(signInEmailAddress)
-	if err != nil {
-		return m, err
-	}
-	err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-		if _, err := RequireMember(ctx, tx, p, true); err != nil {
-			return err
-		}
-		var err error
-		m, err = personBySignInEmailAddress(ctx, tx, signInEmailAddress)
-		if err != nil {
-			return err
-		}
-		if err = protectLastAdministrator(ctx, tx, m); err != nil {
-			return err
-		}
-		schedules, err := ReadSchedules(ctx, tx)
-		if err != nil {
-			return err
-		}
-		return removePersonTx(ctx, tx, m, schedules.Configs, a.Now())
-	})
-	return m, err
-}
 
 // removePersonTx deactivates a person: it ends their contact methods, the
 // work waiting for them, and their sign-ins, and keeps their history. It
-// refuses while a schedule of schedules names them, while they own a
-// claimed incident, or while they have taken on-call.
-func removePersonTx(ctx context.Context, tx *sql.Tx, m Member, schedules []ScheduleConfig, now time.Time) error {
-	for _, schedule := range schedules {
-		if containsMember(schedule.Assignments, m.ID) || containsMember(schedule.RotationMemberIDs, m.ID) || schedule.BackupMemberID == m.ID {
-			return fmt.Errorf("%w: %s is named by the saved %s schedule; change the schedule before removing the person", ErrConflict, m.Name, scheduleTypeLabel(schedule.Kind))
-		}
-	}
+// refuses while they own a claimed incident or have taken on-call.
+func removePersonTx(ctx context.Context, tx *sql.Tx, m Member, now time.Time) error {
 	// A claimed incident reminds only its owner, so a removed owner would
 	// leave it waiting with nobody told.
 	var claimedIncidents, holdsOnCallClaim int

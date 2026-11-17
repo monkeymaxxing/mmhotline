@@ -28,7 +28,7 @@ func incidentPageAs(t *testing.T, a *App, p Principal, incidentID string) string
 // renameMember gives member p a name.
 func renameMember(t *testing.T, a *App, p Principal, name string) {
 	t.Helper()
-	if _, err := a.ChangePerson(context.Background(), Principal{UnixUser: "fixture"}, p.SignInEmailAddress, &name, nil); err != nil {
+	if err := changePerson(t, a, p.SignInEmailAddress, name, ""); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -2466,6 +2466,13 @@ working on the session:
    playbook runs went. The prompt also includes pending
    [notes from the team](#notes-from-the-team) on the session's incidents,
    such as the note the person wrote when claiming.
+   A Stop that comes while MMX runs a playbook the agent asked for tells
+   the waiting command that the request gets no answer, while MMHotline
+   still records how the playbook run went. So the prompt also includes
+   MMHotline's record of the last playbook run the stopped run asked for:
+   its answer, MMX's exit status, and the end of its output, or that the
+   playbook run was still running and no outcome was recorded
+   ([the record of a cut-short run](#the-record-of-a-cut-short-run)).
 
 3. **The session ends.** When the hand-over run ends, whether it finished
    or failed by itself, the session ends with "A person took over: Barbara
@@ -2649,6 +2656,18 @@ wait again. On the first visit after MMHotline starts again, the background
 loop resumes the session with the
 interrupted run's alerts and team notes. The prompt tells the agent why the
 last run ended.
+
+#### The record of a cut-short run
+
+When a session's last run ended before it finished, whether by a Stop, a
+restart, or a failure, the next resume or hand-over includes MMHotline's
+record of that run's last request, if it asked for a playbook run. The agent
+asks for one thing at a time, so only the last request can have lost its
+answer. The record gives MMHotline's answer, MMX's exit status, and the end of
+its output. Without an answer, it says when the playbook run started and that
+it was still running when the run stopped, so the agent checks the servers.
+The record may repeat an answer the agent already read. A repeated answer
+costs less than a fix the agent never hears of.
 
 A run cut short by MMHotline's stop or restart is not a failure of the agent,
 so an SOS that

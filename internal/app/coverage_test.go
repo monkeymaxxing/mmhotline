@@ -27,11 +27,7 @@ func coverageFixture(t *testing.T) (*App, Principal, []Member) {
 	recordEmailSetUpForTest(t, store)
 	var people []Member
 	for _, input := range []struct{ signInEmailAddress, name, role string }{{"admin@example.com", "Admin", RoleAdministrator}, {"backup@example.com", "Backup", RoleMember}, {"cover@example.com", "Cover", RoleMember}} {
-		m, err := a.AddPerson(ctx, Principal{UnixUser: "fixture"}, input.signInEmailAddress, input.name, input.role)
-		if err != nil {
-			t.Fatal(err)
-		}
-		people = append(people, m)
+		people = append(people, addPerson(t, a, input.signInEmailAddress, input.name, input.role))
 	}
 	a.Now = func() time.Time { return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) }
 	return a, Principal{SignInEmailAddress: people[0].SignInEmailAddress}, people

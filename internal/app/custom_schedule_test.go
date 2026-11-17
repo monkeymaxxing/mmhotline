@@ -73,10 +73,7 @@ func memberIDForUser(t *testing.T, a *App, p Principal) string {
 // addTeamMember creates a member through the shared people operation.
 func addTeamMember(t *testing.T, a *App, signInEmailAddress, name, role string) (string, string) {
 	t.Helper()
-	member, err := a.AddPerson(context.Background(), Principal{UnixUser: "fixture"}, signInEmailAddress, name, role)
-	if err != nil {
-		t.Fatal(err)
-	}
+	member := addPerson(t, a, signInEmailAddress, name, role)
 	return member.ID, member.SignInEmailAddress
 }
 
@@ -364,7 +361,7 @@ func TestCustomScheduleHourlyRunsFailuresMemberRemovalAndRunningOut(t *testing.T
 	// Dana is removed from the team: the code now names a sign-in email address that is
 	// not on the team, so the run fails right away, the stored shifts stay,
 	// and administrators are told once.
-	if _, err := h.app.RemovePerson(ctx, h.admin, h.danaInputSignInEmailAddress); err != nil {
+	if err := removePerson(t, h.app, h.danaInputSignInEmailAddress); err != nil {
 		t.Fatal(err)
 	}
 	h.background(t)
@@ -408,9 +405,7 @@ func TestCustomScheduleHourlyRunsFailuresMemberRemovalAndRunningOut(t *testing.T
 		t.Fatalf("ran out: %+v", live)
 	}
 	// Dana is back: the next run works again and says so.
-	if _, err := h.app.AddPerson(ctx, h.admin, h.danaInputSignInEmailAddress, "Dana", RoleMember); err != nil {
-		t.Fatal(err)
-	}
+	addPerson(t, h.app, h.danaInputSignInEmailAddress, "Dana", RoleMember)
 	h.background(t)
 	titles := h.alertTitles(t)
 	if titles[len(titles)-1] != "The custom schedule code works again: MMHotline knows who is on call" || h.coverage(t).Reason == customScheduleNoAnswerReason {

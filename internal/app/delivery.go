@@ -640,7 +640,8 @@ func deliveryEligible(ctx context.Context, tx *sql.Tx, d Delivery, at time.Time)
 
 // contactMethodStillWants reports whether the delivery's contact method still
 // wants it. The delivery is cancelled when the contact method was removed or
-// changed, or its member was removed. It is suppressed when the person's or
+// its destination changed (SaveContactMethod keeps a delivery on the current
+// revision for any other change), or its member was removed. It is suppressed when the person's or
 // the team's controls stop it (DeliveryAllowed). Pushover also stops an
 // emergency that already rings for these reasons.
 func contactMethodStillWants(ctx context.Context, tx *sql.Tx, d Delivery, at time.Time) (bool, string, string, error) {

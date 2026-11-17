@@ -1324,7 +1324,14 @@ delivery in the save transaction. The test names who added or changed the contac
 method and when, and says it tests the contact method, not an incident.
 Changing only subscriptions or availability preferences queues no test. Saving
 unchanged settings preserves the revision and pending deliveries.
-Changing settings cancels pending work for the old contact method revision.
+Changing the destination cancels the messages still waiting for the old one,
+including a combined message and the messages combined into it. Changing only
+subscriptions or availability preferences keeps every waiting message,
+including one waiting for a retry: the worker checks availability again before
+sending each one. A message already queued for a severity the person then
+unticks still goes. It was wanted when it was queued, and an extra message
+costs less than a lost one. Every change still gives the contact method a new
+revision, so two people saving it at once get a conflict.
 
 Only the team's own people add addresses on its server, so verification protects
 nobody. A test message catches a wrong address when a person looks at it.

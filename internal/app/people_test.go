@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -195,11 +195,89 @@ func memberFixture(t *testing.T, a *App, signInEmailAddress string) personFixtur
 	if len(people) == 0 {
 		role = RoleAdministrator
 	}
-	member, err := a.AddPerson(context.Background(), principal, signInEmailAddress, "Responder", role)
+	member := addPerson(t, a, signInEmailAddress, "Responder", role)
+	return personFixture{Principal: Principal{SignInEmailAddress: member.SignInEmailAddress}}
+}
+
+// changePeople changes the team the way production does, through the
+// settings file's people part as mmhotline settings apply runs it: the
+// file's check, then the part. change gets the team's people in the file's
+// form and returns the people the file lists.
+func changePeople(t *testing.T, a *App, change func([]SettingsPerson) []SettingsPerson) error {
+	t.Helper()
+	ctx := context.Background()
+	members, err := a.TeamMembers(ctx, Principal{UnixUser: "fixture"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return personFixture{Principal: Principal{SignInEmailAddress: member.SignInEmailAddress}}
+	var people []SettingsPerson
+	for _, m := range members {
+		people = append(people, SettingsPerson{Name: m.Name, SignInEmailAddress: m.SignInEmailAddress, Role: m.Role})
+	}
+	people = change(people)
+	problems := &settingsProblems{}
+	checkPeopleSettings(people, problems)
+	if len(problems.list) > 0 {
+		return fmt.Errorf("%w: %s %s", ErrInvalid, problems.list[0].KeyPath, problems.list[0].Problem)
+	}
+	// The part applies as the settings file, which a test App may not name.
+	if a.settingsFile.path == "" {
+		a.settingsFile.path = "/etc/mmhotline/mmhotline_settings.yml"
+		defer func() { a.settingsFile.path = "" }()
+	}
+	return applyPeopleSettings(ctx, a, Settings{People: people})
+}
+
+// addPerson adds one person to the settings file's people and applies it.
+func addPerson(t *testing.T, a *App, signInEmailAddress, name, role string) Member {
+	t.Helper()
+	if err := changePeople(t, a, func(people []SettingsPerson) []SettingsPerson {
+		return append(people, SettingsPerson{Name: name, SignInEmailAddress: signInEmailAddress, Role: role})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	address, err := normalizeSignInEmailAddress(signInEmailAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m Member
+	if err = a.Store.WithTransaction(context.Background(), func(tx *sql.Tx) error {
+		m, err = personBySignInEmailAddress(context.Background(), tx, address)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// removePerson leaves one person out of the settings file's people and
+// applies it, which deactivates the person or says why not.
+func removePerson(t *testing.T, a *App, signInEmailAddress string) error {
+	t.Helper()
+	return changePeople(t, a, func(people []SettingsPerson) []SettingsPerson {
+		return slices.DeleteFunc(people, func(person SettingsPerson) bool {
+			return strings.EqualFold(person.SignInEmailAddress, signInEmailAddress)
+		})
+	})
+}
+
+// changePerson changes one person's name or role in the settings file's
+// people and applies it; an empty name or role keeps the person's.
+func changePerson(t *testing.T, a *App, signInEmailAddress, name, role string) error {
+	t.Helper()
+	return changePeople(t, a, func(people []SettingsPerson) []SettingsPerson {
+		for index, person := range people {
+			if strings.EqualFold(person.SignInEmailAddress, signInEmailAddress) {
+				if name != "" {
+					people[index].Name = name
+				}
+				if role != "" {
+					people[index].Role = role
+				}
+			}
+		}
+		return people
+	})
 }
 
 type signInTransport struct {
@@ -226,11 +304,8 @@ func useSignInEmailAddress(client *http.Client, signInEmailAddress string) {
 func TestSignInAccessAndRemovalOnNextRequest(t *testing.T) {
 	a := foundationApp(t)
 	a.WebURL = "https://util01.example-tailnet.ts.net"
-	admin := memberFixture(t, a, "admin@example.test").Principal
-	member, err := a.AddPerson(context.Background(), admin, "Alice@Example.com", "Alice <Example>", RoleMember)
-	if err != nil {
-		t.Fatal(err)
-	}
+	memberFixture(t, a, "admin@example.test")
+	member := addPerson(t, a, "Alice@Example.com", "Alice <Example>", RoleMember)
 	handler := a.Handler()
 	request := func(path, signInEmailAddress string) *httptest.ResponseRecorder {
 		t.Helper()
@@ -258,54 +333,61 @@ func TestSignInAccessAndRemovalOnNextRequest(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(pageText(w.Body.String()), "Alice <Example> (you)") || strings.Contains(w.Body.String(), "Add a person") {
 		t.Fatalf("member page: %d %s", w.Code, w.Body.String())
 	}
-	if _, err = a.RemovePerson(context.Background(), admin, member.SignInEmailAddress); err != nil {
+	if err := removePerson(t, a, member.SignInEmailAddress); err != nil {
 		t.Fatal(err)
 	}
 	w = request("/people", "ALICE@EXAMPLE.COM")
 	if w.Code != 403 {
 		t.Fatalf("removed member next request: %d", w.Code)
 	}
-	if _, err = a.CurrentCoverage(context.Background(), Principal{SignInEmailAddress: member.SignInEmailAddress}); !errors.Is(err, ErrForbidden) {
+	if _, err := a.CurrentCoverage(context.Background(), Principal{SignInEmailAddress: member.SignInEmailAddress}); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("removed principal: %v", err)
 	}
 }
 
-func TestPeoplePermissionsLastAdministratorAndDuplicateSignInEmailAddress(t *testing.T) {
+// The settings file's people keep each sign-in email address once, as
+// MMHotline saves it, and keep an administrator. The role the file gives
+// decides what a person may do at the person's next request.
+func TestPeopleLastAdministratorAndDuplicateSignInEmailAddress(t *testing.T) {
 	a := foundationApp(t)
 	ctx := context.Background()
 	admin := memberFixture(t, a, "admin@example.test").Principal
-	person, err := a.AddPerson(ctx, admin, "  Alice@Example.com  ", "Alice", RoleMember)
-	if err != nil || person.SignInEmailAddress != "alice@example.com" {
-		t.Fatalf("add: %+v %v", person, err)
+	person := addPerson(t, a, "  Alice@Example.com  ", "Alice", RoleMember)
+	if person.SignInEmailAddress != "alice@example.com" {
+		t.Fatalf("add: %+v", person)
 	}
-	if _, err = a.AddPerson(ctx, admin, "ALICE@EXAMPLE.COM", "Other", RoleMember); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "Alice") {
+	if err := changePeople(t, a, func(people []SettingsPerson) []SettingsPerson {
+		return append(people, SettingsPerson{Name: "Other", SignInEmailAddress: "ALICE@EXAMPLE.COM", Role: RoleMember})
+	}); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "alice@example.com is also the sign-in email address of people[") {
 		t.Fatalf("duplicate: %v", err)
 	}
-	p := Principal{SignInEmailAddress: person.SignInEmailAddress}
-	name, role := "Changed", RoleMember
-	for _, action := range []func() error{
-		func() error { _, e := a.AddPerson(ctx, p, "another@example.com", "Another", role); return e },
-		func() error { _, e := a.ChangePerson(ctx, p, admin.SignInEmailAddress, &name, &role); return e },
-		func() error { _, e := a.RemovePerson(ctx, p, admin.SignInEmailAddress); return e },
-	} {
-		if err = action(); !errors.Is(err, ErrForbidden) {
-			t.Fatalf("member mutation: %v", err)
-		}
-	}
-	if _, err = a.ChangePerson(ctx, admin, admin.SignInEmailAddress, nil, &role); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "add another administrator") {
+	if err := changePerson(t, a, admin.SignInEmailAddress, "", RoleMember); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "needs at least one person with role administrator") {
 		t.Fatalf("last administrator demotion: %v", err)
 	}
-	if _, err = a.RemovePerson(ctx, admin, admin.SignInEmailAddress); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "add another administrator") {
+	if err := removePerson(t, a, admin.SignInEmailAddress); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "needs at least one person with role administrator") {
 		t.Fatalf("last administrator removal: %v", err)
 	}
-	administrator := RoleAdministrator
-	if _, err = a.ChangePerson(ctx, admin, person.SignInEmailAddress, &name, &administrator); err != nil {
+	requireAdministrator := func(p Principal) error {
+		return a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+			_, err := RequireMember(ctx, tx, p, true)
+			return err
+		})
+	}
+	if err := requireAdministrator(Principal{SignInEmailAddress: person.SignInEmailAddress}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("member as administrator: %v", err)
+	}
+	if err := changePeople(t, a, func(people []SettingsPerson) []SettingsPerson {
+		for index := range people {
+			people[index].Role = map[string]string{admin.SignInEmailAddress: RoleMember, person.SignInEmailAddress: RoleAdministrator}[people[index].SignInEmailAddress]
+		}
+		return people
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = a.ChangePerson(ctx, admin, admin.SignInEmailAddress, nil, &role); err != nil {
-		t.Fatal(err)
+	if err := requireAdministrator(Principal{SignInEmailAddress: person.SignInEmailAddress}); err != nil {
+		t.Fatalf("promoted person: %v", err)
 	}
-	if _, err = a.AddPerson(ctx, admin, "refused@example.com", "Refused", RoleMember); !errors.Is(err, ErrForbidden) {
+	if err := requireAdministrator(admin); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("demoted principal still administrator: %v", err)
 	}
 }
@@ -315,26 +397,30 @@ func TestPeopleInputValidationAndTransactionRollback(t *testing.T) {
 	ctx := context.Background()
 	admin := memberFixture(t, a, "admin@example.test").Principal
 	for _, signInEmailAddress := range []string{"a@b", strings.Repeat("x", 242) + "@example.com"} {
-		person, err := a.AddPerson(ctx, admin, signInEmailAddress, "Valid address", RoleMember)
-		if err != nil || person.SignInEmailAddress != signInEmailAddress {
-			t.Fatalf("valid sign-in email address %q: %+v %v", signInEmailAddress, person, err)
+		if person := addPerson(t, a, signInEmailAddress, "Valid address", RoleMember); person.SignInEmailAddress != signInEmailAddress {
+			t.Fatalf("valid sign-in email address %q: %+v", signInEmailAddress, person)
 		}
 	}
+	add := func(signInEmailAddress, name, role string) error {
+		return changePeople(t, a, func(people []SettingsPerson) []SettingsPerson {
+			return append(people, SettingsPerson{Name: name, SignInEmailAddress: signInEmailAddress, Role: role})
+		})
+	}
 	for _, signInEmailAddress := range []string{"", "alice", "@", "alice@@example.com", "ali ce@example.com", "@alice", "alice@", "alice\n@example.com", "alice\x00@example.com", strings.Repeat("x", 243) + "@example.com", string([]byte{0xff}) + "@example.com"} {
-		if _, err := a.AddPerson(ctx, admin, signInEmailAddress, "Alice", RoleMember); !errors.Is(err, ErrInvalid) {
+		if err := add(signInEmailAddress, "Alice", RoleMember); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), ".sign_in_email_address") {
 			t.Fatalf("sign-in email address %q: %v", signInEmailAddress, err)
 		}
 	}
 	for _, name := range []string{"", "  ", strings.Repeat("x", 101), string([]byte{0xff})} {
-		if _, err := a.AddPerson(ctx, admin, "alice@example.com", name, RoleMember); !errors.Is(err, ErrInvalid) {
+		if err := add("alice@example.com", name, RoleMember); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), ".name") {
 			t.Fatalf("name %q: %v", name, err)
 		}
 	}
-	if _, err := a.AddPerson(ctx, admin, "alice@example.com", "Alice", "owner"); !errors.Is(err, ErrInvalid) {
+	if err := add("alice@example.com", "Alice", "owner"); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), ".role") {
 		t.Fatalf("role: %v", err)
 	}
-	if _, err := a.ChangePerson(ctx, admin, admin.SignInEmailAddress, nil, nil); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("empty change: %v", err)
+	if n := scalarTeam(t, a, `SELECT count(*) FROM members WHERE sign_in_email_address='alice@example.com'`); n != 0 {
+		t.Fatalf("a refused person was saved: %d", n)
 	}
 	failure := errors.New("rollback")
 	err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
@@ -352,61 +438,11 @@ func TestPeopleInputValidationAndTransactionRollback(t *testing.T) {
 	}
 }
 
-func TestRemovingPersonNamedByAnySavedScheduleIsRefused(t *testing.T) {
-	for _, kind := range []string{"day_of_week", "hour_of_day", "weekly_rotation", "fixed_backup", "custom_fixed_backup", "inactive_saved"} {
-		t.Run(kind, func(t *testing.T) {
-			a, p, people := coverageFixture(t)
-			ctx := context.Background()
-			candidate := dayOfWeekFor(people[1].ID)
-			switch kind {
-			case "hour_of_day":
-				candidate.Kind = kind
-				candidate.Assignments = make([]string, 24)
-				candidate.Assignments[10] = people[1].ID
-			case "weekly_rotation":
-				candidate = ScheduleConfig{Kind: kind, TimeZone: "UTC", FirstStartDate: "2026-10-05", HandoffWeekday: 1, RotationMemberIDs: []string{people[1].ID, people[0].ID}, BackupKind: "next_in_rotation"}
-			case "fixed_backup", "custom_fixed_backup":
-				candidate = dayOfWeekFor(people[0].ID)
-				candidate.BackupKind = "fixed_person"
-				candidate.BackupMemberID = people[1].ID
-			}
-			if kind == "custom_fixed_backup" {
-				candidate.Kind = customScheduleKind
-				raw, err := json.Marshal(candidate)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-					_, err := tx.Exec(`INSERT INTO coverage_schedules(kind,configuration) VALUES(?,?)`, candidate.Kind, string(raw))
-					return err
-				}); err != nil {
-					t.Fatal(err)
-				}
-			} else if _, err := a.SaveSchedule(ctx, p, candidate, 0); err != nil {
-				t.Fatal(err)
-			}
-			if kind == "inactive_saved" {
-				other := ScheduleConfig{Kind: "hour_of_day", TimeZone: "UTC", Assignments: make([]string, 24), BackupKind: "everyone_available"}
-				if _, err := a.SaveSchedule(ctx, p, other, 1); err != nil {
-					t.Fatal(err)
-				}
-			}
-			_, err := a.RemovePerson(ctx, p, people[1].SignInEmailAddress)
-			if !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), scheduleTypeLabel(candidate.Kind)) {
-				t.Fatalf("schedule removal: %v", err)
-			}
-		})
-	}
-}
-
 func TestRemovingPersonCancelsWorkAndPreservesHistory(t *testing.T) {
 	a := foundationApp(t)
 	ctx := context.Background()
 	admin := memberFixture(t, a, "admin@example.test").Principal
-	person, err := a.AddPerson(ctx, admin, "alice@example.com", "Alice Example", RoleMember)
-	if err != nil {
-		t.Fatal(err)
-	}
+	person := addPerson(t, a, "alice@example.com", "Alice Example", RoleMember)
 	p := Principal{SignInEmailAddress: person.SignInEmailAddress}
 	savedEmail(t, a, p, true)
 	alert, err := a.ManualSOS(ctx, p, "Incident history", "Testing removed member names")
@@ -426,7 +462,7 @@ func TestRemovingPersonCancelsWorkAndPreservesHistory(t *testing.T) {
 	}
 	// A claimed incident reminds only its owner, and the on-call claim
 	// decides who is woken: removing their holder is refused.
-	if _, err = a.RemovePerson(ctx, admin, person.SignInEmailAddress); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "owns 1 claimed incident") {
+	if err = removePerson(t, a, person.SignInEmailAddress); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "owns 1 claimed incident") {
 		t.Fatalf("removal with a claimed incident: %v", err)
 	}
 	claimed, err := a.GetIncident(ctx, p, incident.ID)
@@ -436,7 +472,7 @@ func TestRemovingPersonCancelsWorkAndPreservesHistory(t *testing.T) {
 	if _, err = a.ResolveIncident(ctx, p, incident.ID, claimed.Revision, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = a.RemovePerson(ctx, admin, person.SignInEmailAddress); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "has taken on-call") {
+	if err = removePerson(t, a, person.SignInEmailAddress); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "has taken on-call") {
 		t.Fatalf("removal with the on-call claim: %v", err)
 	}
 	if _, err = a.EndOnCallClaim(ctx, p, claim.Revision); err != nil {
@@ -444,7 +480,7 @@ func TestRemovingPersonCancelsWorkAndPreservesHistory(t *testing.T) {
 	}
 	// Queue ordinary work after claiming, so removal must cancel it independently.
 	queueDelivery(t, a, p, "queued-for-removed-person", "warn")
-	if _, err = a.RemovePerson(ctx, admin, person.SignInEmailAddress); err != nil {
+	if err = removePerson(t, a, person.SignInEmailAddress); err != nil {
 		t.Fatal(err)
 	}
 	if n := scalarTeam(t, a, `SELECT count(*) FROM contact_methods WHERE member_id=? AND deleted=0`, person.ID); n != 0 {
@@ -479,9 +515,8 @@ func TestRemovingPersonCancelsWorkAndPreservesHistory(t *testing.T) {
 		t.Fatalf("on-call claim lost removed name: %d %s", response.Code, response.Body.String())
 	}
 	// Re-adding a sign-in email address is a new membership; the removed member's name is immutable.
-	replacement, err := a.AddPerson(ctx, admin, person.SignInEmailAddress, "New Alice", RoleMember)
-	if err != nil || replacement.ID == person.ID {
-		t.Fatalf("new membership: %+v %v", replacement, err)
+	if replacement := addPerson(t, a, person.SignInEmailAddress, "New Alice", RoleMember); replacement.ID == person.ID {
+		t.Fatalf("new membership: %+v", replacement)
 	}
 	if _, err := a.ClaimIncidentsFromNotification(ctx, "unused", person.ID, "telegram_button"); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("removed member notification action: %v", err)
@@ -495,9 +530,7 @@ func TestPeoplePageIsReadOnlyAndFormsKeepTheirChecks(t *testing.T) {
 	a := foundationApp(t)
 	a.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	admin := memberFixture(t, a, "admin@example.test").Principal
-	if _, err := a.AddPerson(context.Background(), admin, "alice@example.com", "Alice <Example>", RoleMember); err != nil {
-		t.Fatal(err)
-	}
+	addPerson(t, a, "alice@example.com", "Alice <Example>", RoleMember)
 	server := httptest.NewTLSServer(a.Handler())
 	defer server.Close()
 	client := browserClient(server)

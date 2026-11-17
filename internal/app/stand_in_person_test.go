@@ -164,9 +164,7 @@ func TestStandInPersonActsThroughThePages(t *testing.T) {
 	// people and on_call_schedule parts apply them with these operations.
 	settings := Principal{SettingsFile: "/etc/mmhotline/mmhotline_settings.yml"}
 	name := "Stand-in for Responder"
-	if _, err := r.a.AddPerson(ctx, settings, "stand-in-1@example.invalid", name, RoleMember); err != nil {
-		t.Fatal(err)
-	}
+	addPerson(t, r.a, "stand-in-1@example.invalid", name, RoleMember)
 	decoder := json.NewDecoder(strings.NewReader(standInScheduleFile))
 	decoder.DisallowUnknownFields()
 	var schedule ScheduleFile

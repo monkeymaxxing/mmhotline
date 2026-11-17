@@ -359,10 +359,7 @@ func TestApprovedPlaybookRuns(t *testing.T) {
 		if state := onlyApprovalRecord(t, r.a).state; state != "open" {
 			t.Fatalf("after one person's approvals: %s", state)
 		}
-		ben, err := r.a.AddPerson(context.Background(), Principal{UnixUser: "fixture"}, "ben@example.test", "Ben", RoleMember)
-		if err != nil {
-			t.Fatal(err)
-		}
+		ben := addPerson(t, r.a, "ben@example.test", "Ben", RoleMember)
 		if err := r.a.ApprovePlaybookRun(context.Background(), Principal{SignInEmailAddress: ben.SignInEmailAddress}, record.id); err != nil {
 			t.Fatal(err)
 		}
@@ -777,15 +774,12 @@ func TestApprovalPages(t *testing.T) {
 	browser("").get(requestPage, 401)
 	responder.get("/approvals/0123456789abcdef0123456789abcdef", 404)
 
-	ben, err := r.a.AddPerson(context.Background(), Principal{UnixUser: "fixture"}, "ben@example.test", "Ben", RoleMember)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ben := addPerson(t, r.a, "ben@example.test", "Ben", RoleMember)
 	other := browser(ben.SignInEmailAddress)
 	csrf := workflowField(t, other.get(requestPage, 200), "csrf")
 	// A form another site sends carries no matching CSRF token.
 	other.post(requestPage+"/approve", url.Values{"csrf": {strings.Repeat("A", 43)}}, 403)
-	if _, err := r.a.RemovePerson(context.Background(), Principal{UnixUser: "fixture"}, ben.SignInEmailAddress); err != nil {
+	if err := removePerson(t, r.a, ben.SignInEmailAddress); err != nil {
 		t.Fatal(err)
 	}
 	if refused := other.post(requestPage+"/approve", url.Values{"csrf": {csrf}}, 403); !strings.Contains(refused, "Not a team member") {
@@ -847,9 +841,7 @@ func TestApprovalPageWithTwoApprovalsNeeded(t *testing.T) {
 	r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
 	approvalSession(t, r)
 	record := onlyApprovalRecord(t, r.a)
-	if _, err := r.a.AddPerson(context.Background(), Principal{UnixUser: "fixture"}, "ben@example.test", "Ben", RoleMember); err != nil {
-		t.Fatal(err)
-	}
+	addPerson(t, r.a, "ben@example.test", "Ben", RoleMember)
 	server := httptest.NewTLSServer(r.a.Handler())
 	t.Cleanup(server.Close)
 	browser := approvalBrowsers(t, server)
@@ -893,9 +885,7 @@ func TestRemovedMembersApprovalNoLongerCounts(t *testing.T) {
 	sos, _, _ := approvalSession(t, r)
 	record := onlyApprovalRecord(t, r.a)
 	for _, person := range [][2]string{{"ben@example.test", "Ben"}, {"cara@example.test", "Cara"}} {
-		if _, err := r.a.AddPerson(context.Background(), fixture, person[0], person[1], RoleMember); err != nil {
-			t.Fatal(err)
-		}
+		addPerson(t, r.a, person[0], person[1], RoleMember)
 	}
 	approve := func(signInEmailAddress string) {
 		t.Helper()
@@ -904,7 +894,7 @@ func TestRemovedMembersApprovalNoLongerCounts(t *testing.T) {
 		}
 	}
 	approve("ben@example.test")
-	if _, err := r.a.RemovePerson(context.Background(), fixture, "ben@example.test"); err != nil {
+	if err := removePerson(t, r.a, "ben@example.test"); err != nil {
 		t.Fatal(err)
 	}
 	approve(r.p.SignInEmailAddress)

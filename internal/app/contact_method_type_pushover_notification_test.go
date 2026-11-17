@@ -140,9 +140,7 @@ func TestPushoverSetupChecksTokenAndRestoresWithoutSecrets(t *testing.T) {
 func TestPushoverContactCommandsUseExplicitJSON(t *testing.T) {
 	a := foundationApp(t)
 	a.WebURL = "https://mmhotline.example.com"
-	if _, err := a.AddPerson(context.Background(), Principal{UnixUser: "fixture"}, "barbara@example.test", "Barbara", RoleAdministrator); err != nil {
-		t.Fatal(err)
-	}
+	addPerson(t, a, "barbara@example.test", "Barbara", RoleAdministrator)
 	request := CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: ContactMethodsCommandRequest{SignInEmailAddress: "barbara@example.test", ContactMethodType: "pushover_notification", PushoverUserKey: fakesendingservices.PushoverUserKey}}
 	result, _ := commandRequest(t, a, request, 400)
 	if !strings.Contains(result.Message, "adds sending_services.pushover to the settings file") || !strings.Contains(result.Message, a.WebURL+"/sending-services/pushover") {
@@ -304,10 +302,7 @@ func TestPushoverAcknowledgementDoesNotTakeOverAnotherClaim(t *testing.T) {
 			r.dispatch(t)
 			sent := r.fake.PushoverMessages()
 			emergency := sent[len(sent)-1]
-			bob, err := r.a.AddPerson(context.Background(), r.principal, "bob@example.test", "Bob", RoleMember)
-			if err != nil {
-				t.Fatal(err)
-			}
+			bob := addPerson(t, r.a, "bob@example.test", "Bob", RoleMember)
 			i, err := r.a.GetIncident(context.Background(), r.principal, id)
 			if err != nil {
 				t.Fatal(err)

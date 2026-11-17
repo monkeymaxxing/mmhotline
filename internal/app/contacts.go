@@ -264,7 +264,17 @@ func (a *App) SaveContactMethod(ctx context.Context, p Principal, in ContactMeth
 			if err != nil {
 				return err
 			}
-			if err = cancelContactMethodWork(ctx, tx, c.ID, "contact method settings changed"); err != nil {
+			// Only a new destination cancels the work queued for the old one.
+			// Subscriptions and availability are checked when a message goes
+			// (DeliveryAllowed), and a message already queued for a severity
+			// the person unticked still goes: it was wanted when it was queued.
+			// The new revision still catches two people saving at once.
+			if addressChanged {
+				err = cancelContactMethodWork(ctx, tx, c.ID, "contact method settings changed")
+			} else {
+				_, err = tx.ExecContext(ctx, `UPDATE deliveries SET contact_method_revision=? WHERE contact_method_id=? AND contact_method_revision=?`, c.Revision, c.ID, c.Revision-1)
+			}
+			if err != nil {
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, `DELETE FROM contact_method_subscriptions WHERE contact_method_id=?`, c.ID); err != nil {
