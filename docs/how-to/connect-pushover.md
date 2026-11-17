@@ -105,7 +105,8 @@ test that an emergency alert wakes them, also in silent mode.
    because MMHotline must know whose acknowledgement it is. Claiming on
    the incident's page still works. When you add a group key, MMHotline
    says so in capitals. To fix it, remove the contact method and add it
-   again with the person's own user key.
+   again with the person's own user key. `send-test-sos` stops at once with
+   exit code 1 and says the same.
 
    **Check:** the command, or the page, says the contact method is saved
    and a test is queued (with a group key, it also prints the warning
