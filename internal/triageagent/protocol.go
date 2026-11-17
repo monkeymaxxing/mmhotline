@@ -87,6 +87,10 @@ type Event struct {
 	// resume, its earlier runs included. MMHotline works out the run's own.
 	CodingAgentSessionTotalUsage *Usage `json:"coding_agent_session_total_usage,omitempty"`
 	Reason                       string `json:"reason,omitempty"`
+	// StoppedBeforeSessionID, on failed, says MMHotline's stop ended the run
+	// before the coding agent reported its session, so nothing can resume
+	// it. Every other stop ends with stopped.
+	StoppedBeforeSessionID bool `json:"stopped_before_session_id,omitempty"`
 	// AgentCommitsBundle is a Git bundle of the agent's commits after the
 	// base, base64 in JSON, when the agent committed: on a playbook request
 	// and on the final event of a run in the systems repository.

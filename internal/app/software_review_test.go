@@ -361,7 +361,7 @@ func TestSoftwareReviewStopsForATriageSession(t *testing.T) {
 	if err := controls.Decode(&control); err != nil || !control.Stop {
 		t.Fatalf("the review was not stopped: %+v %v", control, err)
 	}
-	r.end(t, review, triageagent.Event{Event: "failed", Reason: "the coding agent run was stopped before the coding agent reported a session ID"})
+	r.end(t, review, triageagent.Event{Event: "failed", Reason: "the coding agent run was stopped before the coding agent reported a session ID", StoppedBeforeSessionID: true})
 	var state, reason string
 	if err := r.a.Store.db.QueryRow(`SELECT state,failure_reason FROM triage_agent_runs WHERE purpose='software_review'`).Scan(&state, &reason); err != nil || state != "stopped" || reason != softwareReviewStoppedForTriageSession {
 		t.Fatalf("the review ended %q: %q %v", state, reason, err)
@@ -374,6 +374,33 @@ func TestSoftwareReviewStopsForATriageSession(t *testing.T) {
 	r.end(t, session, triageagent.Event{Event: "finished", Answer: "Reported."})
 	r.rounds(t)
 	r.nextReview(t)
+}
+
+// A review that fails on its own while MMHotline's stop for a session is on
+// its way is a failed review, not a stopped one: it keeps its reason, and it
+// counts, so the next review waits the interval.
+func TestASoftwareReviewThatFailsBeforeTheStopForASessionFailed(t *testing.T) {
+	r := newSoftwareReviewRig(t)
+	r.rounds(t)
+	review := r.nextReview(t)
+	controls := json.NewDecoder(review.connection)
+	r.alert(t, "warn", "Disk of app002 is 97% full", "")
+	r.rounds(t)
+	var control triageagent.Control
+	review.connection.SetReadDeadline(time.Now().Add(10 * time.Second))
+	if err := controls.Decode(&control); err != nil || !control.Stop {
+		t.Fatalf("the review was not stopped: %+v %v", control, err)
+	}
+	const reason = "The coding agent's service refused the request: 401 Unauthorized."
+	r.end(t, review, triageagent.Event{Event: "failed", Reason: reason})
+	var state, recorded string
+	if err := r.a.Store.db.QueryRow(`SELECT state,failure_reason FROM triage_agent_runs WHERE purpose='software_review'`).Scan(&state, &recorded); err != nil || state != "failed" || recorded != reason {
+		t.Fatalf("the review ended %q: %q %v", state, recorded, err)
+	}
+	r.rounds(t)
+	r.end(t, r.nextRun(t), triageagent.Event{Event: "finished", Answer: "Reported."})
+	r.rounds(t)
+	r.noRunStarts(t)
 }
 
 // The schedule lives in the database: after a restart, the next review is

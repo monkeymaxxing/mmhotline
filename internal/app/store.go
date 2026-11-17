@@ -236,6 +236,8 @@ func Open(dir string) (*Store, error) {
 var databaseFormatUpgrades = []func(*sql.Tx) error{
 	// Format 2: the incident page's link to the status page notice it posted.
 	func(tx *sql.Tx) error { _, err := tx.Exec(statusPageIncidentNoticesSchema); return err },
+	// Format 3: what ended each triage agent run, as a value decisions read.
+	addRunEndCause,
 }
 
 // currentDatabaseFormat is the format Setup creates and Open upgrades to.

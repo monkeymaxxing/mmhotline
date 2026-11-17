@@ -100,12 +100,12 @@ func handOverNext(ctx context.Context, tx *sql.Tx, s triageSessionState) (string
 	case s.HandOverRunID == "":
 		return handOverStart, nil
 	}
-	var reason string
-	if err := tx.QueryRowContext(ctx, `SELECT failure_reason FROM triage_agent_runs WHERE id=? AND state='failed'`, s.HandOverRunID).Scan(&reason); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	var cause runEndCause
+	if err := tx.QueryRowContext(ctx, `SELECT end_cause FROM triage_agent_runs WHERE id=?`, s.HandOverRunID).Scan(&cause); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
 	// Not the agent's failure: the hand-over is resumed as any run so cut.
-	if reason == triageRunCutByStop || reason == triageRunCutByRestart {
+	if cause.cutShortByMMHotline() {
 		return handOverStart, nil
 	}
 	return handOverEndTheSession, nil

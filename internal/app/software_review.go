@@ -155,8 +155,8 @@ ON CONFLICT(id) DO UPDATE SET interval_hours=excluded.interval_hours,changed_at=
 // restart, or a triage session cut short does not, so it starts again.
 func softwareReviewDueAt(ctx context.Context, tx *sql.Tx, intervalHours SoftwareReviewIntervalHours) (time.Time, error) {
 	var lastStarted int64
-	err := tx.QueryRowContext(ctx, `SELECT coalesce(max(started_at),0) FROM triage_agent_runs WHERE purpose='software_review' AND failure_reason NOT IN (?,?,?)`,
-		triageRunCutByStop, triageRunCutByRestart, softwareReviewStoppedForTriageSession).Scan(&lastStarted)
+	err := tx.QueryRowContext(ctx, `SELECT coalesce(max(started_at),0) FROM triage_agent_runs WHERE purpose='software_review' AND end_cause NOT IN (?,?,?)`,
+		runCutByMMHotlineStop, runCutByMMHotlineRestart, runStoppedForTriageSession).Scan(&lastStarted)
 	if err != nil || lastStarted == 0 {
 		return time.Time{}, err
 	}

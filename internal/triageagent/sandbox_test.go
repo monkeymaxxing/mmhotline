@@ -564,7 +564,7 @@ func TestSandboxStopOutsideStepAndEOF(t *testing.T) {
 func TestSandboxStopBeforeSession(t *testing.T) {
 	run := startFakeRun(t, "codex", waitForTermination, testRequest("codex"))
 	_ = run.input.Close()
-	if event := run.next(t); event.Event != "failed" || event.Reason != "the coding agent run was stopped before the coding agent reported a session ID" {
+	if event := run.next(t); event.Event != "failed" || !event.StoppedBeforeSessionID || event.Reason != "the coding agent run was stopped before the coding agent reported a session ID" {
 		t.Fatalf("final: %+v", event)
 	}
 	run.finish(t)

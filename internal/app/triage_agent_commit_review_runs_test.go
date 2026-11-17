@@ -374,7 +374,7 @@ func TestACommitReviewStopsForATriageSession(t *testing.T) {
 	if err := json.NewDecoder(review.connection).Decode(&control); err != nil || !control.Stop {
 		t.Fatalf("the review was not stopped: %+v %v", control, err)
 	}
-	r.end(t, review, triageagent.Event{Event: "failed", Reason: "the coding agent run was stopped before the coding agent reported a session ID"})
+	r.end(t, review, triageagent.Event{Event: "failed", Reason: "the coding agent run was stopped before the coding agent reported a session ID", StoppedBeforeSessionID: true})
 	var state, reason string
 	if err := r.a.Store.db.QueryRow(`SELECT state,failure_reason FROM triage_agent_runs WHERE purpose='commit_review'`).Scan(&state, &reason); err != nil || state != "stopped" || reason != commitReviewStoppedForTriageSession {
 		t.Fatalf("the review ended %q: %q %v", state, reason, err)

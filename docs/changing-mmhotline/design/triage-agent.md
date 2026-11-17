@@ -2677,6 +2677,22 @@ still has a rule that ends the session.
   session's active run is its run that is still running, and the coding
   agent's session ID for a resume is the latest one the session's runs
   reported.
+- `triage_agent_runs.end_cause`: what ended each run, set where the run's
+  end is recorded, and empty while the run goes on. `ended_on_its_own`: the
+  run finished or failed, hit its time limit, or obeyed the stop its
+  session's end sent. `mmhotline_stopped` and `mmhotline_restarted`:
+  MMHotline's own stop or restart cut it short.
+  `stopped_for_a_triage_session`: MMHotline's stop for a session ended a
+  software review, a commit review, or a sign-in check.
+  `unknown_from_before_the_upgrade`: a run recorded before the column
+  existed whose reason cannot tell. Whether a run is resumed, a review
+  counts, or a check proves a sign-in failure is read from `end_cause`, never
+  from `failure_reason`, which says the same in words for people. Database
+  format 3 added the column and gave each earlier run the cause its reason
+  recorded ([database format and upgrades](operation.md#database-format-and-upgrades)).
+  Earlier releases recorded a setup test or playbook review that MMHotline's
+  stop cut short with the same words as a lost sandbox connection, so those
+  runs are `unknown_from_before_the_upgrade`.
 - `triage_session_alert_cursor`: the newest alert MMHotline has looked at, so
   each alert counts once.
 - `incident_actions.note_given_in_triage_run_id`: the run whose prompt
@@ -2810,6 +2826,9 @@ due, so the review starts on time even when nothing else happens.
   MMHotline records a review interrupted for a session as
   stopped, with "MMHotline stopped the software review because a triage
   session needed the agent; it starts again once the session's run ends."
+  Only the stop's own end counts as that interruption: a review that fails
+  on its own before the stop reaches it, such as when the coding agent's
+  service refuses its credential, is a failed review, which counts.
 
   Interruptions by MMHotline's stop, restart, or a session are not the
   agent's failures. Without a new start, a whole interval would pass
@@ -4318,7 +4337,9 @@ short run of the coding agent a day at most.
   the agent's current step: an alert that opens or joins a session, the
   result of a playbook run that waited for a person, or a hand-over. The
   check is recorded as stopped with "MMHotline stopped the sign-in check because a triage session needed the agent. The sign-in check runs again once the triage session's run ends." The sign-in check runs again at the background loop's
-  first chance after the session's run ends. An API key's check has no
+  first chance after the session's run ends. A check that fails on its own
+  before the stop reaches it is a sign-in failure, and administrators hear
+  of it at once. An API key's check has no
   agent step to stop; the session's run starts once its models-list
   request ends, within 30 seconds.
 - A check that MMHotline's stop or restart cut short runs again at the next

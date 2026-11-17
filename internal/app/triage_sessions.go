@@ -93,6 +93,7 @@ func sosWaitsForTheAgent(ctx context.Context, tx *sql.Tx) (time.Duration, error)
 	return time.Duration(minutes) * time.Minute, err
 }
 
+// The words for people of runCutByMMHotlineStop and runCutByMMHotlineRestart.
 // A run that MMHotline's own stop or restart cut short is resumed with the
 // alerts it carried.
 const (
