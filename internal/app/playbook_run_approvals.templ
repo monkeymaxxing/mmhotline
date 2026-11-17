@@ -1,0 +1,480 @@
+package app
+
+import (
+	"strconv"
+	"strings"
+)
+
+// approvalsPageBody lists, first and amber, the approval requests that wait
+// for a person, each with Review; then the warned runs with their run time
+// and Stop, one press, because the run goes ahead by itself; then, quiet,
+// what was decided or run lately. Each section is live, so it stays current.
+templ approvalsPageBody(frame pageFrame, data approvalsPageData) {
+	@commitReviewsList(frame, data.Commits)
+	<section
+		id="open-approvals"
+		data-live
+		if len(data.Waiting) > 0 {
+			class="panel warn"
+		} else {
+			class="panel"
+		}
+	>
+		<div class="panel-head">
+			<h2>Waiting for a person</h2>
+			if len(data.Waiting) > 0 {
+				<span class="tag warn">{ len(data.Waiting) } waiting</span>
+			}
+		</div>
+		if len(data.Waiting) > 0 {
+			<ul class="items">
+				for _, request := range data.Waiting {
+					<li>
+						<div class="what">
+							<a class="title" href={ "/approvals/" + request.ID }>{ request.Question() }</a><span class="faint small">{ request.StateTag() } · asked at { frame.Clock(request.AskedAt()) }, { frame.RelativeTime(request.AskedAt()) }{ forTheSOS(request.IncidentTitle) }</span>
+						</div>
+						<div class="do">
+							<a class="btn primary" href={ "/approvals/" + request.ID }>Review</a>
+						</div>
+					</li>
+				}
+			</ul>
+			<p class="panel-foot">Open a playbook run request to read the proposed changes, then approve or refuse the request. Any team member may decide.</p>
+		} else {
+			<div class="panel-body">
+				<p class="muted">No playbook run waits for a person's approval.</p>
+			</div>
+		}
+	</section>
+	<section id="warned-playbook-runs" data-live class="panel">
+		<div class="panel-head">
+			<h2>Runs unless someone presses Stop</h2>
+		</div>
+		if len(data.Warned) > 0 {
+			<ul class="items">
+				for _, request := range data.Warned {
+					<li>
+						<div class="what">
+							if request.Stoppable {
+								<a class="title" href={ "/approvals/" + request.ID }>{ request.Question() }</a><span class="faint small">Runs at { frame.Clock(request.RunTime()) }, { frame.RelativeTime(request.RunTime()) }{ forTheSOS(request.IncidentTitle) }</span>
+							} else {
+								<a class="title" href={ "/approvals/" + request.ID }>{ request.Question() }</a><span class="faint small">{ request.StateTag() }{ forTheSOS(request.IncidentTitle) }</span>
+							}
+						</div>
+						if request.Stoppable {
+							<form class="do" method="post" action={ "/approvals/" + request.ID + "/stop" }>
+								<input type="hidden" name="csrf" value={ data.CSRF }/><button class="btn">Stop</button>
+							</form>
+						}
+					</li>
+				}
+			</ul>
+			<p class="panel-foot">MMHotline starts each playbook run at the scheduled time. Press Stop before the scheduled time to cancel the playbook run.</p>
+		} else {
+			<div class="panel-body">
+				<p class="muted">No playbook run waits for its run time.</p>
+			</div>
+		}
+	</section>
+	<section id="decided-approvals" data-live class="panel quiet">
+		<div class="panel-head">
+			<h2>Decided or run lately</h2>
+		</div>
+		if len(data.Decided) > 0 {
+			<ul class="items">
+				for _, request := range data.Decided {
+					<li>
+						<div class="what">
+							<a href={ "/approvals/" + request.ID }>{ request.Question() }</a><span class="faint small">{ approvalAskedVerb(request) } at { frame.Clock(request.AskedAt()) } · last change at { frame.Clock(request.ChangedAt()) }</span>
+						</div>
+						<span class={ "tag " + request.Tone() }>{ request.StateTag() }</span>
+					</li>
+				}
+			</ul>
+		} else {
+			<div class="panel-body">
+				<p class="faint">No playbook run was decided, stopped, or run yet.</p>
+			</div>
+		}
+	</section>
+	@commitsTheTriageAgentApproved(frame, data.ApprovedByTheTriageAgent)
+}
+
+// forTheSOS ends a line about an approval request with the SOS the request
+// went with, when it went with one.
+func forTheSOS(incidentTitle string) string {
+	if incidentTitle == "" {
+		return ""
+	}
+	return " · for the SOS " + incidentTitle
+}
+
+// approvalAskedVerb is how the Approvals page says a request began.
+func approvalAskedVerb(request ApprovalRequestView) string {
+	if request.Warned {
+		return "Warned"
+	}
+	return "Asked"
+}
+
+// taskStatusNote says, after a step's module, when MMX may skip the step.
+func taskStatusNote(status string) string {
+	switch status {
+	case "conditional":
+		return " · only if the step's condition holds at run time"
+	case "skipped":
+		return " · MMX skips the step"
+	}
+	return ""
+}
+
+// taskArguments writes each argument of a step on its own line. A component
+// keeps the loop from adding a space after the step's text.
+templ taskArguments(arguments []string) {
+	for _, argument := range arguments {
+		<br/><code>{ argument }</code>
+	}
+}
+
+// approvalRequestHeading is one approval request's own heading: the
+// breadcrumbs, the state tag, the question, and the line saying who asked
+// and when.
+templ approvalRequestHeading(frame pageFrame, title string, request ApprovalRequestView) {
+	<div class="approval-head">
+		<p class="crumbs"><a href="/dashboard">Dashboard</a> / <a href="/approvals">Approvals</a> / { request.Title }</p>
+		<div id="approval-state" data-live class="tags">
+			<span class={ "tag " + request.Tone() }>{ request.StateTag() }</span>
+		</div>
+		<h1>{ request.Question() }</h1>
+		if request.IncidentID != "" {
+			<p class="meta">{ approvalMetaAskedText(request) } at { frame.Clock(request.AskedAt()) }, { frame.RelativeTime(request.AskedAt()) }, for the SOS <a href={ "/incidents/" + request.IncidentID }>{ request.IncidentTitle }</a>.</p>
+		} else {
+			<p class="meta">{ approvalMetaAskedText(request) } at { frame.Clock(request.AskedAt()) }, { frame.RelativeTime(request.AskedAt()) }.</p>
+		}
+	</div>
+}
+
+func approvalMetaAskedText(request ApprovalRequestView) string {
+	if request.FromSoftwareReview() {
+		return "The triage agent asked during a software review"
+	}
+	return "The triage agent asked"
+}
+
+// reviewOutcomeTag is the review agent's outcome as a tag.
+templ reviewOutcomeTag(outcome string) {
+	if outcome == "approved" {
+		<span class="tag ok">Approved</span>
+	} else if outcome == "refused" {
+		<span class="tag warn">Refused</span>
+	} else {
+		<span class="tag warn">Could not review</span>
+	}
+}
+
+// approvalRequestPageBody is one approval request or warned run. The heading
+// asks the question. The box below it says what MMHotline does next and
+// holds the decision, or, once decided, says what happened. The facts, the
+// warnings that make a person decide, why the triage agent asks, and each
+// step follow; the playbook's text and the identifiers are folded.
+templ approvalRequestPageBody(frame pageFrame, data approvalRequestPageData) {
+	if data.Error != "" {
+		<p class="form-error" role="alert">{ capitalize(data.Error) }</p>
+	}
+	{{ request := data.Request }}
+	if request.Open() && !request.Warned {
+		<section id="approval-decision" data-live class="decide warn approval" aria-label="Your decision">
+			<div class="say">
+				<strong>{ request.WhatAnApprovalDoes() }</strong>
+				if request.AlsoApproves != "" {
+					<p><strong>{ request.AlsoApproves }</strong></p>
+				}
+				if request.IncidentID != "" {
+					<p class="muted">{ request.Where() } The result appears on the playbook run page and on the incident.</p>
+				} else {
+					<p class="muted">{ request.Where() } The result appears on the playbook run page.</p>
+				}
+			</div>
+			<div class="do">
+				if !request.ApprovedByYou {
+					<form method="post" action={ "/approvals/" + request.ID + "/approve" }>
+						<input type="hidden" name="csrf" value={ data.CSRF }/><button class="btn primary big block">Approve and run</button>
+					</form>
+				}
+				<form method="post" action={ "/approvals/" + request.ID + "/refuse" } class="refuse">
+					<input type="hidden" name="csrf" value={ data.CSRF }/><input name="reason" required maxlength={ strconv.Itoa(data.MaximumReasonCharacters) } aria-label="Reason for refusing" placeholder="Reason for refusing"/><button class="btn">Refuse</button>
+				</form>
+				if request.FromSoftwareReview() {
+					<p class="faint small">One refusal ends the request. Your refusal reason stays on the playbook run page and in the incident history.</p>
+				} else {
+					<p class="faint small">One refusal ends the request. The triage agent gets your reason, and may ask again with another fix.</p>
+				}
+			</div>
+		</section>
+	} else if request.Stoppable {
+		<section id="approval-decision" data-live class="decide warn approval" aria-label="Your decision">
+			<div class="say">
+				<strong>MMHotline runs the playbook at { frame.Clock(request.RunTime()) }, { frame.RelativeTime(request.RunTime()) }, unless someone presses Stop.</strong>
+				<p class="muted">{ request.Where() } The playbook run needs no approval because the rule is { request.RuleTitle }.</p>
+			</div>
+			<form class="do" method="post" action={ "/approvals/" + request.ID + "/stop" }>
+				<input type="hidden" name="csrf" value={ data.CSRF }/><input name="reason" maxlength={ strconv.Itoa(data.MaximumReasonCharacters) } aria-label="Reason for stopping, optional" placeholder="Reason for stopping (optional)"/><button class="btn primary big block">Stop</button>
+				if request.FromSoftwareReview() {
+					<p class="faint small">Then nothing runs.</p>
+				} else {
+					<p class="faint small">Then nothing runs, and MMHotline tells the triage agent you stopped the playbook run.</p>
+				}
+			</form>
+		</section>
+	} else {
+		<section id="approval-decision" data-live class="panel" aria-label="What happened">
+			<div class="panel-head">
+				<h2>{ request.StateLabel }</h2>
+				<span class="faint small">{ frame.Clock(request.ChangedAt()) }</span>
+			</div>
+			<div class="panel-body">
+				if request.CoveredBy != "" {
+					<p>Approved without a new request: { request.CoveredBy } <a href={ "/approvals/" + request.CoveredByApprovalRequestID() }>Open the earlier approval</a></p>
+				}
+				for _, decision := range request.Decisions {
+					if decision.Reason != "" {
+						<p>{ decision.Decision } by { decision.MemberName } at { frame.Clock(decision.At()) }: { decision.Reason }</p>
+					} else {
+						<p>{ decision.Decision } by { decision.MemberName } at { frame.Clock(decision.At()) }</p>
+					}
+				}
+				if request.StoppedBy != "" {
+					if request.StopReason != "" {
+						<p>Stopped by { request.StoppedBy } at { frame.Clock(request.ChangedAt()) }: { request.StopReason }</p>
+					} else {
+						<p>Stopped by { request.StoppedBy } at { frame.Clock(request.ChangedAt()) }</p>
+					}
+				}
+				if request.ResultMessage != "" {
+					<div class="result">{ request.ResultMessage }</div>
+				} else if request.State == "approved" || request.State == "running" || request.Open() {
+					<p class="muted">The result appears on the playbook run page when the run ends.</p>
+				}
+				if request.ResultForTheAgent != "" {
+					<p class="faint small">{ request.ResultForTheAgent }</p>
+				}
+			</div>
+		</section>
+	}
+	<div class="facts">
+		<div class="fact">
+			<div class="k">Can change</div>
+			<div class="v">
+				if request.Servers != "" {
+					{ request.Servers }
+				} else {
+					No server
+				}
+			</div>
+		</div>
+		<div class="fact">
+			<div class="k">Inventory</div>
+			<div class="v">{ request.Inventory }</div>
+		</div>
+		<div class="fact">
+			<div class="k">Steps</div>
+			<div class="v">{ len(request.Tasks) }</div>
+		</div>
+		if request.ReviewOutcome != "" {
+			<div class="fact">
+				<div class="k">Review agent</div>
+				<div class="v">
+					@reviewOutcomeTag(request.ReviewOutcome)
+				</div>
+			</div>
+		}
+	</div>
+	<div class="cols">
+		<div class="col-main">
+			if len(request.UnrecognizedTasks) > 0 {
+				<section class="panel warn">
+					<div class="panel-head">
+						<h2>Steps MMHotline did not recognize</h2>
+					</div>
+					<div class="panel-body">
+						<p>MMHotline cannot check what the unrecognized steps do, so a person decides.</p>
+						<ul>
+							for _, task := range request.UnrecognizedTasks {
+								<li><code>{ task.Path }</code> ({ task.Action }): { task.Reason }</li>
+							}
+						</ul>
+					</div>
+				</section>
+			}
+			if len(request.TasksOnServicesWhoseChangesAPersonMustApprove) > 0 {
+				<section class="panel warn">
+					<div class="panel-head">
+						<h2>Steps on services whose changes a person must approve</h2>
+					</div>
+					<div class="panel-body">
+						<p>A person decides every change to a service on the list below.</p>
+						<ul>
+							for _, task := range request.TasksOnServicesWhoseChangesAPersonMustApprove {
+								<li><code>{ task.Path }</code> ({ task.Action }) { task.Reason }</li>
+							}
+						</ul>
+						<p class="faint small">An administrator changes the list in <code>services_whose_changes_a_person_must_approve</code> in MMHotline's settings file, and the <a href="/agent-playbook-rules">Rules for running the agent's playbooks</a> page shows the list.</p>
+					</div>
+				</section>
+			}
+			if request.Diagnosis != "" {
+				<section class="panel">
+					<div class="panel-head">
+						<h2>Why the triage agent asks</h2>
+					</div>
+					<div class="panel-body">
+						if request.DiagnosisSummary() != "" {
+							<p class="agent-summary">{ request.DiagnosisSummary() }</p>
+							<details class="more">
+								<summary>The agent's whole diagnosis</summary>
+								<div class="body">
+									<pre>{ request.Diagnosis }</pre>
+								</div>
+							</details>
+						} else {
+							<pre>{ request.Diagnosis }</pre>
+						}
+						<p class="faint small">MMHotline has not checked the triage agent's claims.</p>
+					</div>
+				</section>
+			}
+			<section class="panel">
+				<div class="panel-head">
+					<h2>What the playbook changes, step by step</h2>
+					<span class="faint small">as <code>mmx explain</code> lists the steps</span>
+				</div>
+				if len(request.Tasks) > 0 {
+					<ol class="changes">
+						for _, task := range request.Tasks {
+							<li>
+								<span class="t">{ task.Kind }</span><span class="tag nodot">{ task.Node }</span><span class="h">
+									<code>{ task.Path }</code> · { task.Module }{ taskStatusNote(task.Status) }
+									@taskArguments(task.Arguments)
+								</span>
+							</li>
+						}
+					</ol>
+				} else {
+					<div class="panel-body">
+						<p class="muted">MMX lists no step.</p>
+					</div>
+				}
+			</section>
+			<div class="folds">
+				if len(request.EarlierVersionsRefused) > 0 {
+					<details class="more">
+						<summary>Earlier versions the review agent refused ({ len(request.EarlierVersionsRefused) })</summary>
+						<div class="body">
+							<p class="faint small">The triage agent revised its fix after each refusal and asked again. After the review agent's third refusal in a row, a person decides. Oldest first:</p>
+							<ol class="earlier">
+								for _, version := range request.EarlierVersionsRefused {
+									<li>
+										<p><code>{ version.Playbook }</code> in the inventory “{ version.Inventory }”, at commit <code>{ version.CommitID }</code></p>
+										<p>Review agent's reason: { version.Reason }</p>
+										<details class="more">
+											<summary>Why the triage agent asked</summary>
+											<div class="body">
+												<pre>{ version.Diagnosis }</pre>
+											</div>
+										</details>
+										<details class="more">
+											<summary>The playbook's text the review agent saw</summary>
+											<div class="body">
+												<pre>{ version.PlaybookText }</pre>
+											</div>
+										</details>
+									</li>
+								}
+							</ol>
+						</div>
+					</details>
+				}
+				<details class="more">
+					<summary>The playbook's text, and any files it copies, at commit { request.ShortCommitID() }</summary>
+					<div class="body">
+						<pre>{ request.PlaybookText }</pre>
+					</div>
+				</details>
+				<details class="more">
+					<summary>Identifiers</summary>
+					<div class="body">
+						<dl class="kv">
+							<dt>Playbook</dt>
+							<dd><code>{ request.Playbook }</code></dd>
+							<dt>Inventory</dt>
+							<dd><code>{ request.Inventory }</code></dd>
+							<dt>Commit MMHotline checked</dt>
+							<dd><code>{ request.CommitID }</code></dd>
+							<dt>Request</dt>
+							<dd><code>{ request.ID }</code></dd>
+							if request.TriageSessionID() != "" {
+								<dt>Triage session</dt>
+								<dd><a href={ "/triage-sessions/" + request.TriageSessionID() }>{ request.TriageSessionID() }</a></dd>
+							}
+						</dl>
+					</div>
+				</details>
+			</div>
+		</div>
+		<div class="col-side">
+			<section class="panel">
+				<div class="panel-head">
+					<h2>
+						if request.Warned {
+							Why MMHotline warns first
+						} else {
+							Why the playbook needs a person
+						}
+					</h2>
+				</div>
+				<div class="panel-body">
+					<dl class="kv">
+						<dt>Kinds of change</dt>
+						<dd>
+							if len(request.Kinds) > 0 {
+								{ strings.Join(request.Kinds, ", ") }
+							} else {
+								None
+							}
+						</dd>
+						<dt>Rule</dt>
+						<dd><strong>{ request.RuleTitle }</strong></dd>
+					</dl>
+					<p class="small muted">
+						if request.ListedPlaybookRule != "" {
+							{ request.ListedPlaybookRule }
+						} else {
+							The strictest rule of the playbook's kinds of change in the inventory “{ request.Inventory }” applies.
+						}
+					</p>
+					if len(request.TasksOnServicesWhoseChangesAPersonMustApprove) > 0 {
+						<p class="small">A step acts on a service whose changes a person must approve.</p>
+					}
+					if request.ReviewOutcome != "" && request.ReviewOutcome != "approved" {
+						<p class="small">The review agent did not approve the playbook.</p>
+					}
+				</div>
+				<div class="panel-foot">
+					<a href="/agent-playbook-rules">Rules for running the agent's playbooks</a>
+				</div>
+			</section>
+			if request.Review != "" {
+				<section class="panel">
+					<div class="panel-head">
+						<h2>Review agent</h2>
+						@reviewOutcomeTag(request.ReviewOutcome)
+					</div>
+					<div class="panel-body">
+						<p class="small muted">{ request.Review }</p>
+						<p class="faint small">A second AI agent that checks each playbook before it runs.</p>
+					</div>
+				</section>
+			}
+		</div>
+	</div>
+}
