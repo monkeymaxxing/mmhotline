@@ -1,0 +1,169 @@
+package app
+
+// sendingServiceState says when the latest settings check of a sending
+// service failed, and what that means for the service.
+templ sendingServiceState(frame pageFrame, setup sendingServicePageView) {
+	if setup.Failure.FailureReason != "" {
+		<p class="form-error" role="alert">
+			if setup.Failure.FailedAt != nil && setup.IsSetUp {
+				The latest settings check failed at { frame.Clock(*setup.Failure.FailedAt) }. The earlier setup remains in use. Fix the settings file and apply the settings again.
+			} else if setup.Failure.FailedAt != nil {
+				The latest settings check failed at { frame.Clock(*setup.Failure.FailedAt) }. The service is not set up. Fix the settings file and apply the settings again.
+			} else if setup.IsSetUp {
+				The latest settings check failed. The earlier setup remains in use. Fix the settings file and apply the settings again.
+			} else {
+				The latest settings check failed. The service is not set up. Fix the settings file and apply the settings again.
+			}
+		</p>
+		<details class="fold">
+			<summary>Check failure details</summary>
+			<p class="small result">{ setup.Failure.FailureReason }</p>
+		</details>
+	}
+}
+
+// sendingServiceCheckAndSetUpBy is a set-up sending service's last successful
+// check, and who set it up.
+templ sendingServiceCheckAndSetUpBy(frame pageFrame, setup sendingServicePageView) {
+	<details class="fold">
+		<summary>Last successful check</summary>
+		<p class="small result">{ setup.Description() }</p>
+	</details>
+	<p class="faint small">Set up by { setup.SetUpBy } at { frame.Clock(*setup.SetUpAt) }.</p>
+}
+
+// sendingServicesPageBody is the Sending services page's body.
+templ sendingServicesPageBody(frame pageFrame, data sendingServicesPageData) {
+	<div class="settings-page stack">
+		<p class="muted">Set up the services that deliver your team's notifications, then add your own <a href="/contact-methods">contact methods</a>.</p>
+		<div class="settings-grid">
+			for _, setup := range data.Setups {
+				<section class="panel">
+					<div class="panel-head">
+						<h2>{ setup.SendingServiceTitle }</h2>
+						if setup.IsSetUp && setup.Failure.FailureReason != "" {
+							<span class="tag warn">Check failed</span>
+						} else if setup.IsSetUp {
+							<span class="tag ok">Set up</span>
+						} else {
+							<span class="tag">Not set up</span>
+						}
+					</div>
+					<div class="panel-body">
+						@sendingServiceState(frame, setup)
+						if setup.IsSetUp {
+							@sendingServiceCheckAndSetUpBy(frame, setup)
+						} else {
+							<p>Not set up. Follow the setup guide to add { setup.TitleInSentence() } to the settings file.</p>
+						}
+					</div>
+					<div class="panel-foot">
+						if setup.IsSetUp {
+							<a href={ "/sending-services/" + setup.SendingService }>Review { setup.TitleInSentence() }</a>
+						} else {
+							<a href={ "/sending-services/" + setup.SendingService }>How to set up { setup.TitleInSentence() }</a>
+						}
+					</div>
+				</section>
+			}
+		</div>
+		<details class="more">
+			<summary>Where sending services are set up</summary>
+			<div class="body">
+				@settingsFileNoticeLine(data.settingsFileNoticeView) {
+					<code>sending_services</code>
+				}
+			</div>
+		</details>
+	</div>
+}
+
+// sendingServiceSetupHeading is the heading of a sending service's setup
+// page: a link back to all sending services, then the title.
+templ sendingServiceSetupHeading(title string) {
+	<div>
+		<p class="crumbs"><a href="/sending-services">All sending services</a></p>
+		<h1>{ title }</h1>
+	</div>
+}
+
+// settingsKeyWithBreaks writes the parts of a settings file key joined by
+// underscores, with a <wbr> after each underscore so the key can wrap.
+templ settingsKeyWithBreaks(parts []string) {
+	for index, part := range parts {
+		if index > 0 {
+			_<wbr/>{ part }
+		} else {
+			{ part }
+		}
+	}
+}
+
+// sendingServiceSetupPageBody is a sending service's guided setup page body.
+templ sendingServiceSetupPageBody(frame pageFrame, view sendingServiceSetupView) {
+	<div class="settings-page stack">
+		<section class="panel">
+			<div class="panel-head">
+				<h2>{ view.SendingServiceTitle }</h2>
+				if view.IsSetUp && view.Failure.FailureReason != "" {
+					<span class="tag warn">Earlier setup in use</span>
+				} else if view.IsSetUp {
+					<span class="tag ok">Set up · last check passed</span>
+				} else {
+					<span class="tag">Not set up</span>
+				}
+			</div>
+			<div class="panel-body">
+				@sendingServiceState(frame, view.sendingServicePageView)
+				if view.IsSetUp {
+					@sendingServiceCheckAndSetUpBy(frame, view.sendingServicePageView)
+					<p>{ view.NextStep } <a href="/contact-methods">Contact methods</a></p>
+				} else {
+					<p>Follow the guide below, add the values to the settings file, then run <code>sudo mmhotline settings apply</code>. MMHotline checks the setup before saving.</p>
+				}
+			</div>
+		</section>
+		<section class="panel">
+			<div class="panel-head">
+				<h2>Set up { view.TitleInSentence() }</h2>
+			</div>
+			<div class="panel-body">
+				<ol class="settings-guide">
+					for _, step := range view.Guide {
+						<li>
+							if step.URL != "" {
+								<p>{ step.Text } <a href={ step.URL }>{ step.LinkLabel }</a></p>
+							} else {
+								<p>{ step.Text }</p>
+							}
+						</li>
+					}
+				</ol>
+				<h3>Settings file keys</h3>
+				<ul class="settings-fields">
+					for _, field := range view.Fields {
+						<li>
+							if field.Optional {
+								<strong>{ field.Label } (optional)</strong>
+							} else {
+								<strong>{ field.Label }</strong>
+							}
+							<p><code>{ "sending_services." + view.SendingService + "." }@settingsKeyWithBreaks(field.KeyParts)</code></p>
+							<p class="small muted">{ field.Help }</p>
+						</li>
+					}
+				</ul>
+				<h3>Example settings</h3>
+				<pre class="settings-code" tabindex="0" aria-label="Example settings, scroll horizontally for long lines">{ view.SectionExample() }</pre>
+			</div>
+		</section>
+		<details class="more">
+			<summary>Where { view.TitleInSentence() } is set up</summary>
+			<div class="body">
+				@settingsFileNoticeLine(view.settingsFileNoticeView) {
+					<code>{ "sending_services." + view.SendingService }</code>
+				}
+			</div>
+		</details>
+	</div>
+}
