@@ -476,9 +476,10 @@ unchanged:
 
 - `held_message_id` has 1 to 128 lowercase letters, digits, and hyphens,
   unique in the check-in;
-- `delay_seconds` is a whole number from 300 to 2,147,483,647. The lower
-  bound is five missed check-ins, so one lost check-in or a short network
-  fault wakes nobody; the upper bound is the largest 32-bit integer;
+- `delay_seconds` is a whole number from 180 to 2,147,483,647. The lower
+  bound is the shortest wake time, 3 minutes, three missed check-ins, so one
+  lost check-in or a short network fault wakes nobody; the upper bound is the
+  largest 32-bit integer;
 - each request's `method` is `GET`, `POST`, `PUT`, or `PATCH`, and its `url`
   is `https://` with no user name, password, or `#` part;
 - header names are HTTP tokens, never `Host`, `Content-Length`,
@@ -598,7 +599,7 @@ follows as after an outage.
 
 The 2 minutes are well above a normal round: even a visit whose every
 sending service call waits for its time limit ends within a minute. The
-2 minutes are also well below the shortest wake time, 5 minutes. With a
+2 minutes are also below the shortest wake time, 3 minutes. With a
 check-in every minute, the MMHotline-down alarm wakes the person on call at most
 3 minutes plus the wake time after the loop stops.
 
@@ -739,7 +740,7 @@ Worker in the Cloudflare dashboard and apply again.
 | Largest `status.json` read | 16 MiB | Years of real notices; a bounded read protects the poster from a wrong file |
 | MMHotline-down alarm delays | The settings file's `wake_the_person_on_call_after_minutes_without_a_check_in`, 3 to 60 minutes, and `wake_the_backup_after_minutes_without_a_check_in`, at least 5 minutes more; 5 and 10 are a good start, and are the delays before the settings file applies values | Teams weigh a stopped MMHotline differently: a bank may want 5 minutes, a side project may accept 30. MMHotline checks in every minute and at once when it starts; a restart adds under a second and a server reboot leaves at most about 2.5 minutes without a check-in (measured 2026-11-11), so below 3 minutes a reboot would wake someone. Above 60, a stopped MMHotline would go unnoticed for over an hour. The backup waits at least 5 minutes more so the person on call can answer first. The wake times are their own settings part, which the next check-in carries to the Worker, so changing them never sets up the MMHotline-down alarm again |
 | Check-in interval | Every 60 seconds, and within 5 seconds of a change to held messages, such as who is on call or the recipients' contact methods | 1,440 Worker requests a day, under 2% of the free plan; a handoff reaches the MMHotline-down alarm at once |
-| Held message delay | 300 to 2,147,483,647 seconds | Five missed check-ins at least; the largest 32-bit integer at most |
+| Held message delay | 180 to 2,147,483,647 seconds | The shortest wake time, three missed check-ins, at least; the largest 32-bit integer at most |
 | Sizes | 16 KiB per held message, 1 MiB per check-in | Bounds what one faulty check-in can write |
 | Sends per alarm run | 40: sends never attempted first, then the longest-waiting | The free plan allows 50 outgoing requests per run; sends without an answer never crowd out the rest |
 | Retries of a send | 30 seconds after each attempt ended, until 10 minutes after the due time | A later wake-up is no longer timely |

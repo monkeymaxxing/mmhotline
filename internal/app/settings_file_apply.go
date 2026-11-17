@@ -593,7 +593,9 @@ func (a *App) UseLastAppliedServerSettings(ctx context.Context, reason string) (
 // ApplySettingsFileAtStart applies the parts of the file read at start, as
 // settings apply does: the parts without an outside test now, before serve
 // answers, and the others in the background, while the earlier setting of
-// each serves until it passes. After a fallback it applies nothing.
+// each serves until it passes. After a fallback for problems in the file it
+// applies nothing; after a fallback for a listen address that could not be
+// opened, it applies every other part.
 func (a *App) ApplySettingsFileAtStart(ctx context.Context, report func(error)) error {
 	file := a.settingsFile.atStart
 	if file == nil {

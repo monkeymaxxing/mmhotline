@@ -106,6 +106,7 @@ func TestReadOnlyCommandsShowWhatHappened(t *testing.T) {
 		}{
 			{AlertsCommandRequest{AlertSourceID: "0123456789abcdef0123456789abcdef"}, 404, "no alert source has ID 0123456789abcdef0123456789abcdef"},
 			{AlertsCommandRequest{OlderThanAlertID: "missing"}, 404, "no alert has ID missing"},
+			{AlertsCommandRequest{IncidentID: "0123456789abcdef0123456789abcdef"}, 404, "no SOS incident has ID 0123456789abcdef0123456789abcdef"},
 			{AlertsCommandRequest{Severity: "urgent"}, 400, "severity must be one of: info, warn, sos, resolved-info, resolved-warn, resolved-sos"},
 		} {
 			refused, _ := commandRequest(t, r.a, CommandRequest{Group: "alerts", Action: "list", Alerts: refusal.request}, refusal.status)

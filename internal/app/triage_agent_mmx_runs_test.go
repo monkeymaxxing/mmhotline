@@ -171,6 +171,31 @@ func TestMMXRunCopyMovedPastJudgedCommit(t *testing.T) {
 	}
 }
 
+// A commit that waits on origin's branch refuses the run with the review
+// message even when the copy moved to a newer trusted commit, so nobody is
+// asked to approve the playbook again at that commit.
+func TestMMXRunRefusedWhenTheCopyMovedAndACommitWaits(t *testing.T) {
+	a := foundationApp(t)
+	records := t.TempDir()
+	commitRunMMXInCopy(t, a, fakeRunMMX(records, "exit 0\n"))
+	directory := filepath.Join(a.Store.Dir, "systems_repository")
+	judged := testGit(t, directory, "rev-parse", "HEAD")
+	trusted := commitInCopy(t, a, "trusted", "roles/a.yml")
+	waiting := commitInCopy(t, a, "unsigned", "roles/b.yml")
+	testGit(t, directory, "reset", "--quiet", "--hard", judged)
+	decision := a.RunPlaybook(t.Context(), mmxRunRequest(t, a, "00000000000000a1"), judged)
+	want := "MMHotline did not run the playbook: commit " + waiting[:7] + ", which no key the team trusts signed, waits for a person's review"
+	if decision.Outcome != triageagent.Refused || decision.CopyMovedToCommitID != "" || !strings.HasPrefix(decision.Message, want) {
+		t.Fatalf("%+v", decision)
+	}
+	if head := testGit(t, directory, "rev-parse", "HEAD"); head != trusted {
+		t.Fatalf("HEAD %s, want the trusted commit %s", head, trusted)
+	}
+	if _, err := os.Stat(filepath.Join(records, "arguments")); !os.IsNotExist(err) {
+		t.Fatalf("MMX started: %v", err)
+	}
+}
+
 // The agent asks for a playbook whose kinds are set to Act, then report.
 // MMHotline runs mmx run NAME --inventory production in its copy, keeps
 // the whole output with the request, and answers with its end.
@@ -396,12 +421,13 @@ func TestMMXRunOutlastsAStoppedTriageRun(t *testing.T) {
 	}
 }
 
-// MMHotline runs one MMX run at a time: a second call waits for the first.
+// MMHotline runs one MMX run at a time: a second call waits for the first,
+// and its record shows the wait while the first runs.
 func TestMMXRunsOneAtATime(t *testing.T) {
 	a := foundationApp(t)
 	records := t.TempDir()
-	order := filepath.Join(records, "order")
-	commitRunMMXInCopy(t, a, fakeRunMMX(records, "echo \"started $$\" >> '"+order+"'\nsleep 1\necho \"ended $$\" >> '"+order+"'\n"))
+	order, finish := filepath.Join(records, "order"), filepath.Join(records, "finish")
+	commitRunMMXInCopy(t, a, fakeRunMMX(records, "echo \"started $$\" >> '"+order+"'\n"+waitForFileInShell(finish)+"echo \"ended $$\" >> '"+order+"'\n"))
 	first, second := mmxRunRequest(t, a, "00000000000000a1"), mmxRunRequest(t, a, "00000000000000a2")
 	decisions := make(chan TriageAgentPlaybookRunDecision, 2)
 	go func() {
@@ -411,6 +437,12 @@ func TestMMXRunsOneAtATime(t *testing.T) {
 	go func() {
 		decisions <- a.RunPlaybook(context.Background(), second, testGit(t, filepath.Join(a.Store.Dir, "systems_repository"), "rev-parse", "HEAD"))
 	}()
+	waitForCondition(t, "the record of the second run's wait", func() bool {
+		return readMMXRunRecord(t, a, second.RunID, second.RequestID).waitingSince != 0
+	})
+	if err := os.WriteFile(finish, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for range 2 {
 		if decision := <-decisions; decision.Outcome != triageagent.RanAndSucceeded {
 			t.Fatalf("%+v", decision)

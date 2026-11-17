@@ -727,6 +727,44 @@ func TestDownAlarmWakesEveryoneElseAvailableWhenTheBackupIsEveryoneAvailable(t *
 	}
 }
 
+// When the person on call is unavailable on the default backup option, the
+// MMHotline-down alarm wakes everyone available. A person reached only that
+// way raises no notice, unless no held message would wake anyone at all.
+func TestDownAlarmNamesNobodyReachedOnlyAsEveryoneAvailableWhenThePersonOnCallIsUnavailable(t *testing.T) {
+	r := newDownAlarmRig(t)
+	ctx := context.Background()
+	memberFixture(t, r.a, "carol@example.com") // no waking contact method
+	if _, err := r.a.SaveSchedule(ctx, r.barbara, ScheduleConfig{Kind: "day_of_week", TimeZone: "UTC", Assignments: []string{r.bobID, r.bobID, r.bobID, r.bobID, r.bobID, r.bobID, r.bobID}, BackupKind: "everyone_available"}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.a.SetPersonalAvailability(ctx, r.bob, "unavailable", r.a.Now().Add(24*time.Hour), 0); err != nil {
+		t.Fatal(err)
+	}
+	r.setUp(t, "")
+	if barbara := r.lastCheckIn(t)["primary-contact-method-"+r.barbaraPushover]; barbara.DelaySeconds != 300 {
+		t.Fatalf("Barbara, available, held %+v; want the person on call's 300 seconds", barbara)
+	}
+	for range 3 {
+		r.advance(time.Minute)
+		r.round()
+	}
+	if alerts := r.alertsTitled(t, "The MMHotline-down alarm cannot wake everyone on call"); len(alerts) != 0 {
+		t.Fatalf("a notice for Carol, reached only as everyone available: %+v", alerts)
+	}
+	if _, err := r.a.Store.db.Exec(`UPDATE contact_methods SET deleted=1 WHERE id IN (?,?)`, r.barbaraPushover, r.barbaraCall); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		r.advance(time.Minute)
+		r.round()
+	}
+	alerts := r.alertsTitled(t, "The MMHotline-down alarm cannot wake everyone on call")
+	// Barbara and Carol; every fixture person is called Responder.
+	if len(alerts) != 1 || strings.Count(alerts[0].Message, "- Responder, on call: ") != 2 {
+		t.Fatalf("with no held message, the notice must name everyone the alarm should wake: %+v", alerts)
+	}
+}
+
 // pushoverEmergencyAt sends Pushover an emergency notification, as the
 // MMHotline-down alarm's test request does, and returns the receipt in its
 // answer.

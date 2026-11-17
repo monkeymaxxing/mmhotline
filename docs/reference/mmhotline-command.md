@@ -94,8 +94,8 @@ new program.
   program, and creates the database with the file's `team_name` when the
   database is missing. It sets the settings file's owner to `root`, group
   `mmhotline`, and mode `0640`, so MMHotline can read the file and only
-  root can change it. It starts the service, the triage agent's run
-  socket, and the fleet view socket.
+  root can change it. It starts the service, the triage agent's and the
+  review agent's run sockets, and the fleet view socket.
   [Installed files](installed-files.md) lists every file it writes.
 - **What it leaves alone:** the settings file's contents, which the team
   writes; an existing database and its team name (a changed `team_name`
@@ -513,9 +513,9 @@ and names the changed keys. The command then:
 4. applies again, and the result says
    `Restarted MMHotline first, because these keys change only when it restarts: web_listen_address.`
 
-When the socket does not answer within the minute, or MMHotline still
-runs with the earlier values, such as when it could not open a new listen
-address, the command exits 1 and says to read
+When MMHotline still runs with the earlier values, such as when it could
+not open a new listen address, the command exits 1; when the socket does not
+answer within the minute, it exits 4. Both say to read
 `sudo journalctl -u mmhotline -n 50`. A restart drops no alert: senders
 send an alert again until MMHotline answers it
 ([settings file design](../changing-mmhotline/design/settings-file.md#restarts)).
@@ -2175,7 +2175,7 @@ uses it.
 | --- | --- |
 | `--severity SEVERITY` | `info`, `warn`, `sos`, `resolved-info`, `resolved-warn`, or `resolved-sos` ([severities](severities-and-incident-states.md)) |
 | `--alert-source-id ID` | An alert source's ID from `alert-sources list`; `system` for MMHotline's own alerts, such as the triage agent's reports; `manual` for SOS incidents a person created; `mmhotline_test_sos` for the test SOS of `incidents send-test-sos`. Another ID is refused, because an empty list would look like a source that went quiet |
-| `--incident-id ID` | Only the alerts of this SOS incident |
+| `--incident-id ID` | Only the alerts of this SOS incident. An unknown ID is refused, because an empty list would look like a quiet incident |
 | `--received-since TIME`, `--received-before TIME` | Only alerts received in that span |
 | `--older-than-alert-id ID` | Continue after a list of 100: give the oldest listed alert's ID, which the list's message names. Reason: a burst arrives within one second, and a time would skip or repeat alerts in it |
 | Common flags | As above |

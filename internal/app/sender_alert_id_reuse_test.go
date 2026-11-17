@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"mmhotline/internal/fakesendingservices"
 )
@@ -113,5 +114,37 @@ func TestSOSJoiningAClaimedIncidentWakesTheClaimer(t *testing.T) {
 	}
 	if still, _ := r.a.GetIncident(ctx, r.principal, i.ID); still.Status != "claimed" {
 		t.Fatalf("incident: %+v", still)
+	}
+	// The emergency keeps ringing until the claimer acknowledges it; the
+	// claim before it does not cancel it. Resolving the incident does.
+	receiptOf := func() fakesendingservices.PushoverReceipt {
+		t.Helper()
+		for _, receipt := range r.fake.PushoverReceipts() {
+			if receipt.Receipt == sent[0].Receipt {
+				return receipt
+			}
+		}
+		t.Fatalf("no receipt %s", sent[0].Receipt)
+		return fakesendingservices.PushoverReceipt{}
+	}
+	for range 3 {
+		r.advance(5 * time.Second)
+		r.poll(t)
+	}
+	if receipt := receiptOf(); receipt.Cancelled || len(receipt.Polls) == 0 {
+		t.Fatalf("the claimer's emergency: %+v", receipt)
+	}
+	still, err := r.a.GetIncident(ctx, r.principal, i.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.a.ResolveIncident(ctx, r.principal, i.ID, still.Revision, ""); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		r.poll(t)
+	}
+	if receipt := receiptOf(); !receipt.Cancelled {
+		t.Fatalf("the claimer's emergency after the resolution: %+v", receipt)
 	}
 }

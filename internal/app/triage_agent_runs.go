@@ -37,7 +37,6 @@ type triageAgentRuntime struct {
 	playbookRuns                TriageAgentPlaybookRunDecider
 	playbookRunner              TriageAgentPlaybookRunner
 	mmxSearchPath               string
-	mmxRunsOneAtATime           sync.Mutex
 	mmxRunTimeLimit             time.Duration
 	// codingAgentAPIBaseURLs are where an API key's sign-in check asks for
 	// the models list (codingAgentAPIBaseURLs).
@@ -152,10 +151,13 @@ func credentialSecrets(credentialType, credential string) []string {
 
 // saveReturnedChatGPTSignIn checks a copy of the run's ChatGPT sign-in that
 // the run sent back after Codex changed it, and keeps it when it passes:
-// docs/changing-mmhotline/design/triage-agent.md#codex-with-a-chatgpt-sign-in. A setup test
-// keeps it on the run, for the setup it saves; every other run saves it in
-// the setup at once, so a run cut short loses at most the last second. The
-// reason a copy was refused never quotes it.
+// docs/changing-mmhotline/design/triage-agent.md#codex-with-a-chatgpt-sign-in. A run lent the
+// setup's newest copy saves it in the setup at once, so a run cut short
+// loses at most the last second; this includes a setup test after only the
+// model or reasoning effort changed, since Codex used up the copy it lent
+// even when the test then fails. A setup test of a new sign-in keeps it on
+// the run, for the setup it saves. The reason a copy was refused never
+// quotes it.
 func (a *App) saveReturnedChatGPTSignIn(run *triageAgentActiveRun, returned string) error {
 	if run.request.CredentialType != "chatgpt_sign_in" {
 		return errors.New("the run's credential is not a ChatGPT sign-in")
@@ -166,24 +168,22 @@ func (a *App) saveReturnedChatGPTSignIn(run *triageAgentActiveRun, returned stri
 	if err := triageagent.CheckChatGPTSignInChange(stored, returned); err != nil {
 		return err
 	}
-	if run.setup == nil {
-		role := agentRoleOf(run.purpose)
-		var saved int64
-		err := a.Store.WithTransaction(run.ctx, func(tx *sql.Tx) error {
-			// Only over the copy the run was lent or saved last: a setup that
-			// changed meanwhile is another sign-in.
-			result, err := tx.ExecContext(run.ctx, `UPDATE `+role.setupTable+` SET current_chatgpt_sign_in=? WHERE id=1 AND credential_type='chatgpt_sign_in' AND current_chatgpt_sign_in=?`, returned, stored)
-			if err == nil {
-				saved, err = result.RowsAffected()
-			}
-			return err
-		})
-		if err != nil {
-			return errors.New("MMHotline could not save it")
+	role := agentRoleOf(run.purpose)
+	var saved int64
+	err := a.Store.WithTransaction(run.ctx, func(tx *sql.Tx) error {
+		// Only over the copy the run was lent or saved last: a setup that
+		// changed meanwhile, or a setup test's new sign-in, is another sign-in.
+		result, err := tx.ExecContext(run.ctx, `UPDATE `+role.setupTable+` SET current_chatgpt_sign_in=? WHERE id=1 AND credential_type='chatgpt_sign_in' AND current_chatgpt_sign_in=?`, returned, stored)
+		if err == nil {
+			saved, err = result.RowsAffected()
 		}
-		if saved == 0 {
-			return fmt.Errorf("the %s's setup changed during the run", role.name)
-		}
+		return err
+	})
+	if err != nil {
+		return errors.New("MMHotline could not save it")
+	}
+	if saved == 0 && run.setup == nil {
+		return fmt.Errorf("the %s's setup changed during the run", role.name)
 	}
 	run.signInMu.Lock()
 	run.chatGPTSignIn = returned

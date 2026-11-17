@@ -594,7 +594,7 @@ func (a *App) TriageAgentState(ctx context.Context, p Principal) (TriageAgentVie
 			return err
 		}
 		var listedAt int64
-		err = tx.QueryRowContext(ctx, `SELECT inventory_servers_not_listed_because,vendor_page_hosts_not_listed_because,started_at FROM triage_agent_runs WHERE purpose IN ('triage_session','software_review') ORDER BY started_at DESC,rowid DESC LIMIT 1`).Scan(&view.InventoryServersNotListedBecause, &view.VendorPageHostsNotListedBecause, &listedAt)
+		err = tx.QueryRowContext(ctx, `SELECT inventory_servers_not_listed_because,vendor_page_hosts_not_listed_because,started_at FROM triage_agent_runs WHERE purpose IN ('triage_session','software_review','commit_review') ORDER BY started_at DESC,rowid DESC LIMIT 1`).Scan(&view.InventoryServersNotListedBecause, &view.VendorPageHostsNotListedBecause, &listedAt)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}

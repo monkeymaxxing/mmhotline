@@ -567,9 +567,11 @@ run's home belongs to an agent that a log may mislead:
 A copy that fails is not saved. The run's record gets a step that names the
 reason without the content, and the earlier copy stays. MMHotline stores a
 checked copy as received, so fields that newer Codex versions add survive. A
-setup test keeps the copies on the run and saves the newest with the setup
-when it passes; every other run saves each copy in the setup at once, over
-the copy it was lent. Output and failure reasons never show the
+setup test of a new sign-in keeps the copies on the run and saves the newest
+with the setup when it passes. Every other run, including a setup test after
+only the model or reasoning effort changed, saves each copy in the setup at
+once, over the copy it was lent: Codex used up the lent copy, so a failed
+setup test must not lose the refreshed one. Output and failure reasons never show the
 `access_token`, `refresh_token`, `id_token`, or `OPENAI_API_KEY` values of
 the lent copy or of a copy the run sent back.
 
@@ -894,7 +896,9 @@ leaves the checkpoint as it is: every commit through the checkpoint passed
 with the keys of its time. Checking the whole history again with new keys
 would make every commit of a person who left, or of an earlier triage agent
 key, wait for review. A removed key's later commits wait. Leaving out
-`triage_agent` removes the keys and the checkpoint. Missing keys or a failed
+`triage_agent` removes the keys and keeps the checkpoint: the commits through
+it were checked, so the check need not read the whole history again when the
+section returns. Missing keys or a failed
 check refuse the MMX run before MMX starts, and fail a triage agent run
 before the coding agent starts.
 
@@ -2139,7 +2143,8 @@ The message is quoted line by line, so the agent sees where the alert's own
 text starts and ends. Each alert's message is cut at 2,000 characters so a long message cannot
 push the remaining alerts out of the prompt. The agent reads the servers for
 details.
-The prompt is at most 64 KiB as it travels in JSON on the run socket: the
+The prompt with its alerts is at most 64 KiB as it travels in JSON on the run
+socket; the short list of the session's earlier run times comes after. The
 coding agent reads the whole prompt into its context, and 64 KiB, about
 16,000 tokens, leaves most of the context for its work and stays far below
 the run request's 1 MiB line. When the alerts do not fit, the list ends with
