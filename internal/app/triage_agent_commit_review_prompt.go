@@ -116,7 +116,7 @@ func commitReviewPromptBlock(number, count int, commit CommitReview) string {
 	}
 	var paths strings.Builder
 	for index, path := range commit.ChangedPaths {
-		line := "\n- " + path
+		line := "\n- " + oneLine(path)
 		if jsonTextSize(paths.String()+line) > maximumCommitReviewPromptPathsBytes {
 			fmt.Fprintf(&paths, "\nand %d more paths", len(commit.ChangedPaths)-index)
 			break
@@ -124,7 +124,7 @@ func commitReviewPromptBlock(number, count int, commit CommitReview) string {
 		paths.WriteString(line)
 	}
 	return fmt.Sprintf("Commit %d of %d: %s\nAuthor: %s\nCommit date: %s\nFound by MMHotline: %s\nMessage:\n%s\nChanged paths:%s\nDiff:\n%s",
-		number, count, commit.ID, commit.Author, commit.CommittedAt.UTC().Format("2006-01-02 15:04:05 UTC"), commit.FoundAt.UTC().Format("2006-01-02 15:04:05 UTC"),
+		number, count, commit.ID, oneLine(commit.Author), commit.CommittedAt.UTC().Format("2006-01-02 15:04:05 UTC"), commit.FoundAt.UTC().Format("2006-01-02 15:04:05 UTC"),
 		strings.TrimSuffix(quotedLines(string(message)), "\n"), paths.String(), quotedDiff(commit.Diff, commit.DiffTruncated))
 }
 
@@ -133,7 +133,7 @@ func commitReviewPromptBlock(number, count int, commit CommitReview) string {
 // truncated says MMHotline kept only the start of the diff when it found
 // the commit.
 func quotedDiff(diff string, truncated bool) string {
-	lines := strings.Split(strings.TrimRight(diff, "\n"), "\n")
+	lines := strings.Split(strings.TrimRight(withPlainLineBreaks(diff), "\n"), "\n")
 	var b strings.Builder
 	size := 0
 	for index, line := range lines {

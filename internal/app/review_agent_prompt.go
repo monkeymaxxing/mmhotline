@@ -3,7 +3,9 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"mmhotline/internal/actionkinds"
 )
@@ -111,8 +113,31 @@ The node tasks, as `+"`mmx explain %s --inventory %s`"+` lists them, with the no
 // where text that is not MMHotline's own starts and ends.
 func quotedLines(text string) string {
 	var quoted strings.Builder
-	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+	for _, line := range strings.Split(strings.TrimSuffix(withPlainLineBreaks(text), "\n"), "\n") {
 		quoted.WriteString(strings.TrimRight("> "+line, " ") + "\n")
 	}
 	return quoted.String()
+}
+
+// plainLineBreaks turns each line break that a reader of a prompt may honor
+// into \n: Unicode's, as Python's str.splitlines reads them. Quoting splits
+// text only at \n, so text that is not MMHotline's own could otherwise start
+// a line of its own after a lone \r or U+2028, such as a fake "Notes from the
+// team:" section.
+var plainLineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\v", "\n", "\f", "\n", "\x1c", "\n", "\x1d", "\n", "\x1e", "\n", "\u0085", "\n", "\u2028", "\n", "\u2029", "\n")
+
+// withPlainLineBreaks returns text with \n for each line break a reader of a
+// prompt may honor.
+func withPlainLineBreaks(text string) string {
+	return plainLineBreaks.Replace(text)
+}
+
+// oneLine shows text that is not MMHotline's own on one line of a prompt, as
+// Go quotes it when it holds a line break or another character that does not
+// print, such as a Git path with a newline.
+func oneLine(text string) string {
+	if strings.ContainsFunc(text, func(r rune) bool { return !unicode.IsPrint(r) && r != ' ' }) {
+		return strconv.Quote(text)
+	}
+	return text
 }
