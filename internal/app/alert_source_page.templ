@@ -1,0 +1,115 @@
+package app
+
+// alertSourceHeading is the heading of an alert source's page: a link back
+// to the alert sources, then the source's name.
+templ alertSourceHeading(title string) {
+	<div>
+		<p class="crumbs"><a href="/alert-sources">Alert sources</a></p>
+		<h1>{ title }</h1>
+	</div>
+}
+
+// alertSourcePageBody is an alert source's page body: what MMHotline has
+// heard, the missing-check-in rules, and planned downtime.
+templ alertSourcePageBody(frame pageFrame, data alertSourcePageData) {
+	<div class="stack alert-pages">
+		if data.Error != "" {
+			<p class="form-error" role="alert">{ data.Error }</p>
+		}
+		if data.Notice != "" {
+			<p class="small" role="status">{ data.Notice }</p>
+		}
+		<section class={ "panel " + alertSourceStatusPanelClass(data.Tone) }>
+			<div class="panel-head">
+				<h2>{ data.Status }</h2>
+				if data.Tone == "ok" {
+					<span class="tag ok">Checking in</span>
+				} else if data.Tone == "work" {
+					<span class="tag work">Downtime until { frame.Clock(data.CheckIns.PlannedDowntime.Until) }</span>
+				}
+			</div>
+			<div class="panel-body">
+				<p>{ data.Summary }</p>
+				if data.CheckIns.Expected {
+					<p class="small muted">Last check-in from { data.CheckIns.SenderDescription }: { frame.Clock(data.CheckIns.LastCheckInAt) }, { frame.RelativeTime(data.CheckIns.LastCheckInAt) }.</p>
+					if data.CheckIns.LastHeardAt.After(data.CheckIns.LastCheckInAt) {
+						<p class="small muted">Last heard from the source at { frame.Clock(data.CheckIns.LastHeardAt) }, { frame.RelativeTime(data.CheckIns.LastHeardAt) }.</p>
+					}
+				}
+				if data.Tone == "warn" {
+					<p><a href="/alerts">Look for alerts in the alert history</a></p>
+				}
+			</div>
+		</section>
+		<div class="cols">
+			<div class="col-main">
+				<section class="panel">
+					<div class="panel-head">
+						<h2>Missing-check-in rules</h2>
+					</div>
+					<div class="panel-body">
+						<p class="small">After MMHotline last hears from the source:</p>
+						<dl class="kv">
+							<dt>Warning</dt>
+							<dd>
+								if data.CheckIns.WarnAfterNoCheckInFor != 0 {
+									After { minutesText(data.CheckIns.WarnAfterNoCheckInFor) }. Nobody is woken.
+								} else {
+									Off
+								}
+							</dd>
+							<dt>Wake the person on call</dt>
+							<dd>After { minutesText(data.CheckIns.SOSAfterNoCheckInFor) } without an alert or check-in.</dd>
+						</dl>
+						<details class="fold">
+							<summary>Where the alert source is set</summary>
+							@settingsFileNoticeLine(data.settingsFileNoticeView) {
+								<code>alert_sources</code>
+							}
+						</details>
+					</div>
+				</section>
+				if len(data.CheckIns.NodesInWholeNodeMaintenance) > 0 {
+					<details class="more">
+						<summary>Servers listed in maintenance</summary>
+						<div class="body">
+							<p class="small muted">From the source's latest check-in. Maintenance on the server sending check-ins counts as planned downtime.</p>
+							<ul class="bullets small">
+								for _, node := range data.CheckIns.NodesInWholeNodeMaintenance {
+									<li>{ nodeMaintenanceText(frame, node) }</li>
+								}
+							</ul>
+						</div>
+					</details>
+				}
+			</div>
+			<div class="col-side">
+				<section class="panel">
+					<div class="panel-head">
+						<h2>Planned downtime</h2>
+					</div>
+					<div class="panel-body">
+						if downtime := data.CheckIns.PlannedDowntime; downtime != nil {
+							<p>{ plannedDowntimeText(frame, *downtime) }</p>
+							if downtime.SenderMaintenanceNodeName != "" {
+								<p class="small muted">Check-ins list server { downtime.SenderMaintenanceNodeName } in maintenance. End the maintenance window in the sending tool.</p>
+							} else {
+								<form method="post" action={ "/alert-sources/" + data.Source.ID + "/planned-downtime" }>
+									<input type="hidden" name="csrf" value={ data.CSRF }/><input type="hidden" name="end" value="1"/><button class="btn">End planned downtime now</button>
+								</form>
+							}
+						} else if data.Source.Active {
+							<form method="post" action={ "/alert-sources/" + data.Source.ID + "/planned-downtime" } class="source-downtime">
+								<input type="hidden" name="csrf" value={ data.CSRF }/><label class="field">Until ({ data.TimeZone })<input type="datetime-local" name="until" value={ data.UntilDefault } required/></label><label class="field">Reason (optional)<input name="reason" value={ data.Reason } maxlength="200"/></label>
+								<p class="small muted">Stop alerts about missing check-ins until the chosen time, at most 7 days ahead. Ordinary signed alerts still arrive.</p>
+								<p><button class="btn primary">Start planned downtime</button></p>
+							</form>
+						} else {
+							<p class="small muted">Enable the source in the settings file before starting planned downtime.</p>
+						}
+					</div>
+				</section>
+			</div>
+		</div>
+	</div>
+}

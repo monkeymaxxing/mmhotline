@@ -41,11 +41,37 @@ func (d *alertSourcePageData) checkInSummary(now time.Time) {
 	}
 }
 
-var alertSourceBody = `{{define "heading"}}<div><p class="crumbs"><a href="/alert-sources">Alert sources</a></p><h1>{{.Title}}</h1></div>{{end}}{{$page := .}}<div class="stack alert-pages">{{if .Error}}<p class="form-error" role="alert">{{.Error}}</p>{{end}}{{if .Notice}}<p class="small" role="status">{{.Notice}}</p>{{end}}
-<section class="panel {{if eq .Tone "warn"}}warn{{end}}"><div class="panel-head"><h2>{{.Status}}</h2>{{if eq .Tone "ok"}}<span class="tag ok">Checking in</span>{{else if eq .Tone "work"}}<span class="tag work">Downtime until {{clock .CheckIns.PlannedDowntime.Until}}</span>{{end}}</div><div class="panel-body"><p>{{.Summary}}</p>{{with .CheckIns}}{{if .Expected}}<p class="small muted">Last check-in from {{.SenderDescription}}: {{clock .LastCheckInAt}}, {{relativeTime .LastCheckInAt}}.</p>{{if .LastHeardAt.After .LastCheckInAt}}<p class="small muted">Last heard from the source at {{clock .LastHeardAt}}, {{relativeTime .LastHeardAt}}.</p>{{end}}{{end}}{{end}}{{if eq .Tone "warn"}}<p><a href="/alerts">Look for alerts in the alert history</a></p>{{end}}</div></section>
-<div class="cols"><div class="col-main"><section class="panel"><div class="panel-head"><h2>Missing-check-in rules</h2></div><div class="panel-body">{{with .CheckIns}}<p class="small">After MMHotline last hears from the source:</p><dl class="kv"><dt>Warning</dt><dd>{{if .WarnAfterNoCheckInFor}}After {{minutes .WarnAfterNoCheckInFor}}. Nobody is woken.{{else}}Off{{end}}</dd><dt>Wake the person on call</dt><dd>After {{minutes .SOSAfterNoCheckInFor}} without an alert or check-in.</dd></dl>{{end}}<details class="fold"><summary>Where the alert source is set</summary>` + settingsFileNotice("<code>alert_sources</code>") + `</details></div></section>
-{{with .CheckIns.NodesInWholeNodeMaintenance}}<details class="more"><summary>Servers listed in maintenance</summary><div class="body"><p class="small muted">From the source's latest check-in. Maintenance on the server sending check-ins counts as planned downtime.</p><ul class="bullets small">{{range .}}<li>{{.NodeName}} until {{clock .MaintenanceUntil}}{{if .StartedBy}}, started by {{.StartedBy}}{{end}}{{if .Reason}}: {{.Reason}}{{end}}</li>{{end}}</ul></div></details>{{end}}</div>
-<div class="col-side"><section class="panel"><div class="panel-head"><h2>Planned downtime</h2></div><div class="panel-body">{{with .CheckIns.PlannedDowntime}}<p>Until {{clock .Until}}, {{relativeTime .Until}}{{if .StartedByName}}, started by {{.StartedByName}}{{end}}{{if .Reason}}: {{.Reason}}{{end}}.</p>{{if .SenderMaintenanceNodeName}}<p class="small muted">Check-ins list server {{.SenderMaintenanceNodeName}} in maintenance. End the maintenance window in the sending tool.</p>{{else}}<form method="post" action="/alert-sources/{{$page.Source.ID}}/planned-downtime"><input type="hidden" name="csrf" value="{{$page.CSRF}}"><input type="hidden" name="end" value="1"><button class="btn">End planned downtime now</button></form>{{end}}{{else}}{{if .Source.Active}}<form method="post" action="/alert-sources/{{.Source.ID}}/planned-downtime" class="source-downtime"><input type="hidden" name="csrf" value="{{.CSRF}}"><label class="field">Until ({{.TimeZone}})<input type="datetime-local" name="until" value="{{.UntilDefault}}" required></label><label class="field">Reason (optional)<input name="reason" value="{{.Reason}}" maxlength="200"></label><p class="small muted">Stop alerts about missing check-ins until the chosen time, at most 7 days ahead. Ordinary signed alerts still arrive.</p><p><button class="btn primary">Start planned downtime</button></p></form>{{else}}<p class="small muted">Enable the source in the settings file before starting planned downtime.</p>{{end}}{{end}}</div></section></div></div></div>`
+// alertSourceStatusPanelClass marks the status panel of a source with no recent check-in.
+func alertSourceStatusPanelClass(tone string) string {
+	if tone == "warn" {
+		return "warn"
+	}
+	return ""
+}
+
+// nodeMaintenanceText says how long a server listed in a check-in stays in maintenance.
+func nodeMaintenanceText(frame pageFrame, node NodeInMaintenance) string {
+	text := node.NodeName + " until " + frame.Clock(node.MaintenanceUntil)
+	if node.StartedBy != "" {
+		text += ", started by " + node.StartedBy
+	}
+	if node.Reason != "" {
+		text += ": " + node.Reason
+	}
+	return text
+}
+
+// plannedDowntimeText says how long planned downtime lasts and who started it.
+func plannedDowntimeText(frame pageFrame, downtime PlannedDowntimeView) string {
+	text := "Until " + frame.Clock(downtime.Until) + ", " + frame.RelativeTime(downtime.Until)
+	if downtime.StartedByName != "" {
+		text += ", started by " + downtime.StartedByName
+	}
+	if downtime.Reason != "" {
+		text += ": " + downtime.Reason
+	}
+	return text + "."
+}
 
 // alertPageTimeZone uses the frame's single source for the team's time zone
 // when interpreting date filters and datetime-local form values.
@@ -98,7 +124,11 @@ func (a *App) renderAlertSource(w http.ResponseWriter, r *http.Request, p Princi
 		data.UntilDefault, data.Reason = r.PostForm.Get("until"), r.PostForm.Get("reason")
 	}
 	data.checkInSummary(a.Now())
-	RenderPage(w, status, source.Name, alertSourceBody, data)
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, status, source.Name, frame, alertSourceHeading(source.Name), alertSourcePageBody(frame, data))
 }
 
 func (a *App) alertSourcePlannedDowntimeHTTP(w http.ResponseWriter, r *http.Request) {
