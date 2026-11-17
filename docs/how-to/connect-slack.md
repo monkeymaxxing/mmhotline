@@ -45,21 +45,23 @@ not wake anyone: use [Pushover](connect-pushover.md) or
    `app_mentions:read`, receive the `message.im` and `app_mention` events,
    and leave token rotation off; MMHotline relies on each.
 
-2. **Connect it to MMHotline.** Add Slack to the settings file, under
-   `sending_services`:
-
-   ```yaml
-   sending_services:
-     slack:
-       bot_token: "xoxb-YOUR-BOT-USER-OAUTH-TOKEN"
-       app_level_token: "xapp-YOUR-APP-LEVEL-TOKEN"
-   ```
-
-   Then apply the file:
+2. **Connect it to MMHotline.** Save the two tokens in the settings file.
+   The first command makes the `slack` section, so apply only after the
+   second:
 
    ```sh
-   sudo mmhotline settings apply
+   sudo mmhotline settings set-secret sending_services.slack.bot_token
+   sudo mmhotline settings set-secret sending_services.slack.app_level_token --apply
    ```
+
+   Each command waits for a token: paste it, then press Enter. Nothing
+   shows as you paste. A coding agent pipes the value in instead, from
+   where the person put it. Reason: a secret typed on the command line
+   would stay in the shell history and show in the list of running
+   processes.
+
+   The first command says the settings file still has a problem, because
+   the app-level token is missing. The second command fixes it.
 
    **Check:** among the lines it prints are:
 

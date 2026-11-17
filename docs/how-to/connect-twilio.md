@@ -73,13 +73,10 @@ a call rings through Do Not Disturb.
      twilio:
        account_sid: AC00000000000000000000000000000001
        api_key_sid: SK00000000000000000000000000000001
-       api_key_secret: "YOUR_API_KEY_SECRET"
        phone_number_to_call_from: "+12025550102"
        extra_phone_numbers_on_the_contact_card: []
    ```
 
-   - `api_key_secret` is the API key's secret, never the account's main
-     auth token.
    - `phone_number_to_call_from` is the calling number, in E.164, in
      quotes so YAML keeps it as text.
    - `extra_phone_numbers_on_the_contact_card` lists other numbers to put
@@ -87,11 +84,21 @@ a call rings through Do Not Disturb.
      `["+12025550103"]`, or `[]` for none. MMHotline never calls from
      them; they only join the card.
 
-   Then apply the file:
+   Leave out `api_key_secret`: the next command saves it. It is the API
+   key's secret, never the account's main auth token.
+
+   Then save the secret and apply the file:
 
    ```sh
-   sudo mmhotline settings apply
+   sudo mmhotline settings set-secret sending_services.twilio.api_key_secret --apply
    ```
+
+   The command waits for the secret: paste it, then press Enter. Nothing
+   shows as you paste. A coding agent pipes the value in instead, from
+   where the person put it. Reason: a secret typed on the command line
+   would stay in the shell history and show in the list of running
+   processes.
+
 
    **Check:** among the lines it prints are:
 

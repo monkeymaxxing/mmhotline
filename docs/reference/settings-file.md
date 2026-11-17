@@ -563,6 +563,10 @@ review_agent:
 | Applies | As one part, after one test prompt passes |
 | Set up in | [Set up the triage agent](../how-to/set-up-the-triage-agent.md#add-the-review-agent) |
 
+| Key | Required | Type and allowed values |
+| --- | --- | --- |
+| `review_agent.credential` | Yes, secret | The same kind of value as `triage_agent.credential` |
+
 ### rules_for_running_agent_playbooks
 
 For each inventory, which playbook runs the triage agent may start alone

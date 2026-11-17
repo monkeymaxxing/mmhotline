@@ -23,8 +23,69 @@ key and its values.
 
 - **You change the file on the server by hand:** follow
   [Change the settings by hand](#change-the-settings-by-hand).
+- **You change a secret on the server:** follow
+  [Change a secret](#change-a-secret).
 - **A deploy tool writes the file from your repository:** follow
   [Change the settings with a deploy tool](#change-the-settings-with-a-deploy-tool).
+
+## Change a secret
+
+A secret is a token, a password, or a signing secret. Do not paste it into
+the file in an editor. This command saves it for you, checks it first, and
+never prints it:
+
+```sh
+sudo mmhotline settings set-secret sending_services.pushover.application_token --apply
+```
+
+The command waits for the secret: paste it, then press Enter. Nothing
+shows as you paste. A coding agent pipes the secret in instead, from where
+the person put it. [The `mmhotline` command reference](../reference/mmhotline-command.md#mmhotline-settings-set-secret)
+lists the secret keys.
+
+A TEAM WHOSE DEPLOY TOOL, SUCH AS MMX, WRITES THE FILE FROM A VAULT DOES NOT USE THIS COMMAND. THE NEXT DEPLOY OVERWRITES THE FILE AND LOSES THE CHANGE. SET THE SECRET IN THE VAULT INSTEAD.
+
+### A signing secret has leaked
+
+A signing secret lets a sender (a monitoring tool) send alerts. If someone
+else saw it, they can send fake alerts. Replace it in three steps. The
+sender keeps working the whole time.
+
+1. **Make a new secret next to the old one.** If the sender reads its
+   secret from a file, add `--write-to-file`:
+
+   ```sh
+   sudo mmhotline settings set-secret 'alert_sources[monitoring].signing_secrets' --make-new --write-to-file /root/monitoring-signing-secret --apply
+   ```
+
+   Without a file, run it yourself in a terminal. It shows the new secret
+   once.
+   The old secret still works.
+
+2. **Switch the sender to the new secret.** Then check that its alerts
+   or check-ins still arrive:
+
+   ```sh
+   sudo mmhotline alert-sources list
+   ```
+
+   Find your source. `Last check-in received` must show a time after the
+   switch. A sender that sends alerts only has no check-ins: send a test
+   alert, then look at `Last heard from the alert source`.
+
+DROP THE LEAKED SECRET ONLY AFTER THE SENDER USES THE NEW ONE, OR ITS ALERTS ARE REFUSED.
+
+3. **Drop the old secret:**
+
+   ```sh
+   sudo mmhotline settings set-secret 'alert_sources[monitoring].signing_secrets' --drop-earlier-secrets --apply
+   ```
+
+   It prints `Dropped 1 earlier signing secret(s) of alert source monitoring. Only the latest one still works: make sure its sender uses it.`
+   The leaked secret no longer works.
+
+The command says "nothing to drop" and changes nothing when the source has
+only one secret.
 
 ## Change the settings by hand
 

@@ -17,7 +17,8 @@ import (
 
 const settingsUsage = `usage: mmhotline settings check --settings-file FILE [--json]
        sudo mmhotline settings apply [--command-socket PATH] [--json]
-       sudo mmhotline settings show [--command-socket PATH] [--json]`
+       sudo mmhotline settings show [--command-socket PATH] [--json]
+       sudo mmhotline settings set-secret KEY_PATH [--settings-file FILE] [--make-new [--write-to-file PATH]] [--apply]`
 
 // restartMMHotline restarts the installed service for settings apply, when
 // a key that changes only at a restart changed (CA5). Tests replace it.
@@ -42,6 +43,9 @@ func runSettings(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-help") {
 		fmt.Println(settingsUsage)
 		return nil
+	}
+	if len(args) > 0 && args[0] == "set-secret" {
+		return settingsSetSecret(args[1:], realSetSecretTerminals())
 	}
 	if len(args) == 0 || (args[0] != "check" && args[0] != "apply" && args[0] != "show") {
 		return commandError{errors.New(settingsUsage)}

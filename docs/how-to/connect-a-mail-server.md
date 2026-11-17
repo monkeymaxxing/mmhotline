@@ -41,7 +41,6 @@ Email does not wake anyone: use [Pushover](connect-pushover.md) or
        smtp_server: smtp.example.com:587
        smtp_connection_security: starttls
        smtp_user_name: alerts@example.com
-       smtp_password: "YOUR_SMTP_PASSWORD"
        email_from_address: alerts@example.com
    ```
 
@@ -51,15 +50,24 @@ Email does not wake anyone: use [Pushover](connect-pushover.md) or
      the start, usually on port 465; or `unencrypted`, which sends the
      password and alerts across the network unencrypted.
    - `smtp_user_name` and `smtp_password`: both, or neither for a relay
-     without sign-in. The password is one line; spaces are part of it.
+     without sign-in. Leave out `smtp_password`: the next command saves it.
+     The password is one line; spaces are part of it.
    - `email_from_address`: the address alone, without a name. Messages
      come from `MMHotline <alerts@example.com>`.
 
-   Then apply the file:
+   Then save the password and apply the file. Skip this command for a
+   relay without sign-in, and run `sudo mmhotline settings apply`:
 
    ```sh
-   sudo mmhotline settings apply
+   sudo mmhotline settings set-secret sending_services.mail_server.smtp_password --apply
    ```
+
+   The command waits for the password: paste it, then press Enter. Nothing
+   shows as you paste. A coding agent pipes the value in instead, from
+   where the person put it. Reason: a secret typed on the command line
+   would stay in the shell history and show in the list of running
+   processes.
+
 
    **Check:** among the lines it prints are:
 

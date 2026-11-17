@@ -35,20 +35,19 @@ that.
    Reason: the token lets a program send as the bot and read its messages
    and button presses.
 
-2. **Connect it to MMHotline.** Add Telegram to the settings file, under
-   `sending_services`:
-
-   ```yaml
-   sending_services:
-     telegram:
-       bot_token: "123456789:YOUR-TOKEN-FROM-BOTFATHER"
-   ```
-
-   Then apply the file:
+2. **Connect it to MMHotline.** Save the token in the settings file and
+   apply the file:
 
    ```sh
-   sudo mmhotline settings apply
+   sudo mmhotline settings set-secret sending_services.telegram.bot_token --apply
    ```
+
+   The command waits for the token: paste it, then press Enter. Nothing
+   shows as you paste. A coding agent pipes the value in instead, from
+   where the person put it. Reason: a secret typed on the command line
+   would stay in the shell history and show in the list of running
+   processes.
+
 
    **Check:** among the lines it prints are:
 

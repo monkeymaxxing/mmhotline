@@ -26,7 +26,7 @@ tool that sends alerts to MMHotline, such as your monitoring tool.
 - **A Cloudflare account with Zero Trust,** and a domain whose DNS
   Cloudflare manages, such as `example.com`. People sign in to MMHotline
   through Cloudflare Access, at a host name such as `ops.example.com`.
-  **No Cloudflare?** Write `web_url: http://localhost:8480` in step 3 and
+  **No Cloudflare?** Write `web_url: http://localhost:8480` in step 2 and
   skip step 8: see [The team has no Cloudflare](#if-something-is-different).
 - **A Pushover account,** and the Pushover app on your phone, signed in.
   Pushover sends the notification that wakes you; the phone opens
@@ -90,17 +90,7 @@ in your own.
    `Linux aarch64` for the `arm64` archive. A newer release works the same
    way: change `version=` in the block.
 
-2. **Make the alert source's signing secret.** Your monitoring tool signs
-   each alert with this secret:
-
-   ```sh
-   sudo sh -c 'umask 077; openssl rand -hex 32 > /root/monitoring-signing-secret'
-   ```
-
-   **Check:** `sudo wc -c /root/monitoring-signing-secret` prints `65`:
-   64 characters and a line break.
-
-3. **Write the settings file.** MMHotline reads the team's settings from
+2. **Write the settings file.** MMHotline reads the team's settings from
    one file, `/etc/mmhotline/mmhotline_settings.yml`, which the
    [settings file reference](reference/settings-file.md) describes key by
    key. Make the folder and an
@@ -131,8 +121,8 @@ in your own.
      wakes everyone else who is available. Start with yourself alone; you
      add the team and its rotation after this page.
    - `web_url` is also the start of the links in notifications.
-   - `signing_secrets`: leave `THE 64 HEXADECIMAL CHARACTERS` for now; the
-     command below puts in the secret from step 2.
+   - `signing_secrets`: leave `THE 64 HEXADECIMAL CHARACTERS` for now; step 3
+     puts in the real secret.
 
    USE A MONDAY THAT HAS ALREADY PASSED FOR `first_start_date`, SUCH AS LAST MONDAY. NO ONE IS ON CALL BEFORE THE START DATE.
 
@@ -181,19 +171,25 @@ in your own.
    without a terminal writes the file with any tool that keeps its owner
    and mode.
 
-   Save the file, then put the secret in without showing it on the screen:
+3. **Make the alert source's signing secret.** Your monitoring tool signs
+   each alert with this secret. MMHotline makes it, saves it in the
+   settings file, and writes a copy for your monitoring tool. Run this in
+   the unpacked folder from step 1:
 
    ```sh
-   sudo python3 -c "from pathlib import Path; f = Path('/etc/mmhotline/mmhotline_settings.yml'); f.write_text(f.read_text().replace('THE 64 HEXADECIMAL CHARACTERS', Path('/root/monitoring-signing-secret').read_text().strip()))"
+   sudo ./mmhotline settings set-secret 'alert_sources[monitoring].signing_secrets' --make-new --write-to-file /root/monitoring-signing-secret
    ```
 
-   Reason: a secret never goes in a chat, a command line, or a repository.
-   The settings file holds the team's secrets, and only root and MMHotline
-   can read it.
-
-   **Check:** `sudo grep -c 'THE 64' /etc/mmhotline/mmhotline_settings.yml`
-   prints `0`, and `sudo ls -l /etc/mmhotline/` shows
+   **Check:** it prints
+   `Saved alert_sources[monitoring].signing_secrets in /etc/mmhotline/mmhotline_settings.yml.`
+   and `sudo wc -c /root/monitoring-signing-secret` prints `65`: 64
+   characters and a line break. `sudo ls -l /etc/mmhotline/` shows
    `-rw-r-----` and `root` for `mmhotline_settings.yml`.
+
+   The command never prints the secret. Reason: a secret never goes in a
+   chat, a command line, or a repository, and the settings file holds the
+   team's secrets. The command ends with `Run: sudo mmhotline settings apply`.
+   Do not run that yet: step 5 installs MMHotline and applies the file.
 
 4. **Check the settings file.**
 
@@ -238,36 +234,18 @@ in your own.
 
 6. **Connect Pushover.** On the Pushover website, create an application
    named MMHotline, as [the Pushover guide](how-to/connect-pushover.md)
-   shows, and copy its API token. In the settings file, replace
-   `sending_services: {}` with:
-
-   ```yaml
-   sending_services:
-     pushover:
-       application_token: YOUR_30_CHARACTER_APPLICATION_TOKEN
-   ```
-
-   Save the file, then put the token in without showing it on the screen.
-   The command asks for the token; paste it and press Enter. Nothing shows
-   as you paste:
+   shows, and copy its API token. Then save it in the settings file and
+   apply the file:
 
    ```sh
-   sudo python3 -c "import getpass; from pathlib import Path; f = Path('/etc/mmhotline/mmhotline_settings.yml'); f.write_text(f.read_text().replace('YOUR_30_CHARACTER_APPLICATION_TOKEN', getpass.getpass('Paste the application token, then press Enter: ').strip()))"
+   sudo mmhotline settings set-secret sending_services.pushover.application_token --apply
    ```
 
-   Reason: this is the same kind of command as step 3, so the guide has one
-   way to put a secret into the file. The token never appears on the
-   screen, in the shell history, or in the list of running processes, and
-   the file keeps its owner and mode.
-
-   **Check:** `sudo grep -c YOUR_30 /etc/mmhotline/mmhotline_settings.yml`
-   prints `0`.
-
-   Then apply the file:
-
-   ```sh
-   sudo mmhotline settings apply
-   ```
+   The command waits for the token: paste it, then press Enter. Nothing
+   shows as you paste. A coding agent pipes the token in instead, from
+   where the person put it. Reason: a token typed on the command line
+   would stay in the shell history and show in the list of running
+   processes.
 
    **Check:** among the lines it prints are:
 
@@ -413,7 +391,7 @@ read [Handle an incident](how-to/handle-an-incident.md).
   mmhotline: install requires the settings file /etc/mmhotline/mmhotline_settings.yml; create the settings file as root with sudoedit /etc/mmhotline/mmhotline_settings.yml and set owner root and mode 0640; ...
   ```
 
-  Do step 3 first. The install made no change.
+  Do step 2 first. The install made no change.
 - **The install ends with `systemctl restart mmhotline failed`,** and the
   journal lines it prints include
   `MMHotline cannot listen on alert_intake_listen_address 10.20.0.9:8484: listen tcp 10.20.0.9:8484: bind: cannot assign requested address`:
@@ -431,7 +409,7 @@ read [Handle an incident](how-to/handle-an-incident.md).
   the message, so the phone's settings stop it. Follow
   [Make an emergency alert wake you](how-to/connect-pushover.md).
 - **The team has no Cloudflare:** write `web_url: http://localhost:8480`
-  in step 3, skip step 8, and open MMHotline with a sign-in link, as
+  in step 2, skip step 8, and open MMHotline with a sign-in link, as
   [Sign in during a Cloudflare outage](how-to/sign-in-during-a-cloudflare-outage.md)
   says. The links in notifications then open only on a computer that runs
   that SSH forward.

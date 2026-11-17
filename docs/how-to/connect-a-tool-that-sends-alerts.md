@@ -51,19 +51,10 @@ server, and turn on the tool's **check-ins**.
 
 ## Connect a tool
 
-1. **Make a signing secret in a file that only root reads:**
-
-   ```sh
-   sudo sh -c 'umask 077; openssl rand -hex 32 > /root/monitoring-signing-secret'
-   ```
-
-   **Check:** `sudo wc -c /root/monitoring-signing-secret` prints 65: 64
-   characters and a line break.
-
-2. **Add the alert source to the settings file.** Open the file with
+1. **Add the alert source to the settings file.** Open the file with
    `sudoedit /etc/mmhotline/mmhotline_settings.yml` and add the tool under
-   `alert_sources`, with the secret from step 1 in place of
-   `THE 64 HEXADECIMAL CHARACTERS`:
+   `alert_sources`. Leave `THE 64 HEXADECIMAL CHARACTERS` as it is: step 2
+   puts in the real secret.
 
    ```yaml
    alert_sources:
@@ -87,16 +78,30 @@ server, and turn on the tool's **check-ins**.
    for example, `warn_after_no_check_in_for_minutes: off` and
    `sos_after_no_check_in_for_minutes: 60`.
 
-   Then check and apply the file, as
-   [Change the settings](change-the-settings.md) says:
+   Save the file.
+
+2. **Make the signing secret.** MMHotline makes 32 random bytes, saves
+   them in the settings file as the source's signing secret, writes a copy
+   for the tool to a new file that only root reads, and applies the file:
 
    ```sh
-   sudo mmhotline settings check --settings-file /etc/mmhotline/mmhotline_settings.yml
-   sudo mmhotline settings apply
+   sudo mmhotline settings set-secret 'alert_sources[monitoring].signing_secrets' --make-new --write-to-file /root/monitoring-signing-secret --apply
    ```
 
-   **Check:** the apply prints `alert_sources: applied.` and ends with
-   `Every part of the settings file is applied.`
+   Change `monitoring` to your alert source ID. Keep the quotes: without
+   them, the shell may read the `[...]` as a pattern.
+
+   **Check:** the command prints
+   `Saved alert_sources[monitoring].signing_secrets in /etc/mmhotline/mmhotline_settings.yml.`
+   and ends with `Every part of the settings file is applied.`
+   `sudo wc -c /root/monitoring-signing-secret` prints 65: 64 characters and
+   a line break.
+
+   The command never prints the secret. Reason: a secret that passes
+   through a coding agent's chat is no longer private. If the new file
+   already exists, the command stops and changes nothing: remove the file
+   first. Without `--write-to-file`, the command shows the secret once, only
+   on a person's terminal, and refuses to run anywhere else.
 
 3. **Read the tool's addresses:**
 
@@ -118,7 +123,7 @@ server, and turn on the tool's **check-ins**.
    secret.
 
 4. **Send a test SOS from the MMHotline server.** This Python program signs
-   one SOS with the secret from step 1 and sends it as the tool would. For
+   one SOS with the secret from step 2 and sends it as the tool would. For
    another source, change the secret file's path and the ID at the end of
    the URL; the example's ID is `monitoring`:
 
@@ -215,7 +220,7 @@ server, and turn on the tool's **check-ins**.
 
 A team with a monitoring tool that checks in, and a nightly backup job that
 does not, has this settings file. Each secret is the 64 characters made in
-step 1 for that tool:
+step 2 for that tool:
 
 ```yaml
 # Written by hand with sudoedit. Apply a change with sudo mmhotline settings apply.
@@ -269,13 +274,18 @@ services_whose_changes_a_person_must_approve: []
 ## Connect MMWatchdog
 
 1. **Do steps 1 to 3 of [Connect a tool](#connect-a-tool) for MMHotline's
-   side,** with the secret made on the MMWatchdog fleet hub, or on the one
-   MMWatchdog node that sends alerts, as
-   [MMWatchdog's MMHotline destination](https://github.com/monkeymaxxing/mmwatchdog/blob/main/docs/modules/mmhotline.md#set-up)
-   says. Use an ID that names the sender, such as `mmwatchdog_fleet_hub`.
+   side,** with an ID that names the sender, such as
+   `mmwatchdog_fleet_hub`. In step 2, use `--write-to-file` with a path on
+   the server that runs the MMWatchdog node that sends alerts, or copy the
+   file there afterwards with `scp`. Keep it readable only by the user
+   that runs MMWatchdog.
 2. **Add the `mmhotline` destination in MMWatchdog** with the alert intake
    address, the alert source ID, and the secret file, then validate and
-   reload MMWatchdog, as that page says. MMWatchdog then sends its alerts
+   reload MMWatchdog, as
+   [MMWatchdog's MMHotline destination](https://github.com/monkeymaxxing/mmwatchdog/blob/main/docs/modules/mmhotline.md#set-up)
+   says. Set MMWatchdog's `mmhotline_signing_secret_file` to the file from
+   step 2 of Connect a tool. MMWatchdog reads the secret there, trimmed.
+   MMWatchdog then sends its alerts
    and a check-in every 30 seconds by itself.
 
    **Check:** within a minute, `sudo mmhotline alert-sources list` shows
@@ -323,12 +333,18 @@ it.
 ## Change a source later
 
 - **Move the tool to a new signing secret** without missing an alert:
-  1. List both secrets, `signing_secrets: ["OLD", "NEW"]`, and apply.
-  2. Give the tool the new secret.
+  1. Make a new secret, and keep the old one next to it. Use a new file
+     name, because the command never overwrites a file:
+     `sudo mmhotline settings set-secret 'alert_sources[monitoring].signing_secrets' --make-new --write-to-file /root/monitoring-signing-secret-new --apply`.
+     The source then lists both secrets: `set-secret` keeps the latest valid
+     earlier secret and adds the new one, at most two.
+  2. Give the tool the new secret file.
   3. Check that the tool's requests still succeed: its check-ins still
      appear in `sudo mmhotline alert-sources list`.
-  4. Remove the old secret, `signing_secrets: ["NEW"]`, and apply. From
-     then on, the old secret gets `401 source authentication failed`.
+  4. The old secret keeps working until you make the next signing secret
+     for this source, which then drops it. `set-secret` has no command that
+     removes only the old secret. To end the old secret, make another
+     one the same way and give that one to the tool.
 - **Stop accepting a tool:** remove it from `alert_sources` and apply.
   `alert_sources: []` is allowed. The source's card on the Alert sources
   page and `sudo mmhotline alert-sources list` then say it is disabled,
@@ -370,7 +386,7 @@ person at once.
 
 MMHotline starts watching a source when its first check-in arrives; a
 source that never checks in is never reported silent. Any signed alert from
-the source also counts as hearing from it. With the values from step 2, a
+the source also counts as hearing from it. With the values from step 1, a
 tool that stops checking in brings, 2 minutes after its last check-in:
 
 ```text
