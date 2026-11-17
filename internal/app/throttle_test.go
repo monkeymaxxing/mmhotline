@@ -259,3 +259,33 @@ func TestRemovingAContactMethodCancelsItsCombinedMessages(t *testing.T) {
 	}
 	joinersOf(t, a, s.Principal, []string{"joined"}, "cancelled", "Not sent: the message it was combined into was cancelled: contact method removed", "Cancelled")
 }
+
+// Changing a contact method's subscriptions or availability preference keeps
+// the messages already queued for it, a combined message and the messages
+// combined into it included: only a new destination cancels them. A severity
+// the person unticks keeps the messages already queued for it, so nothing
+// the person was about to get is lost.
+func TestChangingSubscriptionsKeepsQueuedMessages(t *testing.T) {
+	a := foundationApp(t)
+	deliveryTestClock(a)
+	s := memberFixture(t, a, "combined-subscriptions@example.test")
+	c := savedEmail(t, a, s.Principal, true)
+	for _, key := range []string{"carrier", "joined"} {
+		queueDelivery(t, a, s.Principal, key, "warn")
+	}
+	saved, err := a.SaveContactMethod(context.Background(), s.Principal, ContactMethodInput{ID: c.ID, ContactMethodType: c.ContactMethodType, Fields: map[string]string{"email_address": c.SentTo}, ExpectedRevision: c.Revision, SendWhileUnavailableOrMuted: false, Subscriptions: []string{"sos"}})
+	if err != nil || saved.Revision == c.Revision {
+		t.Fatalf("subscription change: %+v %v", saved, err)
+	}
+	if d := findDelivery(t, a, s.Principal, "carrier"); d.State != "queued" {
+		t.Fatalf("carrier: %+v", d)
+	}
+	sender := &recordingEmailSender{}
+	if _, err := dispatchWith(a, "https://mmhotline.example.com", sender); err != nil {
+		t.Fatal(err)
+	}
+	// One message carries both warnings: the joined one was not dropped.
+	if messages := sender.messages(); len(messages) != 1 || messages[0].Subject != "[MMHotline] 2 new alerts" {
+		t.Fatalf("combined message after the change: %+v", messages)
+	}
+}
