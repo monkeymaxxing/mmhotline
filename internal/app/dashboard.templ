@@ -1,0 +1,161 @@
+package app
+
+// alertSeverityOptions are the alert history's severity filter, after "All
+// severities".
+var alertSeverityOptions = []struct{ Value, Label string }{
+	{"info", "Info"},
+	{"warn", "Warning"},
+	{"sos", "SOS"},
+	{"resolved-info", "Resolved info"},
+	{"resolved-warn", "Resolved warning"},
+	{"resolved-sos", "Resolved SOS"},
+}
+
+// alertSeverityTag is the class of an alert's severity tag.
+func alertSeverityTag(severity string) string {
+	switch severity {
+	case "sos":
+		return "tag sos"
+	case "warn":
+		return "tag warn"
+	}
+	return "tag "
+}
+
+// alertsBody is the alert history: the filter form, then the alerts.
+templ alertsBody(frame pageFrame, data alertsPageData) {
+	<form method="get" action="/alerts" class="panel panel-body alert-pages">
+		<div class="alert-filters">
+			<label class="field">Search title or message<input type="search" name="q" value={ data.Query } maxlength="256"/></label><label class="field">Severity<select name="severity"><option value="">All severities</option>
+					for _, option := range alertSeverityOptions {
+						<option
+							value={ option.Value }
+							if data.Severity == option.Value {
+								selected
+							}
+						>{ option.Label }</option>
+					}
+				</select></label><label class="field">From date<input type="date" name="from" value={ data.From }/></label><label class="field">Through date<input type="date" name="until" value={ data.Until }/></label>
+		</div>
+		<div class="row spread"><button class="btn">Filter alerts</button></div>
+	</form>
+	<section class="panel alert-pages" aria-label="Alert history">
+		if len(data.Alerts) > 0 {
+			<ul class="items">
+				for _, alert := range data.Alerts {
+					<li>
+						<div class="what">
+							<div class="row">
+								<span class={ alertSeverityTag(alert.Severity) }>{ severityLabel(alert.Severity) }</span><span class="small faint">Received { frame.Clock(alert.ReceivedAt) }, { frame.RelativeTime(alert.ReceivedAt) }</span>
+							</div>
+							<a class="title" href={ "/alerts/" + alert.ID }>@withBreaksAfterSeparators(alert.Title)</a>
+							<p class="small muted">
+								if alert.IncidentID != "" {
+									{ alert.Outcome }: <a href={ "/incidents/" + alert.IncidentID }>@withBreaksAfterSeparators(alert.IncidentTitle)</a>
+								} else {
+									{ alert.Outcome }
+								}
+							</p>
+							if alert.SourceID == "system" {
+								<p class="small faint">Notice from MMHotline</p>
+							}
+						</div>
+					</li>
+				}
+			</ul>
+		} else {
+			<p class="panel-body">No alerts match these filters.</p>
+		}
+		if data.Next != "" {
+			<p class="panel-foot"><a href={ data.Next }>Load older alerts</a></p>
+		}
+	</section>
+}
+
+// alertHeading is the one alert's heading: breadcrumbs, then the title.
+templ alertHeading(title string) {
+	<div>
+		<p class="crumbs"><a href="/alerts">Alert history</a> / Alert</p>
+		<h1>{ title }</h1>
+	</div>
+}
+
+// alertBody is the one alert: its severity, outcome, message, and IDs.
+templ alertBody(frame pageFrame, alert alertView) {
+	<div class="stack alert-pages">
+		<section class="panel">
+			<div class="panel-head">
+				<span class={ alertSeverityTag(alert.Severity) }>{ severityLabel(alert.Severity) }</span><span class="small faint">Received { frame.Clock(alert.ReceivedAt) }, { frame.RelativeTime(alert.ReceivedAt) }</span>
+			</div>
+			<div class="panel-body">
+				<p>{ capitalize(severityMeaning(alert.Severity)) }.</p>
+				<p>
+					if alert.IncidentID != "" {
+						{ alert.Outcome }: <a href={ "/incidents/" + alert.IncidentID }>@withBreaksAfterSeparators(alert.IncidentTitle)</a>
+					} else {
+						{ alert.Outcome }
+					}
+				</p>
+				if held := alert.HeldWarn; held != nil {
+					<p id="held-warning" data-live>
+						if held.Held {
+							if held.SOSTitle != "" {
+								{ held.JoinedSentence(frame.Clock(held.HeldUntil)) }
+							} else {
+								{ held.Sentence() } It is held until { frame.Clock(held.HeldUntil) }.
+							}
+						} else if held.Resolved {
+							MMHotline sent nothing for this warning. { held.OutcomeReason }
+						} else if held.TakenOver {
+							Taken over by <a href={ held.TakenOverLink }>{ held.TakenOverByText() }</a> at { frame.Clock(held.Ended) }. MMHotline sent nothing for this warning.
+						} else {
+							MMHotline delivered this warning at { frame.Clock(held.Ended) }. { held.OutcomeReason }
+						}
+					</p>
+				}
+				if later := alert.ReceivedLater(); later != "" {
+					<p class="line-warn small">The sender reports the alert happened at { frame.Clock(alert.HappenedAt) }. MMHotline received the alert at { frame.Clock(alert.ReceivedAt) } ({ later }).</p>
+				}
+				if alert.Notes != "" && alert.Severity != "resolved-sos" {
+					<p class="small muted">{ alert.Notes }</p>
+				}
+				if alert.SourceID == "system" {
+					<p class="small faint">Notice from MMHotline</p>
+				}
+			</div>
+		</section>
+		<details class="more" open>
+			<summary>Full alert message</summary>
+			<div class="body">
+				if alert.Message != "" {
+					<div class="result">{ alert.Message }</div>
+				} else {
+					<p class="small muted">The alert has no message.</p>
+				}
+			</div>
+		</details>
+		<details class="more">
+			<summary>Alert IDs and sender details</summary>
+			<div class="body">
+				<dl class="kv">
+					<dt>Alert ID</dt>
+					<dd><code>{ alert.ID }</code></dd>
+					<dt>Alert source ID</dt>
+					<dd><code>{ alert.SourceID }</code></dd>
+					if alert.SenderAlertID != "" {
+						<dt>Sender alert ID</dt>
+						<dd><code>{ alert.SenderAlertID }</code></dd>
+					}
+					if alert.SenderIncidentKey != "" {
+						<dt>Sender incident key</dt>
+						<dd><code>{ alert.SenderIncidentKey }</code></dd>
+					}
+					if !alert.HappenedAt.IsZero() {
+						<dt>Sender's event time</dt>
+						<dd>{ frame.Clock(alert.HappenedAt) }</dd>
+					}
+				</dl>
+			</div>
+		</details>
+	</div>
+}

@@ -505,6 +505,13 @@ func (a *App) viewAlert(ctx context.Context, p Principal, e Alert) (alertView, e
 	return v, nil
 }
 
+// alertsPageData is the alert history: the filter as typed, the alerts, and
+// the link to older alerts ("" on the last page).
+type alertsPageData struct {
+	Query, Severity, From, Until, Next string
+	Alerts                             []alertView
+}
+
 func (a *App) alertsPage(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.pagePrincipal(w, r)
 	if !ok {
@@ -543,10 +550,7 @@ func (a *App) alertsPage(w http.ResponseWriter, r *http.Request) {
 		HTTPError(w, err)
 		return
 	}
-	data := struct {
-		Query, Severity, From, Until, Next string
-		Alerts                             []alertView
-	}{Query: filter.Query, Severity: filter.Severity, From: q.Get("from"), Until: q.Get("until")}
+	data := alertsPageData{Query: filter.Query, Severity: filter.Severity, From: q.Get("from"), Until: q.Get("until")}
 	for _, e := range alerts {
 		v, err := a.viewAlert(r.Context(), p, e)
 		if err != nil {
@@ -559,11 +563,12 @@ func (a *App) alertsPage(w http.ResponseWriter, r *http.Request) {
 		q.Set("before", strconv.FormatInt(alerts[len(alerts)-1].Sequence, 10))
 		data.Next = "/alerts?" + q.Encode()
 	}
-	RenderPage(w, 200, "Alert history", alertsBody, data)
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, 200, "Alert history", frame, nil, alertsBody(frame, data))
 }
-
-const alertsBody = `<form method="get" action="/alerts" class="panel panel-body alert-pages"><div class="alert-filters"><label class="field">Search title or message<input type="search" name="q" value="{{.Query}}" maxlength="256"></label><label class="field">Severity<select name="severity"><option value="">All severities</option><option value="info" {{if eq .Severity "info"}}selected{{end}}>Info</option><option value="warn" {{if eq .Severity "warn"}}selected{{end}}>Warning</option><option value="sos" {{if eq .Severity "sos"}}selected{{end}}>SOS</option><option value="resolved-info" {{if eq .Severity "resolved-info"}}selected{{end}}>Resolved info</option><option value="resolved-warn" {{if eq .Severity "resolved-warn"}}selected{{end}}>Resolved warning</option><option value="resolved-sos" {{if eq .Severity "resolved-sos"}}selected{{end}}>Resolved SOS</option></select></label><label class="field">From date<input type="date" name="from" value="{{.From}}"></label><label class="field">Through date<input type="date" name="until" value="{{.Until}}"></label></div><div class="row spread"><button class="btn">Filter alerts</button></div></form>
-<section class="panel alert-pages" aria-label="Alert history">{{if .Alerts}}<ul class="items">{{range .Alerts}}<li><div class="what"><div class="row"><span class="tag {{if eq .Severity "sos"}}sos{{else if eq .Severity "warn"}}warn{{end}}">{{severityLabel .Severity}}</span><span class="small faint">Received {{clock .ReceivedAt}}, {{relativeTime .ReceivedAt}}</span></div><a class="title" href="/alerts/{{.ID}}">{{breakAfterSeparators .Title}}</a><p class="small muted">{{.Outcome}}{{if .IncidentID}}: <a href="/incidents/{{.IncidentID}}">{{breakAfterSeparators .IncidentTitle}}</a>{{end}}</p>{{if eq .SourceID "system"}}<p class="small faint">Notice from MMHotline</p>{{end}}</div></li>{{end}}</ul>{{else}}<p class="panel-body">No alerts match these filters.</p>{{end}}{{if .Next}}<p class="panel-foot"><a href="{{.Next}}">Load older alerts</a></p>{{end}}</section>`
 
 func (a *App) alertPage(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.pagePrincipal(w, r)
@@ -584,9 +589,11 @@ func (a *App) alertPage(w http.ResponseWriter, r *http.Request) {
 		HTTPError(w, err)
 		return
 	}
-	RenderPage(w, 200, e.Title, `{{define "heading"}}<div><p class="crumbs"><a href="/alerts">Alert history</a> / Alert</p><h1>{{.Title}}</h1></div>{{end}}<div class="stack alert-pages"><section class="panel"><div class="panel-head"><span class="tag {{if eq .Severity "sos"}}sos{{else if eq .Severity "warn"}}warn{{end}}">{{severityLabel .Severity}}</span><span class="small faint">Received {{clock .ReceivedAt}}, {{relativeTime .ReceivedAt}}</span></div><div class="panel-body"><p>{{capitalize (severityMeaning .Severity)}}.</p><p>{{.Outcome}}{{if .IncidentID}}: <a href="/incidents/{{.IncidentID}}">{{breakAfterSeparators .IncidentTitle}}</a>{{end}}</p>{{with .HeldWarn}}<p id="held-warning" data-live>{{if .Held}}{{if .SOSTitle}}{{.JoinedSentence (clock .HeldUntil)}}{{else}}{{.Sentence}} It is held until {{clock .HeldUntil}}.{{end}}{{else if .Resolved}}MMHotline sent nothing for this warning. {{.OutcomeReason}}{{else if .TakenOver}}Taken over by <a href="{{.TakenOverLink}}">{{.TakenOverByText}}</a> at {{clock .Ended}}. MMHotline sent nothing for this warning.{{else}}MMHotline delivered this warning at {{clock .Ended}}. {{.OutcomeReason}}{{end}}</p>{{end}}{{with .ReceivedLater}}<p class="line-warn small">The sender reports the alert happened at {{clock $.HappenedAt}}. MMHotline received the alert at {{clock $.ReceivedAt}} ({{.}}).</p>{{end}}{{if and .Notes (ne .Severity "resolved-sos")}}<p class="small muted">{{.Notes}}</p>{{end}}{{if eq .SourceID "system"}}<p class="small faint">Notice from MMHotline</p>{{end}}</div></section>
-<details class="more" open><summary>Full alert message</summary><div class="body">{{if .Message}}<div class="result">{{.Message}}</div>{{else}}<p class="small muted">The alert has no message.</p>{{end}}</div></details>
-<details class="more"><summary>Alert IDs and sender details</summary><div class="body"><dl class="kv"><dt>Alert ID</dt><dd><code>{{.ID}}</code></dd><dt>Alert source ID</dt><dd><code>{{.SourceID}}</code></dd>{{if .SenderAlertID}}<dt>Sender alert ID</dt><dd><code>{{.SenderAlertID}}</code></dd>{{end}}{{if .SenderIncidentKey}}<dt>Sender incident key</dt><dd><code>{{.SenderIncidentKey}}</code></dd>{{end}}{{if not .HappenedAt.IsZero}}<dt>Sender's event time</dt><dd>{{clock .HappenedAt}}</dd>{{end}}</dl></div></details></div>`, view)
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, 200, e.Title, frame, alertHeading(e.Title), alertBody(frame, view))
 }
 
 // Refresh only live status sections, [data-live][id], retaining active forms
