@@ -95,9 +95,10 @@ in your own.
 2. **Write the settings file.** MMHotline reads the team's settings from
    one file, `/etc/mmhotline/mmhotline_settings.yml`, which the
    [settings file reference](reference/settings-file.md) describes key by
-   key. The block below writes a first file for you. Change the four lines
+   key. The block below writes a first file for you. Change the five lines
    after `set -eu` to yours, then paste the whole block:
 
+   - `team_name`: your team's name, as MMHotline's pages show it.
    - `name` and `email`: you, with the email address you will sign in with.
    - `private_address`: the server's private address, where your tools
      send alerts. `ip -brief addr` lists the server's addresses. A private
@@ -113,6 +114,7 @@ in your own.
    ```sh
    (
    set -eu
+   team_name="Operations"
    name="Barbara Example"
    email=barbara@example.com
    private_address=10.20.0.1
@@ -128,7 +130,7 @@ in your own.
    sudo install -m 0640 /dev/null "$file"
    sudo tee "$file" > /dev/null <<EOF
    # Change a setting with sudoedit, then run: sudo mmhotline settings apply
-   team_name: Operations
+   team_name: "$team_name"
    web_url: $web_url
    web_listen_address: 127.0.0.1:8480
    alert_intake_listen_address: $private_address:8484

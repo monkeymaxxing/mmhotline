@@ -210,7 +210,7 @@ device, and MMHotline sends only to it.
    ```
 
 3. **Check:** `sudo mmhotline contact-methods list` shows
-   `Sends to: USER_KEY on device tablet`, and the quiet test arrives only
+   `Sends to: the Pushover user key ending in ABCD on device tablet`, and the quiet test arrives only
    on that device.
 
 MMHotline asks Pushover for the person's devices and refuses a name that is

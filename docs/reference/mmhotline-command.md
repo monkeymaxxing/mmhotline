@@ -1526,7 +1526,7 @@ and:
 | `contact_methods[].sign_in_email_address` | The owner; empty for a shared method |
 | `contact_methods[].shared_with_team` | Whether the method belongs to the team |
 | `contact_methods[].contact_method_type` | `email`, `outgoing_webhook`, `automated_voice_call`, `pushover_notification`, `telegram_message`, or `slack_message` |
-| `contact_methods[].sends_to` | The destination the pages show. A webhook's path and query are hidden, because they may hold tokens |
+| `contact_methods[].sends_to` | The destination the pages show. A webhook's path and query are hidden, because they may hold tokens. A Pushover user key shows only its last four characters, as `the Pushover user key ending in ABCD`, because terminal output often lands in a coding agent's conversation |
 | `contact_methods[].alert_severities` | The alert severities the method gets |
 | `contact_methods[].send_while_unavailable_or_muted` | Whether it sends while the person is unavailable or the team is muted, within the Pushover and phone rules |
 | `contact_methods[].last_test_message` | The latest test message, or `null` |
@@ -1574,7 +1574,7 @@ Contact method saved. A test message for the contact method is queued. Inspect t
 | `--outgoing-webhook-signing-secret-file FILE` | With `outgoing_webhook`, optional: where to write the new signing secret, instead of printing it |
 | `--phone-number-to-call NUMBER` | With `automated_voice_call`: E.164 form, such as `+12025550123`. Personal methods only |
 | `--pushover-user-key-file FILE\|-` | With `pushover_notification`: a file only its owner can read, or `-` for standard input, holding the person's own user key, exactly 30 letters and digits. A Pushover delivery-group key is saved, with a warning, but its acknowledgements cannot claim an incident. Personal methods only; needs the Pushover sending service |
-| `--pushover-device-name NAME` | With `pushover_notification`, optional: send only to this one of the person's Pushover devices, up to 25 letters, digits, `_` and `-`. MMHotline refuses a name that Pushover does not list for the user key, and names the devices Pushover lists. Without it, Pushover sends to all the person's devices. `sends_to` then reads `USER_KEY on device NAME` |
+| `--pushover-device-name NAME` | With `pushover_notification`, optional: send only to this one of the person's Pushover devices, up to 25 letters, digits, `_` and `-`. MMHotline refuses a name that Pushover does not list for the user key, and names the devices Pushover lists. Without it, Pushover sends to all the person's devices. `sends_to` then reads `the Pushover user key ending in ABCD on device NAME` |
 | Common flags | As above |
 
 - **The test message** is queued in the same save, and the method gets
@@ -1590,7 +1590,7 @@ Contact method saved. A test message for the contact method is queued. Inspect t
 - **The Pushover user key** never goes on the command line, where it
   would stay in the shell history and the list of running processes. The
   command request and the stored settings call it `pushover_user_key`;
-  results show it in `sends_to`. Saving queues a quiet test notification
+  results show only its last four characters in `sends_to`. Saving queues a quiet test notification
   titled `MMHotline can reach this phone`. It needs no acknowledgement. Only
   `incidents send-test-sos` proves the phone wakes the person, so the output
   says so, as shown below.

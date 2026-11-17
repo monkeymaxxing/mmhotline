@@ -60,7 +60,8 @@ func TestPushoverWithoutDeviceNameSendsNoDeviceField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(c.Settings, "device") || c.SentToText() != fakesendingservices.PushoverUserKey {
+	key := fakesendingservices.PushoverUserKey
+	if strings.Contains(c.Settings, "device") || c.SentToText() != "the Pushover user key ending in "+key[len(key)-4:] || strings.Contains(c.SentToText(), key) {
 		t.Fatalf("settings %s, shown %s", c.Settings, c.SentToText())
 	}
 	r.dispatch(t)
@@ -84,7 +85,7 @@ func TestPushoverDownAlarmRequestsCarryTheDeviceName(t *testing.T) {
 	text := downAlarmText{WebURL: "https://mmhotline.example.com"}
 	for settings, want := range map[string]string{
 		`{"pushover_user_key":"` + fakesendingservices.PushoverUserKey + `","pushover_device_name":"tablet"}`: "tablet",
-		`{"pushover_user_key":"` + fakesendingservices.PushoverUserKey + `"}`:                                  "",
+		`{"pushover_user_key":"` + fakesendingservices.PushoverUserKey + `"}`:                                 "",
 	} {
 		request, test, err := c.downAlarmRequests(ContactMethod{Settings: settings}, text)
 		if err != nil {
@@ -131,7 +132,8 @@ func TestContactMethodsAddWithPushoverDeviceNameThenListShowsIt(t *testing.T) {
 	add := CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: ContactMethodsCommandRequest{
 		SignInEmailAddress: r.principal.SignInEmailAddress, ContactMethodType: "pushover_notification", PushoverUserKey: fakesendingservices.PushoverUserKey, PushoverDeviceName: "tablet"}}
 	result, _ := commandRequest(t, r.a, add, 200)
-	want := fakesendingservices.PushoverUserKey + " on device tablet"
+	key := fakesendingservices.PushoverUserKey
+	want := "the Pushover user key ending in " + key[len(key)-4:] + " on device tablet"
 	if len(result.ContactMethods) != 1 || result.ContactMethods[0].SendsTo != want {
 		t.Fatalf("add: %+v", result.ContactMethods)
 	}

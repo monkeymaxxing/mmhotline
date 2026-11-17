@@ -59,11 +59,18 @@ func (c ContactMethod) Setting(field string) string { return settingValue(c.Sett
 
 // SentToText is SentTo for people to read: a Pushover contact method that
 // names one device adds "on device NAME" after the user key.
+// SentToText is the destination as people and coding agents read it. A
+// Pushover user key shows only its last four characters: output read in a
+// terminal often lands in a coding agent's conversation.
 func (c ContactMethod) SentToText() string {
-	if device := c.Setting("pushover_device_name"); c.ContactMethodType == "pushover_notification" && device != "" {
-		return c.SentTo + " on device " + device
+	if c.ContactMethodType != "pushover_notification" {
+		return c.SentTo
 	}
-	return c.SentTo
+	text := "the Pushover user key ending in " + c.SentTo[max(0, len(c.SentTo)-4):]
+	if device := c.Setting("pushover_device_name"); device != "" {
+		text += " on device " + device
+	}
+	return text
 }
 
 func contactMethodByID(ctx context.Context, tx *sql.Tx, id string) (ContactMethod, error) {
