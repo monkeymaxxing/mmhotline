@@ -207,9 +207,7 @@ func TestTestSOSForOnePersonRefusesAPersonItCannotWake(t *testing.T) {
 		}
 	}
 	// A person with no contact method that wakes people.
-	if _, err := r.a.AddPerson(context.Background(), r.s.Principal, "quiet@example.test", "Quiet", RoleMember); err != nil {
-		t.Fatal(err)
-	}
+	addPerson(t, r.a, "quiet@example.test", "Quiet", RoleMember)
 	result, _ := commandRequest(t, r.a, CommandRequest{Group: "incidents", Action: "send-test-sos", Incidents: IncidentsCommandRequest{SignInEmailAddress: "quiet@example.test"}}, 400)
 	if !strings.Contains(result.Message, "Quiet has no contact method that wakes people for SOS alerts") {
 		t.Errorf("%q", result.Message)
