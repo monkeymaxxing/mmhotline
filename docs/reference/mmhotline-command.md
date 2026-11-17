@@ -2189,6 +2189,15 @@ SETTINGS.
 Nobody acknowledged the test SOS within 10 minutes. The incident is still open, so MMHotline keeps trying to reach the person on call. Check first that the Pushover app is installed and signed in on the phone, and that critical alerts are allowed for Pushover in the phone's settings. Then run the command again: a new test closes this one.
 ```
 
+IF SOMEONE PRESSES ACKNOWLEDGE BUT THE ACKNOWLEDGEMENT COMES FROM ANOTHER
+PUSHOVER USER, SUCH AS THROUGH A PUSHOVER GROUP KEY, THE COMMAND STOPS AT ONCE
+AND EXITS 1. THE TEST STAYS OPEN, AND MMHOTLINE KEEPS PAGING THE PERSON UNTIL
+SOMEONE CLAIMS IT. RUNNING THE TEST AGAIN CLOSES IT.
+
+```text
+Someone pressed Acknowledge on the phone, but the acknowledgement came from another Pushover user, so it did not claim the test SOS. This happens with a Pushover group key. Remove Barbara Example's contact method and add it again with Barbara Example's own Pushover user key (Pushover's website shows it after you sign in), then run this test again. The test SOS is still open and MMHotline keeps paging Barbara Example until someone claims it. Running this test again closes it.
+```
+
 **JSON fields:** `message`, `web_url`, and `test_sos`:
 
 | Field | Meaning |
@@ -2202,7 +2211,7 @@ Nobody acknowledged the test SOS within 10 minutes. The incident is still open, 
 | Exit code | Meaning |
 | --- | --- |
 | `0` | A person claimed the test, and MMHotline resolved it |
-| `1` | Nobody claimed the test within the time limit, or someone resolved it without claiming it |
+| `1` | Nobody claimed the test within the time limit, someone resolved it without claiming it, or the acknowledgement came from another Pushover user |
 | `4` | Refused, or the command socket does not answer |
 | `130` | Interrupted, such as with Ctrl-C. The test stays open until the next test or someone resolves it |
 

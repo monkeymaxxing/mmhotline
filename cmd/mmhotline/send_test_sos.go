@@ -52,6 +52,16 @@ func waitForTestSOSClaim(socket, unixUser string, result app.CommandResult, wait
 			result.Message = "Someone resolved the test SOS without claiming it, so it proved nothing about the phone. Run the command again."
 			return result, checkAnswer{exitCode: 1}
 		}
+		if err == nil && shown.Incident != nil {
+			// An acknowledgement from another Pushover user (a group key) never
+			// claims, so waiting longer cannot help. Stop and say why.
+			for _, entry := range shown.Incident.History {
+				if entry.Kind == "pushover_acknowledgement_did_not_claim" {
+					result.Message = testSOSOtherPushoverUserText(entry.By)
+					return result, checkAnswer{exitCode: 1}
+				}
+			}
+		}
 		if err != nil && ctx.Err() == nil {
 			return result, err
 		}
@@ -64,6 +74,13 @@ func waitForTestSOSClaim(socket, unixUser string, result app.CommandResult, wait
 		case <-timer.C:
 		}
 	}
+}
+
+// testSOSOtherPushoverUserText is the answer when someone pressed Acknowledge
+// on the phone but the acknowledgement came from another Pushover user, so it
+// did not claim the test. The test stays open and MMHotline keeps paging.
+func testSOSOtherPushoverUserText(name string) string {
+	return fmt.Sprintf("Someone pressed Acknowledge on the phone, but the acknowledgement came from another Pushover user, so it did not claim the test SOS. This happens with a Pushover group key. Remove %[1]s's contact method and add it again with %[1]s's own Pushover user key (Pushover's website shows it after you sign in), then run this test again. The test SOS is still open and MMHotline keeps paging %[1]s until someone claims it. Running this test again closes it.", name)
 }
 
 func minutesText(minutes int) string {

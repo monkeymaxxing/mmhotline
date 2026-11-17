@@ -16,6 +16,13 @@ import (
 // incident, and show answers with the incident as claimed says.
 func testSOSServer(t *testing.T, claimed bool) string {
 	t.Helper()
+	return testSOSServerWithHistory(t, claimed, nil)
+}
+
+// testSOSServerWithHistory is testSOSServer whose open incident also has the
+// extra history entries.
+func testSOSServerWithHistory(t *testing.T, claimed bool, extra []app.CommandIncidentHistoryEntry) string {
+	t.Helper()
 	socket := filepath.Join(shortSocketDirectory(t), "command.sock")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
@@ -47,6 +54,9 @@ func testSOSServer(t *testing.T, claimed bool) string {
 					{Kind: "claimed", Message: "Claimed by Ana Silva, who acknowledged the alert in Pushover", By: "Ana Silva", OccurredAt: opened.Add(40 * time.Second)},
 					{Kind: "resolved", Message: "Resolved by MMHotline after the claim, because this incident was a test", By: "MMHotline", OccurredAt: opened.Add(40 * time.Second)},
 				}
+			}
+			if !claimed {
+				incident.History = extra
 			}
 			result.Incident = &incident
 		}
@@ -143,5 +153,41 @@ func TestSendTestSOSSignInEmailAddressFlagReachesTheServer(t *testing.T) {
 	text, err := cliProcess(t, "incidents", "send-test-sos", "--command-socket", socket, "--sign-in-email-address", "robin@example.com").CombinedOutput()
 	if want := "MMHotline sent a test SOS only to Robin Example (robin@example.com), whether or not they are on call. Waiting up to 10 minutes"; err != nil || !strings.Contains(string(text), want) {
 		t.Fatalf("the text output lacks the person (%q): %s, %v", want, text, err)
+	}
+}
+
+// An acknowledgement from another Pushover user (a group key) never claims.
+// The command stops at once, says why and what to do, and exits 1, instead of
+// waiting out the time limit. The limit is an hour, so a command that waits
+// fails this test by timing out.
+func TestSendTestSOSStopsWhenAnotherPushoverUserAcknowledged(t *testing.T) {
+	socket := testSOSServerWithHistory(t, false, []app.CommandIncidentHistoryEntry{
+		{Kind: "pushover_acknowledgement_did_not_claim", Message: "Robin Example's phone acknowledged, but ...", By: "Robin Example"},
+	})
+	pause := testSOSPollInterval
+	testSOSPollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { testSOSPollInterval = pause })
+	done := make(chan struct{})
+	var result app.CommandResult
+	var err error
+	go func() {
+		defer close(done)
+		result, err = waitForTestSOSClaim(socket, "root", app.CommandResult{TestSOS: &app.CommandTestSOS{IncidentID: "i1"}}, time.Hour, true)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the command kept waiting after another Pushover user acknowledged")
+	}
+	if answer, ok := err.(checkAnswer); !ok || answer.exitCode != 1 {
+		t.Fatalf("exit: %v", err)
+	}
+	for _, want := range []string{"the acknowledgement came from another Pushover user", "Pushover group key", "Remove Robin Example's contact method and add it again with Robin Example's own Pushover user key", "keeps paging Robin Example", "Running this test again closes it"} {
+		if !strings.Contains(result.Message, want) {
+			t.Errorf("the message lacks %q: %s", want, result.Message)
+		}
+	}
+	if result.TestSOS.Claimed {
+		t.Fatal("the test was reported as claimed")
 	}
 }
