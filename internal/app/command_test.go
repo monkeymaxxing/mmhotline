@@ -62,9 +62,7 @@ func assertCommandKeys(t *testing.T, raw string, keys ...string) {
 }
 func TestCommandPeopleHandler(t *testing.T) {
 	a := foundationApp(t)
-	if _, err := a.AddPerson(context.Background(), Principal{UnixUser: "fixture"}, "Barbara@Example.com", "Barbara", RoleAdministrator); err != nil {
-		t.Fatal(err)
-	}
+	addPerson(t, a, "Barbara@Example.com", "Barbara", RoleAdministrator)
 	result, raw := commandRequest(t, a, CommandRequest{Group: "people", Action: "list"}, 200)
 	assertCommandKeys(t, raw, "people", "sign_in_email_address", "name", "role", "message", "web_url")
 	if len(result.People) != 1 || result.People[0].SignInEmailAddress != "barbara@example.com" {

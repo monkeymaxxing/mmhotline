@@ -21,11 +21,7 @@ func incidentTeam(t *testing.T) (*App, Principal, []Member) {
 	}
 	members := []Member{first}
 	for _, name := range []string{"Backup", "Third"} {
-		m, err := a.AddPerson(ctx, p, strings.ToLower(name)+"@example.test", name, RoleMember)
-		if err != nil {
-			t.Fatal(err)
-		}
-		members = append(members, m)
+		members = append(members, addPerson(t, a, strings.ToLower(name)+"@example.test", name, RoleMember))
 	}
 	err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 		for _, m := range members {

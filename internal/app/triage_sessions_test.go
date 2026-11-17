@@ -777,9 +777,7 @@ func newTriageHoldRig(t *testing.T) *triageHoldRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.barbara, err = r.a.AddPerson(ctx, r.s.Principal, "barbara@example.test", "Barbara", RoleMember); err != nil {
-		t.Fatal(err)
-	}
+	r.barbara = addPerson(t, r.a, "barbara@example.test", "Barbara", RoleMember)
 	for _, person := range []struct {
 		principal Principal
 		key       string

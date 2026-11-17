@@ -133,7 +133,7 @@ func workflowField(t *testing.T, body, name string) string {
 func (b *workflowBrowser) addPerson(signInEmailAddress, name string) Principal {
 	b.h.t.Helper()
 	p := memberFixture(b.h.t, b.h.app, signInEmailAddress).Principal
-	if _, err := b.h.app.ChangePerson(context.Background(), Principal{UnixUser: "fixture"}, signInEmailAddress, &name, nil); err != nil {
+	if err := changePerson(b.h.t, b.h.app, signInEmailAddress, name, ""); err != nil {
 		b.h.t.Fatal(err)
 	}
 	b.identify(signInEmailAddress)

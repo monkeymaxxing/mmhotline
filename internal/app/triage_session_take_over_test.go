@@ -102,15 +102,12 @@ func TestTakingOverStopsTheRunAndHandsOver(t *testing.T) {
 	// A form another site sends carries no matching CSRF token.
 	responder.post("/triage-sessions/"+sessionID+"/stop", url.Values{"csrf": {strings.Repeat("A", 43)}}, 403)
 	// A removed member, and the local command, which names no person, are refused.
-	ben, err := r.a.AddPerson(context.Background(), Principal{UnixUser: "fixture"}, "ben@example.test", "Ben", RoleMember)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = r.a.RemovePerson(context.Background(), Principal{UnixUser: "fixture"}, ben.SignInEmailAddress); err != nil {
+	ben := addPerson(t, r.a, "ben@example.test", "Ben", RoleMember)
+	if err := removePerson(t, r.a, ben.SignInEmailAddress); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range []Principal{{SignInEmailAddress: ben.SignInEmailAddress}, {UnixUser: "fixture"}} {
-		if err = r.a.TakeOverTriageSession(context.Background(), p, sessionID); !errors.Is(err, ErrForbidden) {
+		if err := r.a.TakeOverTriageSession(context.Background(), p, sessionID); !errors.Is(err, ErrForbidden) {
 			t.Fatalf("a Stop by %+v: %v", p, err)
 		}
 	}

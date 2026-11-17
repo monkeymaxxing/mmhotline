@@ -55,7 +55,9 @@ func TestServicesWhoseChangesAPersonMustApproveList(t *testing.T) {
 			t.Errorf("%q: %v", test.names, err)
 		}
 	}
-	// Someone who is not an administrator is refused by the operation.
+	// Someone who is not an administrator is refused by the operation. The
+	// settings file's people always include an administrator.
+	addMember(t, a, "Administrator", RoleAdministrator)
 	member, _ := addMember(t, a, "Member", RoleMember)
 	if err := a.SetServicesWhoseChangesAPersonMustApprove(ctx, member, nil); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("a member's change: %v", err)

@@ -184,10 +184,7 @@ func buttonTexts(message fakesendingservices.TelegramMessage) []string {
 // addMember adds a person through the application operation and returns their principal.
 func addMember(t *testing.T, a *App, name, role string) (Principal, Member) {
 	t.Helper()
-	m, err := a.AddPerson(context.Background(), Principal{UnixUser: "fixture"}, NewID()+"@example.test", name, role)
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := addPerson(t, a, NewID()+"@example.test", name, role)
 	return Principal{SignInEmailAddress: m.SignInEmailAddress}, m
 }
 

@@ -287,7 +287,7 @@ func applyPeopleSettings(ctx context.Context, a *App, s Settings) error {
 			return err
 		}
 		for _, m := range leftOut {
-			if err := removePersonTx(ctx, tx, m, nil, now); err != nil {
+			if err := removePersonTx(ctx, tx, m, now); err != nil {
 				return err
 			}
 		}
