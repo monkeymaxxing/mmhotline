@@ -320,6 +320,7 @@ func TestAnUntightenedTriageUserIsAMissingCheckThatNamesTheFix(t *testing.T) {
 	}{
 		{"tightened", tightenedServer, ""},
 		{"a comment line and a second restricted key", "root 755\nroot 755\nroot 644\n# note\n" + restrictedLine + restrictedLine, ""},
+		{"restrict after from=, which OpenSSH also accepts", "root 755\nroot 755\nroot 644\nfrom=\"10.0.0.5,10.0.0.6\",restrict ssh-ed25519 AAAAC3NzaSECRETKEYBODY agent\n", ""},
 		{"a key line without restrict", "root 755\nroot 755\nroot 644\nfrom=\"10.0.0.5\" ssh-ed25519 AAAAC3NzaSECRETKEYBODY agent\n", "web1: the triage user's key line has no restrict"},
 		{"a key line with no options", "root 755\nroot 755\nroot 644\nssh-ed25519 AAAAC3NzaSECRETKEYBODY agent\n", "web1: the triage user's key line has no restrict"},
 		{"one restricted and one open key line", "root 755\nroot 755\nroot 644\n" + restrictedLine + "ssh-ed25519 AAAAC3NzaOTHER agent\n", "web1: the triage user's key line has no restrict"},

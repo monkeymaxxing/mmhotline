@@ -183,6 +183,34 @@ has the inventory address `203.0.113.11` and the private address
    loads later. Tested on Debian 12 in a container: the login worked, a
    fetch as `triage` failed, and the rule was back after a restart.
 
+   IF THE SERVER USES UFW, DON'T USE THE NFTABLES FORM ABOVE. WHEN THE
+   NFTABLES SERVICE LOADS, ITS `flush ruleset` WIPES UFW'S RULES.
+
+   With ufw, add the rule to ufw's own files instead, one line in each,
+   right after the line that accepts the loopback interface:
+
+   - In `/etc/ufw/before.rules`, after `-A ufw-before-output -o lo -j ACCEPT`:
+
+     ```text
+     -A ufw-before-output -m owner --uid-owner triage -m conntrack --ctstate NEW -j DROP
+     ```
+
+   - In `/etc/ufw/before6.rules`, after `-A ufw6-before-output -o lo -j ACCEPT`:
+
+     ```text
+     -A ufw6-before-output -m owner --uid-owner triage -m conntrack --ctstate NEW -j DROP
+     ```
+
+   THE IPV6 FILE'S CHAIN IS `ufw6-before-output`. WITH THE IPV4 NAME THERE,
+   THE TRIAGE USER STILL REACHES THE INTERNET OVER IPV6.
+
+   Then run `sudo ufw reload`. **Check:** `sudo -u triage curl -4 -m 5
+   http://deb.debian.org/` and the same with `-6` both fail, and the login
+   as the agent still works. Reason: ufw loads these files at every start,
+   so the rule survives a reboot with no other service. Tested on Debian 13
+   with ufw: both address families were blocked for `triage`, root still
+   reached the site, and the rule was back after a restart.
+
 3. **Choose how MMHotline trusts commits, then make the agent sign its commits.**
    MMHotline checks each commit on origin before MMX runs it. The setting
    `triage_agent.trusted_commits` has two values:
