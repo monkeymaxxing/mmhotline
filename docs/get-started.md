@@ -19,7 +19,7 @@ tool that sends alerts to MMHotline, such as your monitoring tool.
 
 - **A Linux server with systemd,** such as Debian 12 or 13 or Ubuntu 24.04,
   which MMHotline is tested on, and an account that can use `sudo`, with
-  `curl` and Python 3.
+  `curl`.
 - **A private network address on the server** where your tools will send
   alerts, such as the WireGuard address `10.20.0.1`. `ip -brief addr` lists
   the server's addresses.
