@@ -363,10 +363,11 @@ func (a *App) triageSessionPage(w http.ResponseWriter, r *http.Request) {
 	if page.TriageSession.About != "" {
 		title += ": " + page.TriageSession.About
 	}
-	RenderPage(w, 200, title, triageSessionBody, struct {
-		TriageSessionPage
-		CSRF string
-	}{page, a.CSRFToken(w, r)})
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, 200, title, frame, triageSessionHeading(title), triageSessionBody(frame, page, a.CSRFToken(w, r)))
 }
 
 // takeOverTriageSessionHTTP is the live view's Stop: it takes the session
@@ -416,26 +417,3 @@ func (v TriageSessionLiveView) PageEndReason() string {
 	}
 	return v.EndedBecause
 }
-
-// triageSessionLiveViewSection is the live view on the session's own page;
-// the page's data has TriageSession and CSRF. The incident page shows the
-// session its own way (incidentTriageAgentPanel).
-const triageSessionLiveViewSection = `{{with .TriageSession}}<section id="triage-agent" data-live class="panel"><div class="panel-head"><h2>Triage agent</h2>{{if .Stoppable}}<span class="tag work">{{if eq .Phase "working"}}Working{{else}}Waiting{{end}}</span>{{else if .Ended.IsZero}}<span class="tag work">{{if eq .Phase "stopping"}}Stopping{{else}}Handing over{{end}}</span>{{else}}<span class="tag">Ended</span>{{end}}</div>
-<div class="panel-body">{{if .Ended.IsZero}}<p><strong>{{.PhaseText}}</strong></p>{{end}}<p class="faint small">Started {{clock .Started}}, {{relativeTime .Started}}.</p>
-{{with .TakenOverName}}<p>{{.}} pressed Stop at {{clock $.TriageSession.TakenOverAt}}.</p>{{end}}
-{{if not .Ended.IsZero}}<p class="muted small">Ended {{clock .Ended}}. {{.PageEndReason}}</p>{{end}}
-{{if .Stoppable}}<form method="post" action="/triage-sessions/{{.SessionID}}/stop"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn">{{.StopButton}}</button></form>
-<p class="small muted">Stop takes the session over from the triage agent after the current step and a hand-over report. An SOS waiting for the agent wakes the person on call at once.</p>{{end}}
-{{with .Run}}<p>{{.Title}}: <strong>{{.StateLabel}}</strong> <span class="faint small">· Started {{clock .Started}}{{if not .Ended.IsZero}} · Ended {{clock .Ended}}{{end}}</span></p>{{with .FailureReason}}<p class="form-error" role="alert">{{.}}</p>{{end}}
-<details class="fold"><summary>Run steps</summary>{{with .EarlierSteps}}<p class="faint small">{{.}} earlier steps are not shown.</p>{{end}}
-<ol class="triage-steps">{{range .Steps}}<li><p class="faint small">{{clock .OccurredAt}} · {{.PageKind}}</p><pre>{{.Text}}</pre></li>{{else}}<li>No steps yet.</li>{{end}}</ol></details>{{else}}<p class="faint small">No run yet.</p>{{end}}
-<details class="fold"><summary>Session details</summary><p class="small muted">A triage session groups the warning and SOS alerts that arrive while the agent works on a problem. The session ends when all its SOS incidents are resolved, no playbook run waits or runs, and no alert arrived for 30 minutes, or after a person stops the agent.</p><p class="small faint">Session ID: <code>{{.SessionID}}</code></p></details>
-</div></section>{{end}}`
-
-// triageSessionBody is the session's own page. Lists stack on a phone;
-// reports stay readable while commands and past runs stay folded.
-const triageSessionBody = `{{define "heading"}}<div><p class="crumbs"><a href="/dashboard">Dashboard</a> / Triage session</p><h1>{{breakAfterSeparators .Title}}</h1></div>{{end}}<div class="stack triage-session">` + triageSessionLiveViewSection +
-	`<section id="triage-session-reports" data-live class="panel"><div class="panel-head"><h2>Reports from the triage agent</h2></div>{{if .Reports}}<ul class="items">{{range .Reports}}<li><div class="what"><div class="row"><h3>{{.RunTitle}}</h3><span class="tag{{if eq .Severity "sos"}} sos{{else if eq .Severity "warn"}} warn{{end}}">{{severityLabel .Severity}}</span><span class="faint small">{{clock .SentAt}}</span></div><pre>{{.Text}}</pre></div></li>{{end}}</ul><p class="panel-foot">Each report was sent to people as an alert at the severity shown.</p>{{else}}<div class="panel-body"><p class="muted">No reports yet.</p></div>{{end}}</section>` +
-	`<section id="triage-session-alerts" data-live class="panel"><div class="panel-head"><h2>Alerts in this session</h2></div><ul class="items">{{range .Alerts}}<li><div class="what"><a class="title" href="/alerts/{{.ID}}">{{breakAfterSeparators .Title}}</a><span class="faint small">Received {{clock .ReceivedAt}}</span>{{if .IncidentID}}<p class="small"><a href="/incidents/{{.IncidentID}}">{{.IncidentTitle}}</a> · {{incidentStatusLabel .IncidentStatus}}</p>{{else}}<p class="small faint">No SOS incident: a warning wakes nobody.</p>{{end}}</div><span class="tag{{if eq .Severity "sos"}} sos{{else if eq .Severity "warn"}} warn{{end}}">{{severityLabel .Severity}}</span></li>{{else}}<li>No alerts in this session.</li>{{end}}</ul></section>` +
-	`<details class="more"><summary>Runs</summary><div id="triage-session-runs" data-live class="body"><ul class="items">{{range .Runs}}<li><div class="what"><h3>{{.Title}}: {{.StateLabel}}</h3><p class="small faint">Started {{clock .StartedAt}}{{if not .EndedAt.IsZero}} · Ended {{clock .EndedAt}}{{end}} · {{.Steps}} {{if eq .Steps 1}}step{{else}}steps{{end}}</p>{{with .FailureReason}}<p class="form-error">{{.}}</p>{{end}}</div></li>{{else}}<li>No run yet.</li>{{end}}</ul></div></details></div>`
-
