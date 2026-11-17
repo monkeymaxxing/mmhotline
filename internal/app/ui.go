@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/a-h/templ"
 )
 
 // stylesheet is MMHotline's one stylesheet, which every page links. The
@@ -18,27 +20,6 @@ import (
 //
 //go:embed mmhotline.css
 var stylesheet string
-
-// pageFrameTemplate is the frame around every page: the red bar while an
-// SOS waits for a claim, the side menu and the phone's top bar, the page's
-// heading, its body, and the footer. A signed-in member's page loads
-// refresh.js, which keeps the red bar and the page's other live sections
-// current.
-//
-// The heading is the block "heading", whose dot is the frame's data: .Title
-// and the page's own data as .Data. A page that prints its own heading block
-// (breadcrumbs, tags, h1, meta line) redefines it in its body with
-// {{define "heading"}}…{{end}}; every other page keeps the frame's h1.
-// RenderPage parses the body as its own template, "body", in a second Parse
-// call: html/template lets a later Parse call redefine a template until the
-// first execution, while a second definition within one Parse call is an
-// error.
-const pageFrameTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}} · MMHotline</title><link rel="stylesheet" href="/assets/mmhotline.css">{{if .Member}}<script src="/assets/refresh.js" defer></script>{{end}}</head><body>` +
-	`{{if .Member}}<div id="sos-waiting" data-live>{{with .WaitingSOS}}<div class="strip" role="alert"><div class="what"><span class="label">SOS</span><strong>{{.Title}}</strong>{{with .More}} <a href="/dashboard">and {{.}} more</a>{{end}} — not claimed. {{.Countdown.Sentence}}</div><a href="/incidents/{{.ID}}" class="btn">Open</a></div>{{end}}</div>{{end}}` +
-	`<div class="shell"><aside class="side">{{template "brand" .}}{{template "menu" .}}</aside><div class="topbar">{{template "brand" .}}{{with .Menu}}<details class="menu"><summary class="btn">Menu</summary>{{template "menu" $}}</details>{{end}}</div>` +
-	`<main class="content"><div class="wrap stack">{{with .DevelopmentModeNotice}}<p class="development-notice small" role="status">Development mode: chat and calls use fake sending services. Set up email against Mailpit. See the <a href="{{.}}/">fake sending services page</a>.</p>{{end}}{{block "heading" .}}<h1>{{.Title}}</h1>{{end}}{{with .Data}}{{template "body" .}}{{end}}{{with .TimeZoneLine}}<footer class="faint small">{{.}}</footer>{{end}}</div></main></div></body></html>` +
-	`{{define "brand"}}<div class="brand"><span class="mark" aria-hidden="true">MM</span><span>MMHotline{{with .TeamName}}<small>{{.}}</small>{{end}}</span></div>{{end}}` +
-	`{{define "menu"}}{{with .Menu}}<nav class="nav" aria-label="Main">{{range .}}{{with .Heading}}<p class="group">{{.}}</p>{{end}}{{range .Links}}<a href="{{.Href}}"{{with .Current}} aria-current="{{.}}"{{end}}>{{.Label}}{{with .Count}} <span class="count">{{.}}</span>{{end}}</a>{{end}}{{end}}</nav>{{end}}{{end}}`
 
 // developmentModeNotice is set once at startup when chat and phone sending services use fakes.
 var developmentModeNotice string
@@ -72,9 +53,10 @@ func (n navigationPageWriter) readFrame() (pageFrame, error) {
 	return n.app.readPageFrame(n.request.Context(), n.principal, n.request.URL.Path)
 }
 
-// RenderPage renders a code-owned template, never a body supplied by a user.
-// Buffering prevents an execution failure from leaving a half-successful page.
-func RenderPage(w http.ResponseWriter, status int, title, body string, data any) {
+// readFrameForPage reads the frame's data for the page about to be rendered
+// on w. When reading fails, it has already written the error page and
+// returns false.
+func readFrameForPage(w http.ResponseWriter) (pageFrame, bool) {
 	var navigation navigationPageWriter
 	if pageWriter, ok := w.(*navigationPageWriter); ok {
 		navigation = *pageWriter
@@ -82,24 +64,18 @@ func RenderPage(w http.ResponseWriter, status int, title, body string, data any)
 	frame, err := navigation.readFrame()
 	if err != nil {
 		renderPageError(w, publicError(err), errorStatus(err))
-		return
+		return frame, false
 	}
-	t, err := template.New("page").Funcs(template.FuncMap{"lower": strings.ToLower, "capitalize": capitalize, "breakAfterSeparators": breakAfterSeparators, "minutes": minutesText, "seconds": func(d time.Duration) int64 { return int64(d / time.Second) }, "duration": durationText, "severityLabel": severityLabel, "severityMeaning": severityMeaning, "scheduleTypeLabel": scheduleTypeLabel, "incidentStatusLabel": incidentStatusLabel, "displayTime": displayTime,
-		"clock":        func(t time.Time) string { return pageClock(t, frame.Now, frame.TimeZone) },
-		"relativeTime": func(t time.Time) string { return relativeTime(t, frame.Now) }}).Parse(pageFrameTemplate)
-	if err == nil {
-		_, err = t.New("body").Parse(body)
-	}
-	if err != nil {
-		renderPageError(w, "MMHotline could not display the requested page.", 500)
-		return
-	}
+	return frame, true
+}
+
+// renderPage writes a page written in templ, in the frame (layout.templ).
+// heading is the page's own heading block, or nil for the frame's h1 with
+// the title. Buffering prevents a render failure from leaving a
+// half-successful page.
+func renderPage(w http.ResponseWriter, status int, title string, frame pageFrame, heading, body templ.Component) {
 	var b bytes.Buffer
-	if err = t.Execute(&b, struct {
-		Title, DevelopmentModeNotice string
-		Data                         any
-		pageFrame
-	}{title, developmentModeNotice, data, frame}); err != nil {
+	if err := pageLayout(title, developmentModeNotice, frame, heading, body).Render(context.Background(), &b); err != nil {
 		renderPageError(w, "MMHotline could not display the requested page.", 500)
 		return
 	}
@@ -108,12 +84,55 @@ func RenderPage(w http.ResponseWriter, status int, title, body string, data any)
 	_, _ = w.Write(b.Bytes())
 }
 
+// RenderPage renders a page whose body is an html/template, a code-owned
+// template, never a body supplied by a user, in the same frame as renderPage.
+// It stays only while pages move to templ.
+//
+// The heading is the block "heading", whose dot is the frame's data: .Title
+// and the page's own data as .Data. A page that prints its own heading block
+// redefines it in its body with {{define "heading"}}…{{end}}; every other page
+// keeps the frame's h1. The body is parsed as its own template, "body", in a
+// second Parse call: html/template lets a later Parse call redefine a
+// template until the first execution, while a second definition within one
+// Parse call is an error. The body is rendered only when data is not empty,
+// as {{with .Data}} did in the frame.
+func RenderPage(w http.ResponseWriter, status int, title, body string, data any) {
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	t, err := template.New("page").Funcs(template.FuncMap{"lower": strings.ToLower, "capitalize": capitalize, "breakAfterSeparators": breakAfterSeparators, "minutes": minutesText, "severityLabel": severityLabel, "severityMeaning": severityMeaning, "scheduleTypeLabel": scheduleTypeLabel, "incidentStatusLabel": incidentStatusLabel,
+		"clock": frame.Clock, "relativeTime": frame.RelativeTime}).Parse(`{{block "heading" .}}<h1>{{.Title}}</h1>{{end}}`)
+	if err == nil {
+		_, err = t.New("body").Parse(body)
+	}
+	if err != nil {
+		renderPageError(w, "MMHotline could not display the requested page.", 500)
+		return
+	}
+	var heading, bodyHTML bytes.Buffer
+	err = t.ExecuteTemplate(&heading, "heading", struct {
+		Title, DevelopmentModeNotice string
+		Data                         any
+		pageFrame
+	}{title, developmentModeNotice, data, frame})
+	if notEmpty, _ := template.IsTrue(data); err == nil && notEmpty {
+		err = t.ExecuteTemplate(&bodyHTML, "body", data)
+	}
+	if err != nil {
+		renderPageError(w, "MMHotline could not display the requested page.", 500)
+		return
+	}
+	renderPage(w, status, title, frame, templ.Raw(heading.String()), templ.Raw(bodyHTML.String()))
+}
+
 // renderPageError can still show a browser a way back when reading the frame
 // or executing a page fails. The fallback frame needs no database read.
 func renderPageError(w http.ResponseWriter, reason string, status int) {
 	if page, ok := w.(*navigationPageWriter); ok && browserPageRequest(page.request) {
 		fallback := &navigationPageWriter{ResponseWriter: page.ResponseWriter, request: page.request}
-		RenderPage(fallback, status, "Cannot display the page", `<section class="panel"><div class="panel-body"><p role="alert">{{.}}</p><a href="/dashboard">Back to the dashboard</a></div></section>`, reason)
+		frame, _ := fallback.readFrame()
+		renderPage(fallback, status, "Cannot display the page", frame, nil, pageErrorBody(reason))
 		return
 	}
 	http.Error(w, reason, status)
@@ -132,6 +151,13 @@ type pageFrame struct {
 	TimeZone   *time.Location
 	Now        time.Time
 }
+
+// Clock writes t as pages show it, in the team's time zone (pageClock).
+func (f pageFrame) Clock(t time.Time) string { return pageClock(t, f.Now, f.TimeZone) }
+
+// RelativeTime says how long before or after the page's moment t is
+// (relativeTime).
+func (f pageFrame) RelativeTime(t time.Time) string { return relativeTime(t, f.Now) }
 
 // readPageFrame reads, in one transaction, what the frame shows member p on
 // the page at path.
@@ -275,9 +301,24 @@ func timeZoneLine(zone *time.Location) string {
 }
 
 // breakAfterSeparators lets values made of parts, such as the sender incident
-// key app002/disk/root_disk_usage, wrap after slashes and underscores.
+// key app002/disk/root_disk_usage, wrap after slashes and underscores, for
+// html/template pages; templ pages use withBreaksAfterSeparators.
 func breakAfterSeparators(s string) template.HTML {
 	return template.HTML(strings.NewReplacer("/", "/<wbr>", "_", "_<wbr>").Replace(template.HTMLEscapeString(s)))
+}
+
+// partsAfterSeparators splits s after each slash and underscore:
+// "app002/disk_usage" is "app002/", "disk_", and "usage". The last part may
+// be "".
+func partsAfterSeparators(s string) []string {
+	var parts []string
+	for {
+		i := strings.IndexAny(s, "/_")
+		if i < 0 {
+			return append(parts, s)
+		}
+		parts, s = append(parts, s[:i+1]), s[i+1:]
+	}
 }
 
 // pageClock writes a time as pages show it: to the minute, in the team's

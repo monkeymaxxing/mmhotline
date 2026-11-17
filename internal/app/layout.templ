@@ -1,0 +1,160 @@
+package app
+
+// The frame around every page: the red bar while an SOS waits for a claim,
+// the side menu and the phone's top bar, the page's heading, its body, and
+// the footer. A signed-in member's page loads refresh.js, which keeps the red
+// bar and the page's other live sections (data-live) current.
+//
+// heading is the page's own heading block (breadcrumbs, tags, h1, meta line),
+// or nil for the frame's h1 with the title. developmentModeNotice is the fake
+// sending services page's URL in development mode, and "" otherwise.
+templ pageLayout(title, developmentModeNotice string, frame pageFrame, heading, body templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width,initial-scale=1"/>
+			<title>{ title } · MMHotline</title>
+			<link rel="stylesheet" href="/assets/mmhotline.css"/>
+			if frame.Member {
+				<script src="/assets/refresh.js" defer></script>
+			}
+		</head>
+		<body>
+			if frame.Member {
+				<div id="sos-waiting" data-live>
+					if frame.WaitingSOS != nil {
+						@waitingSOSStrip(*frame.WaitingSOS)
+					}
+				</div>
+			}
+			<div class="shell">
+				<aside class="side">
+					@brand(frame.TeamName)
+					@sideMenu(frame.Menu)
+				</aside>
+				<div class="topbar">
+					@brand(frame.TeamName)
+					if len(frame.Menu) > 0 {
+						<details class="menu">
+							<summary class="btn">Menu</summary>
+							@sideMenu(frame.Menu)
+						</details>
+					}
+				</div>
+				<main class="content">
+					<div class="wrap stack">
+						if developmentModeNotice != "" {
+							<p class="development-notice small" role="status">Development mode: chat and calls use fake sending services. Set up email against Mailpit. See the <a href={ developmentModeNotice + "/" }>fake sending services page</a>.</p>
+						}
+						if heading != nil {
+							@heading
+						} else {
+							<h1>{ title }</h1>
+						}
+						if body != nil {
+							@body
+						}
+						if frame.TimeZoneLine != "" {
+							<footer class="faint small">{ frame.TimeZoneLine }</footer>
+						}
+					</div>
+				</main>
+			</div>
+		</body>
+	</html>
+}
+
+// waitingSOSStrip is the red bar's content: the oldest SOS that waits for a
+// claim, how many more wait, and its countdown.
+templ waitingSOSStrip(bar waitingSOSBar) {
+	<div class="strip" role="alert">
+		<div class="what">
+			<span class="label">SOS</span><strong>{ bar.Title }</strong>
+			if bar.More > 0 {
+				<a href="/dashboard">and { bar.More } more</a>
+			}
+			— not claimed. { bar.Countdown.Sentence }
+		</div>
+		<a href={ "/incidents/" + bar.ID } class="btn">Open</a>
+	</div>
+}
+
+// brand is the MMHotline mark with the team's name, in the side menu and in
+// the phone's top bar.
+templ brand(teamName string) {
+	<div class="brand">
+		if teamName != "" {
+			<span class="mark" aria-hidden="true">MM</span><span>MMHotline<small>{ teamName }</small></span>
+		} else {
+			<span class="mark" aria-hidden="true">MM</span><span>MMHotline</span>
+		}
+	</div>
+}
+
+// sideMenu is the menu: links in groups, each group but the first under its
+// heading, with a count beside a link when above zero.
+templ sideMenu(menu []menuGroup) {
+	if len(menu) > 0 {
+		<nav class="nav" aria-label="Main">
+			for _, group := range menu {
+				if group.Heading != "" {
+					<p class="group">{ group.Heading }</p>
+				}
+				for _, link := range group.Links {
+					<a
+						href={ link.Href }
+						if link.Current != "" {
+							aria-current={ link.Current }
+						}
+					>
+						if link.Count > 0 {
+							{ link.Label } <span class="count">{ link.Count }</span>
+						} else {
+							{ link.Label }
+						}
+					</a>
+				}
+			}
+		</nav>
+	}
+}
+
+// settingsFileNoticeLine says where a page's read-only settings are set. Its
+// children name the settings file's keys, such as <code>people</code>.
+templ settingsFileNoticeLine(notice settingsFileNoticeView) {
+	<p class="muted">
+		Set in <code>{ notice.SettingsFile }</code>, in { children... }
+		.
+		if notice.SettingsFileFirstLine != "" {
+			The file's first line says: { notice.SettingsFileFirstLine }
+		} else {
+			An administrator edits the settings file with sudoedit, then runs <code>sudo mmhotline settings apply</code>.
+		}
+	</p>
+}
+
+// withBreaksAfterSeparators writes a value made of parts, such as the sender
+// incident key app002/disk/root_disk_usage, so that it can wrap after
+// slashes and underscores: a <wbr> element follows each separator.
+templ withBreaksAfterSeparators(s string) {
+	{{ parts := partsAfterSeparators(s) }}
+	for i, part := range parts {
+		if i < len(parts)-1 {
+			{ part }<wbr/>
+		} else {
+			{ part }
+		}
+	}
+}
+
+// pageErrorBody is the body of the page that says MMHotline could not
+// display a page, with the reason.
+templ pageErrorBody(reason string) {
+	<section class="panel">
+		<div class="panel-body">
+			<p role="alert">{ reason }</p>
+			<a href="/dashboard">Back to the dashboard</a>
+		</div>
+	</section>
+}
