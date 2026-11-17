@@ -145,3 +145,16 @@ func TestSendTestSOSSignInEmailAddressFlagReachesTheServer(t *testing.T) {
 		t.Fatalf("the text output lacks the person (%q): %s, %v", want, text, err)
 	}
 }
+
+// A claim names the member, because a Unix user is not linked to a member;
+// the refusal comes before any socket is used. Fails without the flag check.
+func TestIncidentsClaimNeedsASignInEmailAddress(t *testing.T) {
+	output, err := cliProcess(t, "incidents", "claim", "--command-socket", "/nonexistent.sock", "--incident-id", "abc").CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "--sign-in-email-address is required: it names the member who claims the incident") {
+		t.Fatalf("a claim without a member: %s %v", output, err)
+	}
+	output, err = cliProcess(t, "incidents", "resolve", "--command-socket", "/nonexistent.sock").CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "--incident-id is required") {
+		t.Fatalf("a resolve without an incident: %s %v", output, err)
+	}
+}

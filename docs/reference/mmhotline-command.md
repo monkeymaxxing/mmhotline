@@ -1998,9 +1998,9 @@ an SSH session cannot pass. Each command shows the facts of a page and
 calls the same operation that page calls: the dashboard and incident page,
 **Alerts**, the incident page's triage agent panel, and **Approvals**.
 
-- Except `incidents send-test-sos`, they change nothing. To claim, resolve,
-  approve, refuse, or stop, use the pages, because each of those actions
-  records a person.
+- Except `incidents send-test-sos`, `incidents claim`, and
+  `incidents resolve`, they change nothing. To approve, refuse, or stop,
+  use the pages, because each of those actions records a person.
 - Each reads in at most a few transactions the size of a page's, so it
   holds the database no longer than opening the page does.
 - They need root's command access; any member sees the same facts on the
@@ -2101,6 +2101,85 @@ A claim or resolve with a note ends with the note, such as
 | `history[].related_alert_id` | The alert that caused the entry, when one did |
 | `history[]` with `kind` `pushover_acknowledgement_did_not_claim` | A Pushover acknowledgement came from another Pushover user, so it claimed nothing: `Barbara Example's phone acknowledged, but the acknowledgement came from another Pushover user, so it did not claim the incident. The contact method uses a key that isn't Barbara Example's own Pushover user key, such as a group key.` Its time is when MMHotline sent the message |
 | `history[].note` | What the person wrote with a claim or resolve; absent when they wrote none |
+
+## mmhotline incidents claim
+
+Claims an SOS incident for a member, from a terminal on the server. Use it
+when you cannot open the incident page, such as when the team has no
+Cloudflare or Cloudflare is down.
+
+```sh
+sudo mmhotline incidents claim --incident-id acc896d49ce5b2ef40cd2c944da4f08f --sign-in-email-address barbara@example.com
+```
+
+```text
+SOS incident acc896d49ce5b2ef40cd2c944da4f08f: Disk of db001 is 99% full
+Status: claimed. Opened at 2026-11-15T04:30:02Z.
+Claimed by Barbara Example at 2026-11-15T04:41:20Z.
+Page: https://ops.example.com/incidents/acc896d49ce5b2ef40cd2c944da4f08f
+Barbara Example now owns SOS incident acc896d49ce5b2ef40cd2c944da4f08f. MMHotline stopped contacting people about it. Next: when the problem is fixed, run: sudo mmhotline incidents resolve --incident-id acc896d49ce5b2ef40cd2c944da4f08f
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--incident-id ID` | Required. The incident's ID from `incidents list` |
+| `--sign-in-email-address ADDRESS` | Required. The member who owns the incident from now on |
+| `--note TEXT` | Optional. One line of at most 500 characters for the incident's history, as on the page |
+| Common flags | As above |
+
+- It runs the page's claim, so every rule is the same. Contacting stops,
+  and the history gets the entry `Claimed by Barbara Example with the
+  mmhotline command, run by alice`, with `alice` the Unix user who ran
+  `sudo`.
+- Reason for `--sign-in-email-address`: MMHotline does not link a Unix user
+  to a member, and an incident's owner must be a member. The history names
+  both, the member and the Unix user.
+- An incident that someone else owns is taken over, as on the page. The
+  message says `took over SOS incident ID from NAME`, and the history entry
+  starts `Taken over by`.
+- When the member already owns the incident, nothing changes, and the
+  message says so.
+- A test SOS resolves itself after the claim, and a waiting
+  `incidents send-test-sos` sees the claim. The message says
+  `It was a test, so MMHotline resolved it after the claim.`
+- The command refuses, changes nothing, and exits non-zero when
+  `--sign-in-email-address` is missing or not a member's, when no incident
+  has the ID (`no SOS incident has ID ID`), and when the incident is
+  resolved (`SOS incident ID is already resolved at TIME. Nothing was
+  changed`).
+- `--json` gives the fields of `incidents list` as `incident`, and the
+  text above as `message`.
+
+## mmhotline incidents resolve
+
+Resolves an SOS incident, open or claimed, from a terminal on the server.
+
+```sh
+sudo mmhotline incidents resolve --incident-id acc896d49ce5b2ef40cd2c944da4f08f --note "Cleared old logs."
+```
+
+```text
+SOS incident acc896d49ce5b2ef40cd2c944da4f08f: Disk of db001 is 99% full
+Status: resolved. Opened at 2026-11-15T04:30:02Z.
+Claimed by Barbara Example at 2026-11-15T04:41:20Z.
+Resolved at 2026-11-15T05:02:10Z.
+Page: https://ops.example.com/incidents/acc896d49ce5b2ef40cd2c944da4f08f
+SOS incident acc896d49ce5b2ef40cd2c944da4f08f is resolved. MMHotline stopped contacting people about it. Nothing more to do.
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--incident-id ID` | Required. The incident's ID |
+| `--note TEXT` | Optional. As for `incidents claim` |
+| Common flags | As above |
+
+- It runs the page's resolve. MMHotline sends the "Resolved SOS" message
+  to the people it woke, as for a resolve on the page.
+- The history records the Unix user, not a member: `Resolved by the
+  mmhotline command, run by alice`. It needs no member, so it also works
+  on an incident nobody claimed.
+- It refuses an unknown incident and an incident already resolved, as
+  `incidents claim` does.
 
 ## mmhotline incidents send-test-sos
 

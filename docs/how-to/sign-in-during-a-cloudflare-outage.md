@@ -66,6 +66,13 @@ Cloudflare.
    point to the usual address, such as `https://ops.example.com`, which is
    down; open incidents from the dashboard instead.
 
+## Claim without a browser
+
+To claim or resolve an incident and nothing else, you need no sign-in link
+and no forward. Run `sudo mmhotline incidents claim` on the server, as
+[Handle an incident](handle-an-incident.md#claim-and-resolve-from-the-servers-terminal)
+says.
+
 ## What keeps this safe
 
 - MMHotline keeps only a hash of each link, so a copy of the database or

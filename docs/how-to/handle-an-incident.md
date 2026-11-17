@@ -48,7 +48,10 @@ page names.
    Claim the incident by 23:12, or MMHotline also wakes Barbara Example.
    ```
 
-   If MMHotline does not open, Cloudflare may be down: see
+   If MMHotline does not open, Cloudflare may be down. Either claim from
+   the server's terminal, as in
+   [Claim and resolve from the server's terminal](#claim-and-resolve-from-the-servers-terminal),
+   or see
    [Sign in during a Cloudflare outage](sign-in-during-a-cloudflare-outage.md).
 
 2. **Claim the incident.** Optionally write a line for the team in
@@ -108,6 +111,47 @@ page names.
    sees the problem end. **What happened** then says the alert source
    resolved it. An SOS about a tool's silence resolves itself when the
    tool's check-ins return, if nobody has claimed it.
+
+## Claim and resolve from the server's terminal
+
+Use this when you cannot open the page, or when a coding agent on the
+server does the work. You need SSH access and `sudo` on the MMHotline
+server. You need no browser and no Cloudflare.
+
+1. **Find the incident ID.**
+
+   ```sh
+   sudo mmhotline incidents list
+   ```
+
+   **Check:** each incident shows its ID on its first line, such as
+   `SOS incident acc896d49ce5b2ef40cd2c944da4f08f: Disk of db001 is 99% full`.
+
+2. **Claim it,** with the sign-in email address of the member who takes it:
+
+   ```sh
+   sudo mmhotline incidents claim --incident-id ID --sign-in-email-address barbara@example.com
+   ```
+
+   **Check:** the last line says
+   `Barbara Example now owns SOS incident ID. MMHotline stopped contacting people about it.`
+   Reason for the address: your Unix user is not a member, and a claimed
+   incident belongs to a member. The history names both the member and your
+   Unix user.
+
+3. **Fix the problem, then resolve it.** Add `--note` for a line the team
+   reads in the history.
+
+   ```sh
+   sudo mmhotline incidents resolve --incident-id ID --note "Restarted the monitoring service."
+   ```
+
+   **Check:** the last line says `SOS incident ID is resolved.`
+
+An incident that someone else owns is taken over, as on the page. A test
+SOS resolves itself after the claim. The
+[command reference](../reference/mmhotline-command.md#mmhotline-incidents-claim)
+lists every message.
 
 ## Wake another person now
 
@@ -219,6 +263,6 @@ MMHotline records who raised it.
 - **You want the history on the server, or for a coding agent:**
   `sudo mmhotline incidents list` lists the incidents that are not
   resolved, and `sudo mmhotline incidents show --incident-id ID` prints one
-  incident with its history, notes included. Both take `--json`. No command
-  claims or resolves an incident: a person does that on the page or in a
-  notification.
+  incident with its history, notes included. Both take `--json`. To claim
+  or resolve without the page, see
+  [Claim and resolve from the server's terminal](#claim-and-resolve-from-the-servers-terminal).

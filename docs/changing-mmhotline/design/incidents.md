@@ -439,10 +439,30 @@ the note can say "This was a test." or "The backup job does this every night."
   takeover, or resolution. The history entry keeps the only copy of the
   note. What happened shows the note with the action and writer's name.
 
-A note needs the incident page. Pushover claims and Slack and Telegram
-claims and resolves take no note. No `mmhotline` command claims or resolves,
-because a command run as root acting as a person would be a new question of
-trust.
+A note needs the incident page or the command. Pushover claims and Slack
+and Telegram claims and resolves take no note.
+
+### Claim and resolve by command
+
+`mmhotline incidents claim` and `resolve` exist for a person or a coding
+agent with only a terminal on the server: the page sits behind Cloudflare
+Access or an SSH forward. Both call the page's operations (`claimIncidentTx`,
+`resolveIncidentTx`), so every rule holds: claiming stops the SOS repeats, a
+claim of an incident someone else owns takes it over, a test SOS resolves
+itself after the claim, and the history lines match the page's.
+
+- **Claim names a member.** MMHotline links no Unix user to a member, and an
+  incident's owner must be a member, because contacting stops for that
+  member's sake. `--sign-in-email-address` is required. The history entry
+  is the member's and ends with ` with the mmhotline command, run by UNIX_USER`.
+  Reason: the root caller is trusted as an administrator
+  (`RequireMember`), so it may act for any member, and the entry still says
+  who really ran it.
+- **Resolve names the Unix user.** The history actor is `unix_user:NAME`,
+  shown as `the mmhotline command, run by NAME`, as `commit-reviews
+  mark-reviewed` names its reviewer. It needs no schema change.
+- An unknown incident, a resolved incident, an unknown member, and a missing
+  address are refused with a plain message and change nothing.
 
 The page refreshes its live sections every 10 seconds; a section with a
 note being typed in the section is not replaced, so the note stays until

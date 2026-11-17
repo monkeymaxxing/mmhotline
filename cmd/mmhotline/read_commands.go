@@ -28,6 +28,19 @@ func incidentsFlags(flags *flag.FlagSet, action string, in *app.IncidentsCommand
 		return func() error { return nil }
 	}
 	flags.StringVar(&in.IncidentID, "incident-id", "", "SOS incident's ID")
+	if action == "claim" || action == "resolve" {
+		flags.StringVar(&in.Note, "note", "", "one line of plain text for the incident's history, such as what you found")
+	}
+	if action == "claim" {
+		// A Unix user is not linked to a member, so the claim names one.
+		flags.StringVar(&in.SignInEmailAddress, "sign-in-email-address", "", "sign-in email address of the member who claims the incident; the history also names the Unix user who ran the command")
+		return func() error {
+			if in.SignInEmailAddress == "" {
+				return errors.New("--sign-in-email-address is required: it names the member who claims the incident")
+			}
+			return requiredFlag("incident-id", &in.IncidentID)()
+		}
+	}
 	return requiredFlag("incident-id", &in.IncidentID)
 }
 
