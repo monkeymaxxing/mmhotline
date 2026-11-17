@@ -41,27 +41,54 @@ in your own.
 
 ## Steps
 
-1. **Download the release and check it.** On the server, download the
-   archive for the server's processor and the checksum file, check the
-   archive, and unpack it:
+1. **Download the release and check it.** On the server, paste this
+   block. It picks the archive for the server's processor, downloads it with
+   its checksum file, checks it, and unpacks it into `~/mmhotline-0.3.1`.
+   It does not install anything yet.
 
    ```sh
-   curl --fail --location --remote-name-all \
-     https://github.com/monkeymaxxing/mmhotline/releases/download/v0.1.0/mmhotline-0.1.0-linux-amd64.tar.gz \
-     https://github.com/monkeymaxxing/mmhotline/releases/download/v0.1.0/SHA256SUMS
+   (
+   set -eu
+   version=0.3.1
+   case "$(uname -sm)" in
+     "Linux x86_64")  arch=amd64 ;;
+     "Linux aarch64") arch=arm64 ;;
+     *) echo "MMHotline runs on a Linux server. There is no release for $(uname -sm)."; exit 1 ;;
+   esac
+   release=https://github.com/monkeymaxxing/mmhotline/releases/download/v$version
+   mkdir -p ~/mmhotline-$version && cd ~/mmhotline-$version
+   curl -fsSLO "$release/mmhotline-$version-linux-$arch.tar.gz"
+   curl -fsSLO "$release/SHA256SUMS"
    sha256sum --check --ignore-missing SHA256SUMS
-   tar -xzf mmhotline-0.1.0-linux-amd64.tar.gz
-   cd mmhotline-0.1.0-linux-amd64
+   tar -xzf "mmhotline-$version-linux-$arch.tar.gz"
+   echo "Unpacked in ~/mmhotline-$version/mmhotline-$version-linux-$arch."
+   echo "Run the next steps from there: cd ~/mmhotline-$version/mmhotline-$version-linux-$arch"
+   )
    ```
 
-   Use the newest release's version in place of `0.1.0`. `amd64` is for a
-   server where `uname -m` prints `x86_64`. Where it prints `aarch64`, use
-   `arm64` in both file names.
+   **Check:** it prints `mmhotline-0.3.1-linux-amd64.tar.gz: OK` (`arm64`
+   on an ARM server). Reason: the check proves the download is the
+   release, unchanged.
 
-   **Check:** `sha256sum` prints
-   `mmhotline-0.1.0-linux-amd64.tar.gz: OK`. Reason: the check proves the
-   download is the release, unchanged. If it prints `FAILED`, delete the
-   download and do not run it.
+   IF IT PRINTS `FAILED`, DELETE THE FOLDER `~/mmhotline-0.3.1` AND DO NOT RUN THE PROGRAM.
+
+   The block cannot move your shell. Go to the unpacked folder yourself,
+   and stay there for the steps that run `./mmhotline`:
+
+   ```sh
+   cd ~/mmhotline-0.3.1/mmhotline-0.3.1-linux-*/
+   ```
+
+   Optionally, prove that GitHub built the archive from this repository,
+   with the GitHub command line tool (`gh`):
+
+   ```sh
+   gh attestation verify ~/mmhotline-0.3.1/mmhotline-0.3.1-linux-*.tar.gz --repo monkeymaxxing/mmhotline
+   ```
+
+   By hand: `uname -sm` prints `Linux x86_64` for the `amd64` archive or
+   `Linux aarch64` for the `arm64` archive. A newer release works the same
+   way: change `version=` in the block.
 
 2. **Make the alert source's signing secret.** Your monitoring tool signs
    each alert with this secret:
@@ -161,7 +188,9 @@ in your own.
    prints `0`, and `sudo ls -l /etc/mmhotline/` shows
    `-rw-r-----` and `root` for `mmhotline_settings.yml`.
 
-4. **Check the settings file:**
+4. **Check the settings file.**
+
+   RUN THIS IN THE UNPACKED FOLDER, `~/mmhotline-0.3.1/mmhotline-0.3.1-linux-*/`. IF YOU ARE ELSEWHERE, `./mmhotline` IS NOT FOUND.
 
    ```sh
    sudo ./mmhotline settings check --settings-file /etc/mmhotline/mmhotline_settings.yml
@@ -172,7 +201,7 @@ in your own.
    Otherwise each line names a key and what is wrong; fix the file and
    check again.
 
-5. **Install MMHotline:**
+5. **Install MMHotline.** Stay in the unpacked folder from step 1:
 
    ```sh
    sudo ./mmhotline install
@@ -191,7 +220,7 @@ in your own.
 
    **Check:** the output ends with the `MMHotline:` and `Next:` lines, and
    `mmhotline version` prints the release, such as
-   `mmhotline 0.1.0 (COMMIT, linux/amd64, modified=false)`, with the
+   `mmhotline 0.3.1 (COMMIT, linux/amd64, modified=false)`, with the
    release's full commit hash in place of `COMMIT`.
 
    The install copied the program to `/usr/local/bin/mmhotline` and

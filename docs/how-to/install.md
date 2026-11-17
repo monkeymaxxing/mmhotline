@@ -42,40 +42,64 @@ send alerts. The install reads it and never changes its contents.
 
 ## Install a release
 
-1. **Find the server's processor:**
+1. **Download the archive, check it, and unpack it.** Paste this block.
+   It picks the archive for the server's processor, downloads it with its
+   checksum file, checks it, and unpacks it into `~/mmhotline-0.3.1`. To
+   install a newer release, change `version=`.
 
    ```sh
-   uname -m
-   ```
-
-   **Check:** it prints `x86_64`, which uses the `amd64` archive, or
-   `aarch64`, which uses the `arm64` archive. The examples use `amd64` and
-   the version `0.1.0`; use the newest release.
-
-2. **Download the archive and the checksum file, and check the archive:**
-
-   ```sh
-   curl --fail --location --remote-name-all \
-     https://github.com/monkeymaxxing/mmhotline/releases/download/v0.1.0/mmhotline-0.1.0-linux-amd64.tar.gz \
-     https://github.com/monkeymaxxing/mmhotline/releases/download/v0.1.0/SHA256SUMS
+   (
+   set -eu
+   version=0.3.1
+   case "$(uname -sm)" in
+     "Linux x86_64")  arch=amd64 ;;
+     "Linux aarch64") arch=arm64 ;;
+     *) echo "MMHotline runs on a Linux server. There is no release for $(uname -sm)."; exit 1 ;;
+   esac
+   release=https://github.com/monkeymaxxing/mmhotline/releases/download/v$version
+   mkdir -p ~/mmhotline-$version && cd ~/mmhotline-$version
+   curl -fsSLO "$release/mmhotline-$version-linux-$arch.tar.gz"
+   curl -fsSLO "$release/SHA256SUMS"
    sha256sum --check --ignore-missing SHA256SUMS
+   tar -xzf "mmhotline-$version-linux-$arch.tar.gz"
+   echo "Unpacked in ~/mmhotline-$version/mmhotline-$version-linux-$arch."
+   echo "Run the next steps from there: cd ~/mmhotline-$version/mmhotline-$version-linux-$arch"
+   )
    ```
 
-   **Check:** it prints `mmhotline-0.1.0-linux-amd64.tar.gz: OK`.
-   `--ignore-missing` skips the archives you did not download.
+   **Check:** it prints `mmhotline-0.3.1-linux-amd64.tar.gz: OK` (`arm64`
+   on an ARM server), then where it unpacked.
 
    Reason: `SHA256SUMS` holds the checksum of each archive in the release,
    so the check finds a damaged or replaced download before you run it.
 
-3. **Unpack the archive:**
+   IF IT PRINTS `FAILED`, DELETE THE FOLDER `~/mmhotline-0.3.1` AND DO NOT RUN THE PROGRAM.
+
+   By hand: `uname -sm` prints `Linux x86_64` for the `amd64` archive or
+   `Linux aarch64` for the `arm64` archive.
+
+2. **Go into the unpacked folder:**
 
    ```sh
-   tar -xzf mmhotline-0.1.0-linux-amd64.tar.gz
-   cd mmhotline-0.1.0-linux-amd64
+   cd ~/mmhotline-0.3.1/mmhotline-0.3.1-linux-*/
    ```
 
    **Check:** `ls` shows `LICENSE`, `dependency_license_notices`, and the
    program `mmhotline`.
+
+   The block cannot move your shell, so this step is yours. Stay in this
+   folder for the steps that run `./mmhotline`.
+
+3. **Optional: prove who built the archive.** With the GitHub command line
+   tool (`gh`):
+
+   ```sh
+   gh attestation verify ~/mmhotline-0.3.1/mmhotline-0.3.1-linux-*.tar.gz --repo monkeymaxxing/mmhotline
+   ```
+
+   **Check:** it says the verification succeeded. Reason: the checksum
+   proves the download is the release; this also proves GitHub built it
+   from this repository.
 
 4. **Write the settings file,** if it does not exist yet. Make the folder
    and an empty file that only root can read and change, and open it. The
@@ -97,7 +121,9 @@ send alerts. The install reads it and never changes its contents.
    its `fleet_view_command` runs as root, so only root may change it, and,
    after the install, only root and MMHotline may read it.
 
-5. **Check the settings file:**
+5. **Check the settings file.**
+
+   RUN THIS IN THE UNPACKED FOLDER FROM STEP 2. IF YOU ARE ELSEWHERE, `./mmhotline` IS NOT FOUND.
 
    ```sh
    sudo ./mmhotline settings check --settings-file /etc/mmhotline/mmhotline_settings.yml
@@ -137,7 +163,7 @@ send alerts. The install reads it and never changes its contents.
    ```
 
    print `active` and the release, such as
-   `mmhotline 0.1.0 (COMMIT, linux/amd64, modified=false)`, with the
+   `mmhotline 0.3.1 (COMMIT, linux/amd64, modified=false)`, with the
    release's full commit hash in place of `COMMIT`.
 
    From now on, run the installed `mmhotline`, without `./`. You can
@@ -195,8 +221,8 @@ CGO_ENABLED=0 go build -o "${TMPDIR:-/tmp}/mmhotline" ./cmd/mmhotline
 
 When GitHub is down, clone the mirror,
 `https://gitlab.com/monkeymaxxing/mmhotline.git`, instead. To build a
-release, run `git checkout v0.1.0` after `cd mmhotline`, with the release's
-version in place of `0.1.0`.
+release, run `git checkout v0.3.1` after `cd mmhotline`, with the release's
+version in place of `0.3.1`.
 
 **Check:** `"${TMPDIR:-/tmp}/mmhotline" version` prints the version. Then
 follow [Install a release](#install-a-release) from step 4, with

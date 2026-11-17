@@ -431,21 +431,57 @@ Before you install, you need:
 - **A way to wake a person,** such as a Pushover account and the Pushover
   app on each person's phone, or a Twilio account for phone calls.
 
-On the server, download the release archive and its checksum file, check
-the download, and unpack it:
+On the server, paste this block. It picks the archive for the server's
+processor, downloads it with its checksum file, checks it, and unpacks it
+into `~/mmhotline-0.3.1`. It does not install anything yet.
 
 ```sh
-# amd64 is for x86-64 servers and arm64 for AArch64 servers.
-# `uname -m` prints x86_64 or aarch64.
-curl --fail --location --remote-name-all \
-  https://github.com/monkeymaxxing/mmhotline/releases/download/v0.1.0/mmhotline-0.1.0-linux-amd64.tar.gz \
-  https://github.com/monkeymaxxing/mmhotline/releases/download/v0.1.0/SHA256SUMS
-
-sha256sum --check --ignore-missing SHA256SUMS   # must print: mmhotline-0.1.0-linux-amd64.tar.gz: OK
-
-tar -xzf mmhotline-0.1.0-linux-amd64.tar.gz
-cd mmhotline-0.1.0-linux-amd64
+(
+set -eu
+version=0.3.1
+case "$(uname -sm)" in
+  "Linux x86_64")  arch=amd64 ;;
+  "Linux aarch64") arch=arm64 ;;
+  *) echo "MMHotline runs on a Linux server. There is no release for $(uname -sm)."; exit 1 ;;
+esac
+release=https://github.com/monkeymaxxing/mmhotline/releases/download/v$version
+mkdir -p ~/mmhotline-$version && cd ~/mmhotline-$version
+curl -fsSLO "$release/mmhotline-$version-linux-$arch.tar.gz"
+curl -fsSLO "$release/SHA256SUMS"
+sha256sum --check --ignore-missing SHA256SUMS
+tar -xzf "mmhotline-$version-linux-$arch.tar.gz"
+echo "Unpacked in ~/mmhotline-$version/mmhotline-$version-linux-$arch."
+echo "Run the next steps from there: cd ~/mmhotline-$version/mmhotline-$version-linux-$arch"
+)
 ```
+
+It prints `mmhotline-0.3.1-linux-amd64.tar.gz: OK` (`arm64` on an ARM
+server) and where it unpacked. The block cannot move your shell, so go to
+the unpacked folder yourself:
+
+```sh
+cd ~/mmhotline-0.3.1/mmhotline-0.3.1-linux-*/
+```
+
+IF THE CHECK PRINTS `FAILED`, DELETE THE FOLDER `~/mmhotline-0.3.1` AND DO NOT RUN THE PROGRAM.
+
+Optionally, prove that GitHub built the archive from this repository, with
+the GitHub command line tool (`gh`):
+
+```sh
+gh attestation verify ~/mmhotline-0.3.1/mmhotline-0.3.1-linux-*.tar.gz --repo monkeymaxxing/mmhotline
+```
+
+**By hand.** `uname -sm` prints `Linux x86_64` for the `amd64` archive or
+`Linux aarch64` for the `arm64` archive. The archives are
+`mmhotline-VERSION-linux-amd64.tar.gz` and
+`mmhotline-VERSION-linux-arm64.tar.gz`, and `SHA256SUMS` lists their
+checksums. Each unpacks to a folder `mmhotline-VERSION-linux-ARCH` that
+holds `mmhotline`.
+
+**Upgrade.** Paste the block again with the new version number in
+`version=`. Then run `sudo ./mmhotline install` from the new folder.
+[Upgrade MMHotline](docs/how-to/upgrade.md) has the details.
 
 The checksum finds a damaged download. To run a commit that has no release,
 [build MMHotline from source](docs/how-to/install.md#build-from-source).
@@ -473,11 +509,12 @@ On the server:
    sudo ./mmhotline install
    ```
 
-   Run both from the unpacked directory. After the install, you can delete
-   the downloaded files.
+   RUN BOTH FROM THE UNPACKED FOLDER, `~/mmhotline-0.3.1/mmhotline-0.3.1-linux-*/`.
 
-   **Upgrade.** Download and check the new release in the same way, and run
-   `sudo ./mmhotline install` from its directory. An upgrade keeps the
+   After the install, you can delete the `~/mmhotline-0.3.1` folder.
+
+   **Upgrade.** Paste the download block again with the new version, and
+   run `sudo ./mmhotline install` from the new folder. An upgrade keeps the
    database and every row. [Upgrade MMHotline](docs/how-to/upgrade.md) has the
    details.
 
@@ -510,7 +547,7 @@ check before moving on.
 
 | Step | Outcome | Check |
 | --- | --- | --- |
-| 1 | The settings file exists, with the person as the first administrator. | `sudo ./mmhotline settings check --settings-file /etc/mmhotline/mmhotline_settings.yml`, run from the unpacked release directory, prints that the settings file has no problems. |
+| 1 | The settings file exists, with the person as the first administrator. | `sudo ./mmhotline settings check --settings-file /etc/mmhotline/mmhotline_settings.yml`, run from the unpacked folder, prints that the settings file has no problems. |
 | 2 | MMHotline is installed and runs. | `sudo ./mmhotline install` prints the web URL, and `mmhotline version` prints a version. |
 | 3 | The person's phone gets emergency alerts. | The person acknowledged the test message that MMHotline sent when the contact method was added. |
 | 4 | The person can open MMHotline. | The person opened the web URL and signed in through Cloudflare Access. |
