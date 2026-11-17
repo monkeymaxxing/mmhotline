@@ -369,8 +369,8 @@ On each server of each inventory:
 
 | Path | Holds | Step |
 | --- | --- | --- |
-| The Unix user `triage`, in group `systemd-journal`, with no sudo or only read-only commands | The account the agent investigates as | 2 |
-| `/home/triage/.ssh/authorized_keys` | The agent's public key, after `from="10.0.0.5" `, the MMHotline server's private address | 2 |
+| The Unix user `triage`, in group `systemd-journal`, with no sudo or only read-only commands, and its home `/home/triage` and `/home/triage/.ssh` owned by `root`, mode `0755` | The account the agent investigates as | 2 |
+| `/home/triage/.ssh/authorized_keys`, owned by `root`, mode `0644` | The agent's public key, after `restrict,from="10.0.0.5" `, with the MMHotline server's private address | 2 |
 | The inventory `ssh_user`'s `authorized_keys`, such as `/root/.ssh/authorized_keys` | MMHotline's public key, after the same `from=` | 5 |
 
 In the systems repository: `triage_agent_rules.md` at the top, which the

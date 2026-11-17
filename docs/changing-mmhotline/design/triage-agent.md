@@ -309,12 +309,31 @@ page's host, port, program, and key, and why a run left a page out in
 ### Reading the servers over SSH
 
 The agent reads the team's servers over SSH as the `triage` user, which the
-team's server setup creates on every server: it reads the logs and runs a
-short list of read-only commands, and it changes nothing. The team's server
+team's server setup creates on every server. `triage` has no sudo, or sudo
+only for a short list of read-only commands, so the agent changes nothing
+that needs root. The team's server
 setup also makes the triage agent's SSH key, `/var/lib/mmhotline-triage-agent/.ssh/id_ed25519`,
 and the servers accept that key only from the private address of the server
 running MMHotline. The agent connects by the server's name, such as
 `ssh app001`.
+
+The key line starts `restrict,from="ADDRESS"`. `restrict` turns off port,
+agent, and X11 forwarding and terminals, so the agent cannot open a tunnel
+from a server past the logging proxy, such as `ssh -D` or `ssh -L` to a
+database on the server's loopback address. Root owns `triage`'s home,
+`~/.ssh`, and `authorized_keys` (modes `0755`, `0755`, and `0644`), so a
+command the agent runs as `triage` cannot rewrite the line without
+`restrict`. OpenSSH's `StrictModes` accepts root as the owner, and sshd reads
+`authorized_keys` as the user, so it must stay readable; a test on Debian 13
+with OpenSSH 10.0 logged in with this layout and refused a forward and a
+terminal.
+
+The proxy logs only the connection to the server's port 22. A command that
+the agent runs there as `triage` can still open its own connections from
+that server, such as `curl`, which the proxy neither sees nor limits. A
+`command=` list of allowed commands in the key line, or a firewall rule for
+the `triage` user's outgoing connections on each server, would close that;
+neither is part of the setup.
 
 **The servers become listed hosts at each run's start.** Before a run in the
 systems repository starts, MMHotline runs MMX's listing of each inventory in
@@ -848,7 +867,13 @@ out, it is `signed_by_a_trusted_key_or_reviewed`, the check this section
 describes, so a settings file written before the key keeps working. The other
 value is `every_commit_on_origin`:
 
-Use `every_commit_on_origin` only when origin is on the team's own server and only keys that already hold root on every server can push to it. With origin on a Git host such as GitHub, it would give everyone who can push there root on every server.
+Use `every_commit_on_origin` only when origin is on the team's own server,
+only keys that already hold root on every server can push to it, and the
+`triage` user cannot write to it. With origin on a Git host such as GitHub,
+it would give everyone who can push there root on every server. The agent
+logs in to the servers as `triage`, so if origin is a repository on one of
+them that `triage` can write, such as through a group, the agent could push
+a commit that MMX then runs as root.
 
 With `every_commit_on_origin`, every commit on origin's branch passes. MMHotline
 reads no signature, no commit waits, and no warning or commit review run
@@ -860,6 +885,9 @@ nothing. Commits that waited before a switch to `every_commit_on_origin` no
 longer stop an MMX run, but stay on Approvals, with their warnings open, until
 a person marks them reviewed. Reason: a switch happens once, and recording the
 settings as a reviewer would change the database format for that one moment.
+Switching back to `signed_by_a_trusted_key_or_reviewed` does not check the
+commits that arrived while every commit passed: the checked-through commit
+already moved past them, and the check starts after it.
 
 The reason is who can push. A team whose origin is a bare repository owned by
 root on its own server, where only keys that already have root on every
@@ -1152,7 +1180,9 @@ agent may still read the servers and send other reports.
 - for each commit: its full ID, author, commit date, the time MMHotline
   found it, its message, its changed paths, and its diff. The message and
   the diff are quoted line by line with `> `, so the agent sees where the
-  commit's own text starts and ends.
+  commit's own text starts and ends. An author or a path that holds a line
+  break or another character that does not print is shown in Go's quoted
+  form, such as `"a\nb"`.
 
 Each diff is cut at 16 KiB, measured as the prompt carries it in JSON, with
 "[and N more lines of the diff, which MMHotline left out to keep this prompt
@@ -2179,7 +2209,11 @@ after a run that had ended 31 minutes before; with the times in the task,
 it computes instead of guessing.
 
 The message is quoted line by line, so the agent sees where the alert's own
-text starts and ends. Each alert's message is cut at 2,000 characters so a long message cannot
+text starts and ends. Every line break a reader may honor counts: `\r\n`,
+`\r`, `\v`, `\f`, `\x1c` to `\x1e`, U+0085, U+2028, and U+2029 each become
+`\n` before quoting, as in every prompt that quotes text. Otherwise a lone
+`\r` could start a line of its own, such as a fake "Notes from the team:"
+section. Each alert's message is cut at 2,000 characters so a long message cannot
 push the remaining alerts out of the prompt. The agent reads the servers for
 details.
 The prompt is at most 64 KiB as it travels in JSON on the run socket: the

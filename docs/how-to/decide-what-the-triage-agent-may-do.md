@@ -88,6 +88,19 @@ says how MMHotline matches each task to a kind.
    anything that can make a server, a network, or a service unreachable, or
    that MMHotline cannot recognize.
 
+   **`every_fix_without_permission` GIVES ROOT ON EVERY SERVER OF THE
+   INVENTORY TO ANYONE WHO CAN PUT TEXT IN FRONT OF THE AGENT.**
+
+   The agent reads alerts and logs, and anyone on the internet can put a
+   line in a web server's log. Text that misleads the agent can then make
+   it run any playbook without a person: any command as root on every
+   server, or a task that copies MMHotline's own database to a server,
+   where the agent reads it. The database holds the sending services'
+   tokens and the agents' credentials. The same holds for
+   `unrecognized_task: {rule: act_then_report}`. A review agent lowers the
+   chance, but does not rule it out. Use this preset only for an inventory
+   where that is acceptable, such as a test inventory.
+
    **To choose each kind yourself,** give the inventory `action_kinds`
    instead of `preset`:
 

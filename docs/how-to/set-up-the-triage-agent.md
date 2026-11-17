@@ -99,16 +99,18 @@ has the inventory address `203.0.113.11` and the private address
 
    Then on each server, with your deploy tool or by hand, put the printed
    public key line in `triage`'s `authorized_keys`, after
-   `from="10.0.0.5" `, `util01`'s private address, where its connections
-   come from:
+   `restrict,from="10.0.0.5" `, with `util01`'s private address, where its
+   connections come from:
 
    ```sh
    sudo useradd --create-home --shell /bin/bash triage
    sudo usermod --append --groups systemd-journal triage
-   sudo install -d -o triage -g triage -m 0700 /home/triage/.ssh
-   echo 'from="10.0.0.5" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... MMHotline triage agent' | sudo tee /home/triage/.ssh/authorized_keys
-   sudo chown triage:triage /home/triage/.ssh/authorized_keys
-   sudo chmod 0600 /home/triage/.ssh/authorized_keys
+   sudo chown root:root /home/triage
+   sudo chmod 0755 /home/triage
+   sudo install -d -o root -g root -m 0755 /home/triage/.ssh
+   echo 'restrict,from="10.0.0.5" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... MMHotline triage agent' | sudo tee /home/triage/.ssh/authorized_keys
+   sudo chown root:root /home/triage/.ssh/authorized_keys
+   sudo chmod 0644 /home/triage/.ssh/authorized_keys
    sudo -l -U triage
    ```
 
@@ -117,11 +119,25 @@ has the inventory address `203.0.113.11` and the private address
    only for a short list of read-only commands with fixed arguments, if
    any.
 
+   **KEEP `restrict` IN THE KEY LINE, AND KEEP THE HOME, `.ssh`, AND
+   `authorized_keys` OWNED BY ROOT.**
+
    Reason: the agent investigates over SSH as `triage` and must change
    nothing; every change goes through a playbook that MMHotline judges.
-   `from=` accepts the key only from `util01`. The group `systemd-journal`
-   lets `triage` read the logs; without it, the agent reports that it
-   cannot read the system journal.
+   `from=` accepts the key only from `util01`. `restrict` turns off port
+   forwarding, agent forwarding, X11 forwarding, and terminals, so the agent
+   cannot open a tunnel from a server past MMHotline's logging proxy. The
+   agent runs plain commands, such as `ssh web1 journalctl -u caddy`, which
+   `restrict` allows. Root owns the home, `.ssh`, and `authorized_keys`, so
+   a command the agent runs as `triage` cannot rewrite the key line without
+   `restrict`, or move `.ssh` aside and make a new one. sshd's `StrictModes`
+   accepts root as the owner of each, and reads `authorized_keys` as
+   `triage`, so the file stays readable (`0644`; it holds only a public
+   key). The group `systemd-journal` lets `triage` read the logs; without
+   it, the agent reports that it cannot read the system journal.
+
+   To remove the user later, `userdel --remove triage` leaves the
+   root-owned home; delete it with `sudo rm -r /home/triage`.
 
 3. **Choose how MMHotline trusts commits, then make the agent sign its commits.**
    MMHotline checks each commit on origin before MMX runs it. The setting
@@ -135,7 +151,16 @@ has the inventory address `203.0.113.11` and the private address
      [Set up the agent](#set-up-the-agent), step 3: the agent need not sign,
      and the settings leave out the four signing and approval keys.
 
-   Use `every_commit_on_origin` only when origin is on the team's own server and only keys that already hold root on every server can push to it. With origin on a Git host such as GitHub, it would give everyone who can push there root on every server.
+   **USE `every_commit_on_origin` ONLY WHEN ORIGIN IS ON THE TEAM'S OWN
+   SERVER, ONLY KEYS THAT ALREADY HOLD ROOT ON EVERY SERVER CAN PUSH TO IT,
+   AND THE `triage` USER CANNOT WRITE TO IT.**
+
+   With origin on a Git host such as GitHub, it would give everyone who can
+   push there root on every server. The agent logs in to the servers as
+   `triage`, so a repository that `triage` can write, such as through a
+   group, would let the agent push a commit that MMX then runs as root.
+   Switching back to `signed_by_a_trusted_key_or_reviewed` later does not
+   check the commits that arrived meanwhile.
 
    Reason: where only keys with root on every server can push, a signature
    adds no protection. Anyone who gets into a Git host on the internet could
@@ -441,6 +466,14 @@ has the inventory address `203.0.113.11` and the private address
      warning that starts a triage session. With 3, a problem the agent fixes
      reaches people as one message, the agent's report. Leave it out for 0,
      which holds nothing.
+
+     **ANY REPORT FROM THE AGENT CANCELS THE HELD WARNING, EVEN AN `info`
+     REPORT THAT SAYS "ALL FINE".**
+
+     People then get only the agent's report. So text in a log that
+     misleads the agent into reporting "all fine" also keeps the warning
+     from people. An SOS is not held this way: it reaches the person on
+     call when its own wait ends.
    - `sos_waits_for_a_server_replacement_minutes`: 0 to 60 minutes longer
      an SOS waits once the agent starts replacing a server.
    - `rules_for_running_agent_playbooks`: one entry for each inventory, as
