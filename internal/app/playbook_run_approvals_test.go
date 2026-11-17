@@ -712,7 +712,7 @@ func TestApprovalPages(t *testing.T) {
 		// Why it needs a person, and the review that did not approve it.
 		"Kinds of change Reboot a server Rule Get permission, then act (1 approval)", "The review agent did not approve the playbook.",
 		"The review agent refused the playbook: It reboots during business hours.",
-		"The playbook's text, at commit " + judged[:7], "Commit MMHotline checked " + judged, "Times are in UTC.",
+		"The playbook's text, and any files it copies, at commit " + judged[:7], "Commit MMHotline checked " + judged, "Times are in UTC.",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the page lacks %q", want)

@@ -294,7 +294,9 @@ message starts with the agent's short reason and links the request's page.
      MMHotline has not checked.
    - **What it changes, step by step**, and **Why it needs a person**: the
      kinds of change and the rule.
-   - **The playbook's text**, at the commit MMHotline checked.
+   - **The playbook's text, and any files it copies**, at the commit
+     MMHotline checked, such as a unit file that a `file` task installs.
+     A binary or long file shows its size and SHA-256 instead.
    - **Review agent**, and **Earlier versions the review agent refused**,
      when the review agent refused it.
    - **Steps on services whose changes a person must approve.**

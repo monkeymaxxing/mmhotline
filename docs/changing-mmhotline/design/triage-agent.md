@@ -4061,6 +4061,8 @@ The review prompt contains:
   reads the playbook text and runs `mmx explain` while holding the lock.
   So the review agent sees the text MMHotline judged, never a file a symlink
   names;
+- [the files the playbook copies](#the-files-a-playbook-copies), quoted line
+  by line, when its tasks copy or render any;
 - the node tasks as `mmx explain` listed them: each task's path, node, module
   and module kind, status, and arguments with their values as text;
 - the kinds of action MMHotline recognized, and the node tasks it recognized
@@ -4811,8 +4813,35 @@ calls node tasks steps and uses the following words:
   “A second AI agent that checks each playbook before it runs”.
 
 The request's page folds “Earlier versions the review agent refused”, the
-playbook's text, and the identifiers. The identifiers include
-“Commit MMHotline checked”.
+playbook's text with [the files it copies](#the-files-a-playbook-copies),
+and the identifiers. The identifiers include “Commit MMHotline checked”.
+
+#### The files a playbook copies
+
+A task can copy a file of the systems repository onto the servers, such as
+`file.source: one_time_playbooks/.payload`, which installs a unit file.
+`mmx explain` lists only the path, and MMX skips dotfiles in
+`one_time_playbooks/`, so without the content a person would approve a file
+nobody saw. When MMHotline judges a playbook, it reads each file the node
+tasks copy or render from the commit it judged, with `git ls-tree` and
+`git cat-file` under the copy's lock: `source` and `template` of any
+module, `signing_key_source`, `package_file_source`, the key files and key
+directories of `authorized_keys`, and every file below a `directory.source`.
+A relative path starts at the role's directory inside a role and at the
+project root otherwise, as MMX reads it.
+
+MMHotline keeps the files' text after the playbook's text, under the line
+“Files the playbook's tasks copy or render, from the systems repository at
+the same commit:”. Each file has a line with its path, the task and
+argument that read it, its size, and its SHA-256, then its text. The review
+prompt quotes the same text in its own section. MMHotline shows the text
+only of a UTF-8 file without a NUL byte, at most 16 KiB for one file and
+64 KiB for all files together. Other files show their line only: a binary
+or long file is never cut, because a person would approve a part nobody
+showed. A path MMX knows only during the run, an absolute path on
+MMHotline's own server, a symlink, and a missing file each get a line that
+says so. At most 50 files are named, then counted. To keep the files in
+the 256 KiB kept text, MMHotline cuts a long playbook's text first.
 
 “Why the triage agent asks” shows the diagnosis's first prose paragraph
 large, with the whole diagnosis folded below it and the line “The agent's

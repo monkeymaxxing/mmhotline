@@ -45,7 +45,7 @@ The first line of your answer must be exactly APPROVE or REFUSE, with nothing el
 // the playbook's node tasks as mmx explain listed them, and the review
 // agent's earlier refusals in this problem's row. ok is false when the
 // prompt would be too long.
-func reviewAgentPrompt(request TriageAgentPlaybookRunRequest, commitID, playbookText, diagnosis string, earlierRefusals []refusedVersion, recognition actionkinds.Recognition) (prompt string, ok bool) {
+func reviewAgentPrompt(request TriageAgentPlaybookRunRequest, commitID, playbookText, projectFilesText, diagnosis string, earlierRefusals []refusedVersion, recognition actionkinds.Recognition) (prompt string, ok bool) {
 	var text strings.Builder
 	fmt.Fprintf(&text, `You are the review agent for the team's triage agent in MMHotline, the team's on-call service. The triage agent is another coding agent run, separate from yours. The triage agent investigates the team's alerts and asks MMHotline to run MMX playbooks on the team's servers to fix problems. MMHotline asks you first. When you approve, the team's rules for running the agent's playbooks decide whether the playbook runs at once or waits for a person. When you refuse, MMHotline gives your reason to the triage agent, which may revise the playbook and ask again, and you review each new version. After your third refusal in a row on the same problem, a person decides.
 
@@ -63,6 +63,12 @@ Every statement in this diagnosis is a claim for you to check against the playbo
 The playbook's text at the commit listed above, quoted line by line:
 
 %s`, request.Playbook, request.Inventory, commitID, quotedLines(diagnosis), quotedLines(playbookText))
+	if projectFilesText != "" {
+		fmt.Fprintf(&text, `
+The files the playbook's node tasks copy or render onto the servers, as MMHotline read them from the systems repository at the commit listed above, quoted line by line. A file's text is part of what the playbook installs, so judge it as you judge the playbook:
+
+%s`, quotedLines(projectFilesText))
+	}
 	name, _ := mmxPlaybookName(request.Playbook)
 	fmt.Fprintf(&text, `
 The node tasks, as `+"`mmx explain %s --inventory %s`"+` lists them, with the node tasks of each role and node task block after the line that calls it. Each node task runs on one server, its node. Status ready means MMX knows before the run that the task runs. Status conditional means the task's when condition is decided on the server during the run. Status skipped means MMX already knows that the task does not run. Each argument says whether MMX knew its value before the run: a literal or resolved value is shown as it will be; a runtime or secret value is known only during the run, and a secret is never shown.

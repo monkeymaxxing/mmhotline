@@ -322,14 +322,20 @@ func (r approvalRequest) listedPlaybookSentence() string {
 // approval request or a review: at most maximumApprovalPlaybookTextBytes,
 // then cut with a line that says so.
 func keptPlaybookText(text string) string {
-	if len(text) <= maximumApprovalPlaybookTextBytes {
+	return keptPlaybookTextWithin(text, maximumApprovalPlaybookTextBytes)
+}
+
+// keptPlaybookTextWithin is the playbook's text, at most maximum bytes, then
+// cut with a line that says so.
+func keptPlaybookTextWithin(text string, maximum int) string {
+	if len(text) <= maximum {
 		return text
 	}
-	cut := maximumApprovalPlaybookTextBytes
+	cut := maximum
 	for cut > 0 && !utf8.RuneStart(text[cut]) {
 		cut--
 	}
-	return text[:cut] + fmt.Sprintf("\n[MMHotline keeps the first %d KiB of this playbook; the commit holds all of it.]\n", maximumApprovalPlaybookTextBytes>>10)
+	return text[:cut] + fmt.Sprintf("\n[MMHotline keeps the first %d KiB of this playbook; the commit holds all of it.]\n", maximum>>10)
 }
 
 // askForPlaybookRunApproval asks the team at sos to approve r: an alert from
