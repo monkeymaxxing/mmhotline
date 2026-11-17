@@ -117,6 +117,67 @@ func inSystemsRepository(purpose string) bool {
 	return purpose == "triage_session" || purpose == "software_review" || purpose == "commit_review"
 }
 
+// runEndCause is what ended a triage agent run: triage_agent_runs.end_cause,
+// which every decision about an ended run reads. failure_reason says the
+// same in words for people, with the run's own details. It is "" while the
+// run goes on.
+type runEndCause string
+
+const (
+	// runEndedOnItsOwn: the run finished or failed, hit its time limit, or
+	// obeyed the stop that its triage session's end sent.
+	runEndedOnItsOwn runEndCause = "ended_on_its_own"
+	// runCutByMMHotlineStop and runCutByMMHotlineRestart: MMHotline's own
+	// stop or restart cut the run short, which is not the agent's failure.
+	runCutByMMHotlineStop    runEndCause = "mmhotline_stopped"
+	runCutByMMHotlineRestart runEndCause = "mmhotline_restarted"
+	// runStoppedForTriageSession: MMHotline's stop, sent because a triage
+	// session needed the one run, ended a software review, a commit review,
+	// or a sign-in check. A run that failed before the stop arrived failed.
+	runStoppedForTriageSession runEndCause = "stopped_for_a_triage_session"
+	// runEndCauseUnknownFromBeforeTheUpgrade: a run that ended before the
+	// database had end_cause, whose recorded reason cannot tell.
+	runEndCauseUnknownFromBeforeTheUpgrade runEndCause = "unknown_from_before_the_upgrade"
+)
+
+// cutShortByMMHotline says MMHotline's own stop or restart ended the run: a
+// triage session's run is resumed, and a review or a check starts again.
+func (cause runEndCause) cutShortByMMHotline() bool {
+	return cause == runCutByMMHotlineStop || cause == runCutByMMHotlineRestart
+}
+
+// runEndCauseColumn is triage_agent_runs.end_cause, in the table and in the
+// upgrade step that adds it.
+const runEndCauseColumn = `end_cause TEXT NOT NULL DEFAULT '' CHECK(end_cause IN ('','ended_on_its_own','mmhotline_stopped','mmhotline_restarted','stopped_for_a_triage_session','unknown_from_before_the_upgrade'))`
+
+// addRunEndCause is database format 3: it adds end_cause and gives each run
+// the cause its failure_reason recorded. The texts are those every release
+// before format 3 wrote, so they stay as written here even if the words
+// change. A failed setup test or playbook review whose connection ended
+// gets unknown: MMHotline's stop recorded these with the same words as a
+// lost sandbox. A stopped run with another reason gets unknown too.
+func addRunEndCause(tx *sql.Tx) error {
+	if _, err := tx.Exec(`ALTER TABLE triage_agent_runs ADD COLUMN ` + runEndCauseColumn); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`UPDATE triage_agent_runs SET end_cause=CASE
+ WHEN state='running' THEN ''
+ WHEN state='failed' AND failure_reason='MMHotline stopped during the run.' THEN 'mmhotline_stopped'
+ WHEN state='failed' AND failure_reason='MMHotline restarted during the run.' THEN 'mmhotline_restarted'
+ WHEN state='stopped' AND failure_reason IN (
+  'MMHotline stopped the software review because a triage session needed the agent; it starts again once the session''s run ends.',
+  'MMHotline stopped the commit review because a triage session needed the agent; it starts again once the session''s run ends.',
+  'MMHotline stopped the sign-in check because a triage session needed the agent. The sign-in check runs again once the triage session''s run ends.'
+ ) THEN 'stopped_for_a_triage_session'
+ WHEN state='stopped' AND failure_reason='The triage agent run was stopped.' THEN 'ended_on_its_own'
+ WHEN state='failed' AND purpose IN ('setup_test','review_agent_setup_test','playbook_review') AND failure_reason IN (
+  'The run ended without a result.', 'The run''s step could not be saved.', 'The run''s session could not be saved.'
+ ) THEN 'unknown_from_before_the_upgrade'
+ WHEN state IN ('finished','failed') THEN 'ended_on_its_own'
+ ELSE 'unknown_from_before_the_upgrade' END`)
+	return err
+}
+
 // triageAgentSetupTestTimeLimit ends a setup test that has not answered. The
 // test asks for one sentence, which takes seconds; without this limit a hung
 // test would hold the one run until the sandbox's one-hour ceiling and refuse
@@ -223,7 +284,7 @@ func (a *App) InitializeTriageAgent(ctx context.Context, runSocketPath, reviewRu
 				return err
 			}
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE triage_agent_runs SET state='failed',ended_at=?,failure_reason=? WHERE state='running'`, a.Now().Unix(), triageRunCutByRestart); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE triage_agent_runs SET state='failed',ended_at=?,failure_reason=?,end_cause=? WHERE state='running'`, a.Now().Unix(), triageRunCutByRestart, runCutByMMHotlineRestart); err != nil {
 			return err
 		}
 		return failApprovedPlaybookRunsCutByRestart(ctx, tx, a.Now().UTC())
@@ -601,15 +662,18 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 	if event.Event == "stopped" && event.Reason == "" {
 		event.Reason = "The triage agent run was stopped."
 	}
-	// Closing the connection fails the run; a result that came first stands.
-	cutShort := closedForShutdown && (inSystemsRepository(run.purpose) || signInCheckPurpose(run.purpose)) && event.Event == "failed"
-	if cutShort {
-		event.Reason = triageRunCutByStop
-	} else if stoppedForTriageSession && event.Event != "finished" {
-		// A stop before the agent reported its session ends as failed; either
-		// way the review or the check was cut short and starts again after
-		// the session.
-		event.Event, event.Reason = "stopped", softwareReviewStoppedForTriageSession
+	// The one place a run's end cause is decided; the words follow it.
+	cause := runEndedOnItsOwn
+	switch {
+	case closedForShutdown && event.Event == "failed":
+		// Closing the connection fails the run; a result that came first stands.
+		cause, event.Reason = runCutByMMHotlineStop, triageRunCutByStop
+	case stoppedForTriageSession && (event.Event == "stopped" || event.StoppedBeforeSessionID):
+		// Only the stop's own end: a run that failed before the stop arrived,
+		// such as a check whose sign-in no longer works, failed. A stop
+		// before the agent reported its session ends as failed; either way
+		// the review or the check starts again after the session.
+		cause, event.Event, event.Reason = runStoppedForTriageSession, "stopped", softwareReviewStoppedForTriageSession
 		if signInCheckPurpose(run.purpose) {
 			event.Reason = signInCheckStoppedForTriageSession
 		}
@@ -634,8 +698,8 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 			}
 			own = usageAfter(total, earlier)
 		}
-		_, err := tx.Exec(`UPDATE triage_agent_runs SET state=?,ended_at=?,answer=?,failure_reason=?,cost_in_us_dollars=?,input_tokens=?,cached_input_tokens=?,output_tokens=?,coding_agent_session_total_cost_in_us_dollars=?,coding_agent_session_total_input_tokens=?,coding_agent_session_total_cached_input_tokens=?,coding_agent_session_total_output_tokens=?,coding_agent_session_id=CASE WHEN ?='' THEN coding_agent_session_id ELSE ? END WHERE id=?`,
-			event.Event, now, event.Answer, event.Reason, own.CostInUSDollars, own.InputTokens, own.CachedInputTokens, own.OutputTokens, total.CostInUSDollars, total.InputTokens, total.CachedInputTokens, total.OutputTokens, event.SessionID, event.SessionID, run.id)
+		_, err := tx.Exec(`UPDATE triage_agent_runs SET state=?,ended_at=?,answer=?,failure_reason=?,end_cause=?,cost_in_us_dollars=?,input_tokens=?,cached_input_tokens=?,output_tokens=?,coding_agent_session_total_cost_in_us_dollars=?,coding_agent_session_total_input_tokens=?,coding_agent_session_total_cached_input_tokens=?,coding_agent_session_total_output_tokens=?,coding_agent_session_id=CASE WHEN ?='' THEN coding_agent_session_id ELSE ? END WHERE id=?`,
+			event.Event, now, event.Answer, event.Reason, cause, own.CostInUSDollars, own.InputTokens, own.CachedInputTokens, own.OutputTokens, total.CostInUSDollars, total.InputTokens, total.CachedInputTokens, total.OutputTokens, event.SessionID, event.SessionID, run.id)
 		if err != nil {
 			return err
 		}
@@ -648,7 +712,7 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 		// A commit review that MMHotline cut short leaves its commits to
 		// the next one; any other end leaves MMHotline's warning for each
 		// commit the agent gave no decision on.
-		if run.purpose == "commit_review" && !cutShort && !stoppedForTriageSession {
+		if run.purpose == "commit_review" && cause == runEndedOnItsOwn {
 			reason := "the commit review run ended without a decision on the commit"
 			if event.Event == "failed" {
 				reason = "the commit review run failed: " + strings.TrimSuffix(event.Reason, ".")
@@ -658,13 +722,13 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 			}
 		}
 		if run.purpose == "triage_session" && event.Event == "failed" {
-			if err = triageSessionRunFailed(context.Background(), tx, run.id, event.Reason, cutShort, time.Unix(now, 0).UTC()); err != nil {
+			if err = triageSessionRunFailed(context.Background(), tx, run.id, event.Reason, cause.cutShortByMMHotline(), time.Unix(now, 0).UTC()); err != nil {
 				return err
 			}
 		}
 		// Before a passing setup test replaces the setup, whose row records
 		// whether administrators heard that the sign-in fails.
-		if err = a.recordSignInOutcome(context.Background(), tx, run, event, time.Unix(now, 0).UTC()); err != nil {
+		if err = a.recordSignInOutcome(context.Background(), tx, run, event, cause, time.Unix(now, 0).UTC()); err != nil {
 			return err
 		}
 		run.signInMu.Lock()

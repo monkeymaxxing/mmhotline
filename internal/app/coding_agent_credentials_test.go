@@ -388,6 +388,36 @@ func TestSignInCheckGivesWayToATriageSession(t *testing.T) {
 	}
 }
 
+// A sign-in check that fails on its own while MMHotline's stop for a session
+// is on its way is a sign-in failure: administrators hear it at once, not
+// after the next check.
+func TestASignInCheckThatFailsBeforeTheStopForASessionIsASignInFailure(t *testing.T) {
+	r := newTriageSessionRig(t, true)
+	useCodexAccessToken(t, r.a)
+	if err := r.a.SetSoftwareReviewInterval(context.Background(), r.p, 8760); err != nil {
+		t.Fatal(err)
+	}
+	r.advance(24 * time.Hour)
+	r.rounds(t)
+	check := r.nextSignInCheck(t, triageAgentSetupTestPrompt)
+	controls := json.NewDecoder(check.connection)
+	r.alert(t, "warn", "Disk of app002 is 98% full", "")
+	r.rounds(t)
+	var control triageagent.Control
+	check.connection.SetReadDeadline(time.Now().Add(10 * time.Second))
+	if err := controls.Decode(&control); err != nil || !control.Stop {
+		t.Fatalf("the check was not stopped: %+v %v", control, err)
+	}
+	const reason = "401 Unauthorized: invalid bearer token"
+	r.end(t, check, triageagent.Event{Event: "failed", Reason: reason})
+	if count := countRows(t, r.a, `SELECT count(*) FROM triage_agent_runs WHERE purpose='sign_in_check' AND state='failed' AND failure_reason=?`, reason); count != 1 {
+		t.Fatal("the failed check is not recorded as failed with its reason")
+	}
+	if got := notices(t, r.a, "warn", "The triage agent cannot sign in to Codex"); got != 1 {
+		t.Fatalf("%d warn alerts after the check failed", got)
+	}
+}
+
 // The triage agent page shows each agent's sign-in, a subscription token's
 // expiry, and "Check the sign-in now", which only an administrator presses;
 // the page refreshes while a check runs.

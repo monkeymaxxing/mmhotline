@@ -271,7 +271,7 @@ func RunInsideSandbox(ctx context.Context, in io.Reader, out io.Writer, settings
 	}
 	if stopRequested {
 		if stream.sessionID == "" {
-			return fail(errors.New("the coding agent run was stopped before the coding agent reported a session ID"))
+			return final(Event{Event: "failed", Reason: "the coding agent run was stopped before the coding agent reported a session ID", StoppedBeforeSessionID: true})
 		}
 		return final(Event{Event: "stopped", SessionID: stream.sessionID})
 	}

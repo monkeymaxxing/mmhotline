@@ -282,11 +282,11 @@ func readSignInStatus(ctx context.Context, tx *sql.Tx, role agentRole, setUpAt t
 	for _, purpose := range role.runPurposes {
 		arguments = append(arguments, purpose)
 	}
-	arguments = append(arguments, role.signInCheckPurpose, triageRunCutByStop, triageRunCutByRestart)
+	arguments = append(arguments, role.signInCheckPurpose, runCutByMMHotlineStop, runCutByMMHotlineRestart)
 	var endedAt int64
 	var reason string
 	err := tx.QueryRowContext(ctx, `SELECT ended_at,failure_reason FROM triage_agent_runs WHERE purpose IN (?`+strings.Repeat(",?", len(role.runPurposes)-1)+`) AND ended_at>0
- AND ((state='finished' AND failure_reason='') OR (purpose=? AND state IN ('finished','failed') AND failure_reason NOT IN (?,?)))
+ AND ((state='finished' AND failure_reason='') OR (purpose=? AND state IN ('finished','failed') AND end_cause NOT IN (?,?)))
  ORDER BY ended_at DESC,rowid DESC LIMIT 1`, arguments...).Scan(&endedAt, &reason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return status, nil
@@ -464,10 +464,10 @@ func (a *App) startSignInCheck(ctx context.Context, role agentRole, startedBy st
 // it does not. It runs in the transaction that records the run's end, before
 // a passing setup test replaces the setup, so a new set-up that fixes a
 // failing sign-in says so.
-func (a *App) recordSignInOutcome(ctx context.Context, tx *sql.Tx, run *triageAgentActiveRun, event triageagent.Event, now time.Time) error {
+func (a *App) recordSignInOutcome(ctx context.Context, tx *sql.Tx, run *triageAgentActiveRun, event triageagent.Event, cause runEndCause, now time.Time) error {
 	role := agentRoleOf(run.purpose)
 	succeeded := event.Event == "finished" && event.Reason == ""
-	failed := run.purpose == role.signInCheckPurpose && !succeeded && event.Event != "stopped" && event.Reason != triageRunCutByStop
+	failed := run.purpose == role.signInCheckPurpose && !succeeded && event.Event != "stopped" && cause == runEndedOnItsOwn
 	if !succeeded && !failed {
 		return nil
 	}

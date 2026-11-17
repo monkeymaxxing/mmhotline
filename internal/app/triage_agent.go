@@ -49,7 +49,8 @@ CREATE TABLE triage_agent_runs (
  coding_agent_session_total_output_tokens INTEGER NOT NULL DEFAULT 0,
  triage_session_id TEXT NOT NULL DEFAULT '',
  inventory_servers_not_listed_because TEXT NOT NULL DEFAULT '',
- vendor_page_hosts_not_listed_because TEXT NOT NULL DEFAULT ''
+ vendor_page_hosts_not_listed_because TEXT NOT NULL DEFAULT '',
+ ` + runEndCauseColumn + `
 );
 CREATE TABLE triage_agent_commits (
  run_id TEXT NOT NULL REFERENCES triage_agent_runs(id), request_id TEXT NOT NULL,

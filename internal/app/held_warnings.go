@@ -295,14 +295,15 @@ func heldWarnRunEnded(ctx context.Context, tx *sql.Tx, sessionID, runID string) 
 		runWhere, requestWhere, arg = `id=?`, `r.id=?`, runID
 	}
 	var state, reason string
-	err := tx.QueryRowContext(ctx, `SELECT state,failure_reason FROM triage_agent_runs WHERE `+runWhere+` ORDER BY started_at DESC,rowid DESC LIMIT 1`, arg).Scan(&state, &reason)
+	var cause runEndCause
+	err := tx.QueryRowContext(ctx, `SELECT state,failure_reason,end_cause FROM triage_agent_runs WHERE `+runWhere+` ORDER BY started_at DESC,rowid DESC LIMIT 1`, arg).Scan(&state, &reason, &cause)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
 	if err != nil || state == "running" {
 		return "", err
 	}
-	if state == "failed" && (reason == triageRunCutByStop || reason == triageRunCutByRestart) {
+	if cause.cutShortByMMHotline() {
 		return "", nil
 	}
 	var answering bool
