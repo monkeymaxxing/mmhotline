@@ -88,6 +88,15 @@ says how MMHotline matches each task to a kind.
    anything that can make a server, a network, or a service unreachable, or
    that MMHotline cannot recognize.
 
+   A routine fix is narrow. Start or restart a service starts only a plain
+   service, such as `nginx` or `shop-worker.service`, never a target such as
+   `poweroff.target`, a `systemd-*` unit, or the operating system's own
+   power, shell, network, firewall, or update services. Free disk space keeps
+   at least one day and 100 MiB of the journal, and removes only images with
+   no name left. Anything else is an unrecognized task, which a person can
+   approve. To make a person decide every change to another service, list
+   the service in step 2.
+
    **`every_fix_without_permission` GIVES ROOT ON EVERY SERVER OF THE
    INVENTORY TO ANYONE WHO CAN PUT TEXT IN FRONT OF THE AGENT.**
 

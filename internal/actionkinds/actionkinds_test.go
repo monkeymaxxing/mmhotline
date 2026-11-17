@@ -47,8 +47,8 @@ var sampleOneOffs = []struct {
  {"field":"delete_old_files.name_patterns","value":["*.gz"],"status":"literal"},
  {"field":"delete_old_files.older_than","value":"7d","status":"literal"}]}`}, FreeDiskSpace},
 	{"remove unused images and downloaded packages", []string{
-		`{"path":"free_disk_space/task_1","action":"podman_unused_images","module_kind":"core","status":"ready","arguments":[{"field":"podman_unused_images.remove","value":"dangling","status":"literal"}]}`,
-		`{"path":"free_disk_space/task_2","action":"docker_unused_images","module_kind":"core","status":"ready"}`,
+		`{"path":"free_disk_space/task_1","action":"podman_unused_images","module_kind":"core","status":"ready","arguments":[{"field":"podman_unused_images.remove","value":"dangling_images_only","status":"literal"}]}`,
+		`{"path":"free_disk_space/task_2","action":"docker_unused_images","module_kind":"core","status":"ready","arguments":[{"field":"docker_unused_images.remove","value":"dangling_images_only","status":"literal"}]}`,
 		`{"path":"free_disk_space/task_3","action":"apt_downloaded_package_files","module_kind":"core","status":"ready","arguments":[{"field":"apt_downloaded_package_files.state","value":"absent","status":"literal"}]}`,
 	}, FreeDiskSpace},
 	{"pull the shop image again", []string{`{"path":"pull_shop_image/task_1","node":"app002","action":"podman_image","module_kind":"core","status":"ready","arguments":[
@@ -100,6 +100,9 @@ var sampleOneOffs = []struct {
  {"field":"delete_old_files.include_subdirectories","value":false,"status":"literal"},
  {"field":"delete_old_files.name_patterns","value":["*.gz","*.xz","*.zst","*.bz2","*.[0-9]","*.[0-9].gz","*.old"],"status":"literal"},
  {"field":"delete_old_files.older_than","value":"36h","status":"literal"}]}`}, FreeDiskSpace},
+	{"vacuum the journal to 1 day and 100MiB, the floors", []string{`{"path":"free_disk_space/task_1","node":"app002","action":"systemd_journal_vacuum","module_kind":"core","status":"ready","arguments":[
+ {"field":"systemd_journal_vacuum.keep_at_most_size","value":"100MiB","status":"literal"},
+ {"field":"systemd_journal_vacuum.keep_newer_than","value":"24h","status":"literal"}]}`}, FreeDiskSpace},
 }
 
 func TestSampleOneOffsAreRecognized(t *testing.T) {
@@ -125,7 +128,21 @@ func TestNearMissesAreUnrecognizedTasks(t *testing.T) {
 		cloudflareTokenOnly = "http.headers must be known before the run and must not set Host: a Host header asks Cloudflare's servers for another site, which would receive the team's token"
 		registryLoginKnown  = "podman_image.image, registry_username, and registry_password must be known before the run, so not a secret: Podman sends the login to the registry that image names, which the playbook chooses"
 		waitForHostKnown    = "wait_for.url_responds and tcp_host must be known before the run, so not a secret: the server connects to the host they name, which the playbook chooses"
+		plainServiceOnly    = "systemd_service.name must be a plain service of the team's, known before the run: a name ending in .service or with no unit type, with only letters, digits, and _ . -, and not a template instance (@), a systemd-* or dbus-org.* unit, or an operating system unit whose start shuts down, reboots, opens a shell, changes the network or firewall, or installs updates, such as poweroff, reboot, emergency, networking, or apt-daily-upgrade"
+		runOnceMarkerOnly   = "systemd_service.run_only_once_marker_file must be known before the run and name a file directly in /var/lib/mmx/commands_run_once/, whose name has only letters, digits, and _ . -: MMX writes the marker file as root, so a marker elsewhere, such as /etc/nologin, could lock people out"
+		journalADay         = "systemd_journal_vacuum.keep_newer_than must be at least 1d, known before the run: the journal is the evidence of an incident"
+		journal100MiB       = "systemd_journal_vacuum.keep_at_most_size must be at least 100MiB, known before the run: a smaller journal holds only hours of a busy server's logs, the evidence of an incident"
+		dnsBodyKnown        = "http.json_body and body must be known before the run, so not a secret: a DNS record's content is public"
 	)
+	danglingOnly := func(module string) string {
+		return module + ".remove must be dangling_images_only: every_image_no_container_uses also removes named images, such as a previous version kept for a rollback or an image built on the server, which can be the only copy"
+	}
+	vacuum := func(arguments string) string {
+		return `{"path":"fix/task_1","action":"systemd_journal_vacuum","module_kind":"core","status":"ready","arguments":[` + arguments + `]}`
+	}
+	unusedImages := func(module, remove string) string {
+		return `{"path":"fix/task_1","action":"` + module + `","module_kind":"core","status":"ready","arguments":[{"field":"` + module + `.remove","value":"` + remove + `","status":"literal"}]}`
+	}
 	serviceArguments := func(argument string) string {
 		return "systemd_service." + argument + " is not an allowed argument for Start or restart a service (name, state, restart_now, run_only_once_marker_file, in_systemd_of_user_account)"
 	}
@@ -165,6 +182,16 @@ func TestNearMissesAreUnrecognizedTasks(t *testing.T) {
 		{"systemd_service that masks", service(`{"field":"systemd_service.masked","value":false,"status":"literal"},{"field":"systemd_service.state","value":"running","status":"literal"}`), serviceArguments("masked")},
 		{"systemd_service that changes start at boot", service(`{"field":"systemd_service.start_at_boot","value":true,"status":"literal"},{"field":"systemd_service.state","value":"running","status":"literal"}`), serviceArguments("start_at_boot")},
 		{"read_file, whose content as root could be a secret", readFile, "no kind covers the module read_file"},
+		{"systemd_service that starts poweroff.target", strings.Replace(service(`{"field":"systemd_service.state","value":"running","status":"literal"}`), `"caddy"`, `"poweroff.target"`, 1), plainServiceOnly},
+		{"systemd_service that restarts with a marker file at /etc/nologin", service(`{"field":"systemd_service.restart_now","value":true,"status":"literal"},{"field":"systemd_service.run_only_once_marker_file","value":"/etc/nologin","status":"resolved"},{"field":"systemd_service.state","value":"running","status":"literal"}`), runOnceMarkerOnly},
+		{"systemd_journal_vacuum that keeps under a day", vacuum(`{"field":"systemd_journal_vacuum.keep_newer_than","value":"1s","status":"literal"}`), journalADay},
+		{"systemd_journal_vacuum whose age is known only during the run", vacuum(`{"field":"systemd_journal_vacuum.keep_newer_than","value":null,"reference":"{{ .vars.age }}","status":"runtime"}`), journalADay},
+		{"systemd_journal_vacuum that keeps under 100MiB", vacuum(`{"field":"systemd_journal_vacuum.keep_at_most_size","value":"99MiB","status":"literal"}`), journal100MiB},
+		{"systemd_journal_vacuum that keeps 1GiB but under a day", vacuum(`{"field":"systemd_journal_vacuum.keep_at_most_size","value":"1GiB","status":"literal"},{"field":"systemd_journal_vacuum.keep_newer_than","value":"12h","status":"literal"}`), journalADay},
+		{"podman_unused_images that removes every unused image", unusedImages("podman_unused_images", "every_image_no_container_uses"), danglingOnly("podman_unused_images")},
+		{"docker_unused_images that removes every unused image", unusedImages("docker_unused_images", "every_image_no_container_uses"), danglingOnly("docker_unused_images")},
+		{"http whose json_body holds a secret, which a DNS record would publish", dnsRecordsRequest(cloudflareToken + `,{"field":"http.json_body","value":null,"reference":{"type":"TXT","content":"{{ .secrets.app_key }}"},"status":"secret"}`), dnsBodyKnown},
+		{"http whose body is known only during the run", dnsRecordsRequest(cloudflareToken + `,{"field":"http.body","value":null,"reference":"{{ .vars.record }}","status":"runtime"}`), dnsBodyKnown},
 		{"systemd_service that stops", service(`{"field":"systemd_service.state","value":"stopped","status":"literal"}`), "systemd_service.state must be running"},
 		{"systemd_service that restarts without a marker file", service(`{"field":"systemd_service.restart_now","value":true,"status":"literal"},{"field":"systemd_service.state","value":"running","status":"literal"}`), "systemd_service.restart_now: true requires run_only_once_marker_file"},
 		{"systemd_service without a state", service(`{"field":"systemd_service.in_systemd_of_user_account","value":"shop","status":"resolved"}`), "systemd_service.state must be running"},
@@ -302,7 +329,7 @@ func TestRealMMXRoutineFixesAreRecognized(t *testing.T) {
           name: caddy
           state: running
           restart_now: true
-          run_only_once_marker_file: /var/lib/mmx_markers/2026-11-03_restart_caddy
+          run_only_once_marker_file: /var/lib/mmx/commands_run_once/2026-11-03_restart_caddy
 `),
 		"one_time_playbooks/2026-11-03_free_disk_space_on_app002.yml": playbook(`      - systemd_journal_vacuum:
           keep_at_most_size: 500MiB

@@ -172,10 +172,18 @@ var taskSettings = []string{"when", "loop"}
 var patterns = []pattern{
 	// MMX's systemd_service has no restarted state: restart_now restarts a
 	// running service once, and the marker file keeps a rerun from
-	// restarting it again.
+	// restarting it again. Starting a unit can do anything the unit does,
+	// and poweroff.target powers the server off, so only a plain service
+	// counts (startableService). MMX writes the marker file as root, so it
+	// stays in MMX's own run-once directory (runOnceMarkerFile).
 	{module: "systemd_service", kind: StartOrRestartAService, moduleKind: "core",
 		arguments: []string{"name", "state", "restart_now", "run_only_once_marker_file", "in_systemd_of_user_account"},
 		conditions: []condition{
+			{"systemd_service.name must be a plain service of the team's, known before the run: a name ending in .service or with no unit type, with only letters, digits, and _ . -, and not a template instance (@), a systemd-* or dbus-org.* unit, or an operating system unit whose start shuts down, reboots, opens a shell, changes the network or firewall, or installs updates, such as poweroff, reboot, emergency, networking, or apt-daily-upgrade", func(task explainedTask) bool {
+				name, ok := task.read("name")
+				text, isText := name.(string)
+				return ok && isText && startableService(text)
+			}},
 			{"systemd_service.state must be running", func(task explainedTask) bool {
 				state, ok := task.read("state")
 				return ok && state == "running"
@@ -189,22 +197,56 @@ var patterns = []pattern{
 				_, marker := task.read("run_only_once_marker_file")
 				return restart != true || marker
 			}},
+			{"systemd_service.run_only_once_marker_file must be known before the run and name a file directly in " + runOnceDirectory + "/, whose name has only letters, digits, and _ . -: MMX writes the marker file as root, so a marker elsewhere, such as /etc/nologin, could lock people out", func(task explainedTask) bool {
+				if !task.writes("run_only_once_marker_file") {
+					return true
+				}
+				marker, ok := task.read("run_only_once_marker_file")
+				text, isText := marker.(string)
+				return ok && isText && runOnceMarkerFile(text)
+			}},
 		},
 		examples: []string{`- systemd_service:
     name: caddy
     state: running
     restart_now: true
     run_only_once_marker_file: /var/lib/mmx/commands_run_once/2026-11-03_restart_caddy`}},
+	// The journal is an incident's evidence, which the triage agent and
+	// people read, and a rollback image or an image built on the server can
+	// be the only copy, so each free disk space task keeps a floor
+	// (minimumJournalMebibytes, removesDanglingImagesOnly). This is not a hard limit: any
+	// other vacuum or removal is an unrecognized task, which a person can
+	// approve.
 	{module: "systemd_journal_vacuum", kind: FreeDiskSpace, moduleKind: "core",
 		arguments: []string{"keep_at_most_size", "keep_newer_than"},
+		conditions: []condition{
+			{"systemd_journal_vacuum.keep_newer_than must be at least 1d, known before the run: the journal is the evidence of an incident", func(task explainedTask) bool {
+				if !task.writes("keep_newer_than") {
+					return true
+				}
+				keep, ok := task.read("keep_newer_than")
+				text, isText := keep.(string)
+				return ok && isText && atLeastOneDay(text)
+			}},
+			{"systemd_journal_vacuum.keep_at_most_size must be at least " + strconv.Itoa(minimumJournalMebibytes) + "MiB, known before the run: a smaller journal holds only hours of a busy server's logs, the evidence of an incident", func(task explainedTask) bool {
+				if !task.writes("keep_at_most_size") {
+					return true
+				}
+				keep, ok := task.read("keep_at_most_size")
+				text, isText := keep.(string)
+				return ok && isText && atLeastMebibytes(text, minimumJournalMebibytes)
+			}},
+		},
 		examples: []string{`- systemd_journal_vacuum:
     keep_at_most_size: 500MiB`}},
 	{module: "podman_unused_images", kind: FreeDiskSpace, moduleKind: "core",
-		arguments: []string{"remove", "in_image_store_of_user_account"},
+		arguments:  []string{"remove", "in_image_store_of_user_account"},
+		conditions: []condition{{"podman_unused_images.remove must be dangling_images_only: every_image_no_container_uses also removes named images, such as a previous version kept for a rollback or an image built on the server, which can be the only copy", removesDanglingImagesOnly}},
 		examples: []string{`- podman_unused_images:
     remove: dangling_images_only`}},
 	{module: "docker_unused_images", kind: FreeDiskSpace, moduleKind: "core",
-		arguments: []string{"remove", "in_image_store_of_user_account"},
+		arguments:  []string{"remove", "in_image_store_of_user_account"},
+		conditions: []condition{{"docker_unused_images.remove must be dangling_images_only: every_image_no_container_uses also removes named images, such as a previous version kept for a rollback or an image built on the server, which can be the only copy", removesDanglingImagesOnly}},
 		examples: []string{`- docker_unused_images:
     remove: dangling_images_only`}},
 	{module: "apt_downloaded_package_files", kind: FreeDiskSpace, moduleKind: "core",
@@ -313,6 +355,9 @@ var patterns = []pattern{
 				return ok && isText && cloudflareDNSRecordsURL(text)
 			}},
 			{"http.headers must be known before the run and must not set Host: a Host header asks Cloudflare's servers for another site, which would receive the team's token", setsNoHostHeader},
+			{"http.json_body and body must be known before the run, so not a secret: a DNS record's content is public", func(task explainedTask) bool {
+				return task.knownBeforeRun("json_body", "body")
+			}},
 		},
 		examples: []string{`- http:
     url: https://api.cloudflare.com/client/v4/zones/023e105f4ecef8ad9ca31a8372d0c353/dns_records/372e67954025e0ba6aaa6d586b9e0b59
@@ -605,6 +650,30 @@ func atLeastOneDay(text string) bool {
 		}
 	}
 	return duration >= 24*time.Hour
+}
+
+// minimumJournalMebibytes is the smallest journal a vacuum keeps without a
+// person: 100 MiB holds about a day of a busy server's logs, and less leaves
+// too little of an incident's evidence.
+const minimumJournalMebibytes = 100
+
+// atLeastMebibytes reads keep_at_most_size as MMX does, a whole number of
+// MiB, GiB, or TiB, such as 500MiB, and accepts minimum MiB or more.
+func atLeastMebibytes(text string, minimum int64) bool {
+	for unit, mebibytes := range map[string]int64{"MiB": 1, "GiB": 1 << 10, "TiB": 1 << 20} {
+		if number, isUnit := strings.CutSuffix(text, unit); isUnit {
+			count, err := strconv.ParseInt(number, 10, 64)
+			return err == nil && number != "" && number[0] != '+' && number[0] != '-' && count <= math.MaxInt64/mebibytes && count*mebibytes >= minimum
+		}
+	}
+	return false
+}
+
+// removesDanglingImagesOnly accepts a removal of the images that have no name
+// left, such as the one a pull of a moved tag replaced.
+func removesDanglingImagesOnly(task explainedTask) bool {
+	remove, ok := task.read("remove")
+	return ok && remove == "dangling_images_only"
 }
 
 // isVarLog accepts exactly /var/log. MMX's delete_old_files refuses a

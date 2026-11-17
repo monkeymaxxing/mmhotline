@@ -143,7 +143,10 @@ has the inventory address `203.0.113.11` and the private address
    server.** `restrict` stops tunnels. This firewall rule goes further: a
    command the agent runs on a server cannot send data out or open a
    connection to any other machine. It does not stop the agent from
-   reading anything the `triage` user can read.
+   reading anything the `triage` user can read. It does not cover the
+   playbooks MMHotline runs for the agent either: those run as root, and a
+   check such as `wait_for` connects to the address the playbook names
+   ([why](../changing-mmhotline/design/triage-agent.md#the-kinds-of-action)).
 
    **DON'T ADD THIS RULE ON THE SERVER WHERE THE TRIAGE AGENT RUNS. IT
    NEEDS TO REACH ITS AI PROVIDER.**
