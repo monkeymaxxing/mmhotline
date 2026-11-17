@@ -1,0 +1,120 @@
+package app
+
+import "strconv"
+
+// statusPageNoticeUpdates lists a notice's updates, oldest first.
+templ statusPageNoticeUpdates(frame pageFrame, updates []statusPageUpdateView) {
+	<ol class="settings-updates">
+		for _, update := range updates {
+			<li>
+				<p class="faint small">{ frame.Clock(update.Posted) }</p>
+				<p class="result">{ update.Message }</p>
+			</li>
+		}
+	</ol>
+}
+
+// statusPagePageBody is the Status page's body: the public status page's
+// address, the open notices with forms to update and resolve them, a form to
+// post a new notice, and the recently resolved notices.
+templ statusPagePageBody(frame pageFrame, data statusPagePageData) {
+	<div class="settings-page stack">
+		if data.Error != "" {
+			<p class="form-error" role="alert">{ data.Error }</p>
+		}
+		if !data.View.IsSetUp {
+			<section class="panel">
+				<div class="panel-head">
+					<h2>Status page not set up</h2>
+				</div>
+				<div class="panel-body">
+					<p>An administrator creates the status page in the team's Cloudflare account from a laptop, with <code>mmhotline status-page set-up</code>, then adds the <code>status_page</code> section to the settings file and applies the settings.</p>
+				</div>
+			</section>
+		} else {
+			<section class="panel">
+				<div class="panel-head">
+					<h2>Public status page</h2>
+					<span class="tag ok">Set up</span>
+				</div>
+				<div class="panel-body">
+					<p><a href={ data.View.PageURL }>{ data.View.PageURL }</a></p>
+					<p class="small muted">Customers see only the notices your team posts. The public page shows times in UTC and changes only when someone posts.</p>
+					if data.View.ReadError != "" {
+						<p class="form-error" role="alert">{ data.View.ReadError }</p>
+					}
+				</div>
+			</section>
+			if data.Ready {
+				for _, notice := range data.Open {
+					<section class="panel">
+						<div class="panel-head">
+							<h2>Open notice { strconv.FormatInt(notice.NoticeID, 10) }</h2>
+							<span class="tag warn">Open</span>
+						</div>
+						<div class="panel-body">
+							<p class="faint small">Opened { frame.Clock(notice.Opened) }</p>
+							@statusPageNoticeUpdates(frame, notice.Updates)
+							<form class="stack" method="post" action={ "/status-page/notices/" + strconv.FormatInt(notice.NoticeID, 10) + "/updates" }>
+								<input type="hidden" name="csrf" value={ data.CSRF }/><label class="field">Add an update<textarea name="message" required maxlength="5000"></textarea></label>
+								<div>
+									<button class="btn primary">Post the update</button>
+								</div>
+							</form>
+							<details class="fold">
+								<summary>Resolve this notice</summary>
+								<form class="stack" method="post" action={ "/status-page/notices/" + strconv.FormatInt(notice.NoticeID, 10) + "/resolve" }>
+									<input type="hidden" name="csrf" value={ data.CSRF }/><label class="field">Closing message (optional)<span class="faint small">The closing message is added as the last update.</span><textarea name="closing_message" maxlength="5000"></textarea></label>
+									<div>
+										<button class="btn">Resolve this notice</button>
+									</div>
+								</form>
+							</details>
+						</div>
+					</section>
+				}
+				if len(data.Open) == 0 {
+					<section class="panel quiet">
+						<div class="panel-body">
+							<p>No open notices: the public page says that everything is working.</p>
+						</div>
+					</section>
+				}
+				<section class="panel">
+					<div class="panel-head">
+						<h2>Post a new notice</h2>
+					</div>
+					<div class="panel-body">
+						<form class="stack" method="post" action="/status-page/notices">
+							<input type="hidden" name="csrf" value={ data.CSRF }/><label class="field">Message<textarea name="message" required maxlength="5000">{ StatusPageGenericMessage }</textarea></label>
+							<div>
+								<button class="btn primary">Post to the status page</button>
+							</div>
+						</form>
+					</div>
+				</section>
+				if len(data.Resolved) > 0 {
+					<details class="more">
+						<summary>Recently resolved ({ strconv.Itoa(len(data.Resolved)) })</summary>
+						<div class="body stack">
+							for _, notice := range data.Resolved {
+								<section class="stack">
+									<h3>Notice { strconv.FormatInt(notice.NoticeID, 10) }, resolved { frame.Clock(*notice.Resolved) }</h3>
+									@statusPageNoticeUpdates(frame, notice.Updates)
+								</section>
+							}
+						</div>
+					</details>
+				}
+			}
+		}
+		<details class="more">
+			<summary>Where status page settings are set</summary>
+			<div class="body">
+				@settingsFileNoticeLine(data.settingsFileNoticeView) {
+					<code>status_page</code>
+				}
+			</div>
+		</details>
+	</div>
+}

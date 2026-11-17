@@ -1,0 +1,560 @@
+package app
+
+import "strconv"
+
+// deliveryOutcomeText is a delivery's outcome in words, with the time of the next
+// try when one is planned.
+templ deliveryOutcomeText(frame pageFrame, delivery deliveryPageView) {
+	if !delivery.RetryAt.IsZero() {
+		{ delivery.Outcome }, tries again at { frame.Clock(delivery.RetryAt) }
+	} else {
+		{ delivery.Outcome }
+	}
+}
+
+// deliveryLink links to a delivery by its outcome, with the delivery's reason
+// after a colon when the delivery has one.
+templ deliveryLink(frame pageFrame, delivery deliveryPageView) {
+	if reason := delivery.ReasonText(); reason != "" {
+		<a href={ "/deliveries/" + delivery.ID }>
+			@deliveryOutcomeText(frame, delivery)
+		</a>: { reason }
+	} else {
+		<a href={ "/deliveries/" + delivery.ID }>
+			@deliveryOutcomeText(frame, delivery)
+		</a>
+	}
+}
+
+// contactMethodSubscriptionFields are the severities a contact method gets,
+// and whether it sends while the person is unavailable or the team is muted.
+templ contactMethodSubscriptionFields(method contactMethodView) {
+	<div>
+		<p class="small muted">Alerts to send through the contact method</p>
+		<div class="row contact-choices">
+			if !method.Facts.SOSOnly {
+				<label class="field"><span><input type="checkbox" name="severity" value="info" if method.Info { checked }/> Info</span></label><label class="field"><span><input type="checkbox" name="severity" value="warn" if method.Warn { checked }/> Warning</span></label><label class="field"><span><input type="checkbox" name="severity" value="sos" if method.SOS { checked }/> SOS</span></label>
+			} else {
+				<label class="field"><span><input type="checkbox" name="severity" value="sos" if method.SOS { checked }/> SOS</span></label>
+			}
+		</div>
+	</div>
+	if method.Facts.WakesPeople {
+		@contactMethodSendWhileUnavailableOption(method)
+		<p class="faint small">Team mute always stops this contact method.</p>
+	} else {
+		@contactMethodSendWhileUnavailableOption(method)
+	}
+}
+
+// contactMethodSendWhileUnavailableOption is the choice to send even when the person is
+// unavailable or the team is muted.
+templ contactMethodSendWhileUnavailableOption(method contactMethodView) {
+	<label class="field">
+		<span>
+			<input type="checkbox" name="send_while_unavailable_or_muted" value="true" if method.SendWhileUnavailableOrMuted { checked }/>
+			if method.Shared {
+				Send even when the team is muted
+			} else if method.Facts.WakesPeople {
+				Send even when I'm unavailable
+			} else {
+				Send even when I'm unavailable or the team is muted
+			}
+		</span>
+	</label>
+}
+
+// contactMethodSharedField marks a shared contact method in the save form.
+templ contactMethodSharedField(shared bool) {
+	if shared {
+		<input type="hidden" name="shared_with_team" value="true"/>
+	}
+}
+
+// contactMethodSharedOption is the administrator's choice to share a new
+// contact method with the team, with a note about team mute when withNote is set.
+templ contactMethodSharedOption(admin, shared, withNote bool) {
+	if admin && withNote {
+		<label class="field"><span><input type="checkbox" name="shared_with_team" value="true" if shared { checked }/> Shared with the team</span></label>
+		<p class="faint small">For a shared contact method, only team mute affects delivery.</p>
+	} else if admin {
+		<label class="field"><span><input type="checkbox" name="shared_with_team" value="true" if shared { checked }/> Shared with the team</span></label>
+	}
+}
+
+// contactMethodValueField is the form field for the contact method's own value.
+templ contactMethodValueField(method contactMethodView) {
+	if !method.Facts.ConnectsThroughSendingService && !method.Facts.ValueFixed {
+		<label class="field">{ method.Facts.ValueLabel }<input type={ method.Facts.ValueInputType } name={ method.Facts.ValueField } value={ method.Value } required/></label>
+	}
+}
+
+// contactMethodPushoverDeviceField is the device name field of a saved Pushover notification.
+templ contactMethodPushoverDeviceField(method contactMethodView) {
+	if method.ContactMethodType == "pushover_notification" {
+		<label class="field">Pushover device name (optional)<input name="pushover_device_name" value={ method.Setting("pushover_device_name") } maxlength="25" pattern="[A-Za-z0-9_\-]{1,25}"/></label>
+	}
+}
+
+// contactMethodEmergencyTest is the line about the Pushover emergency test.
+templ contactMethodEmergencyTest(frame pageFrame, method contactMethodView) {
+	if method.ContactMethodType == "pushover_notification" && !method.Shared {
+		if method.EmergencyTestAcknowledgedAt.IsZero() {
+			<p class="small contact-problem">{ emergencyTestNotAcknowledgedBefore }<code>{ method.EmergencyTestCommand() }</code>{ emergencyTestNotAcknowledgedAfter }</p>
+		} else {
+			<p class="small muted">Emergency test: acknowledged at { frame.Clock(method.EmergencyTestAcknowledgedAt) }.</p>
+		}
+	}
+}
+
+// contactMethodSigningSecrets is a webhook's signing secrets and bearer token.
+templ contactMethodSigningSecrets(method contactMethodView) {
+	<details class="fold">
+		<summary>Webhook signing secrets and bearer token</summary>
+		<div class="stack">
+			<p class="small muted">The oldest signing secret signs every request. To rotate signing secrets, add a second signing secret, let your receiver accept the old and new signing secrets, then revoke the old signing secret.</p>
+			for index, id := range method.SigningSecretIDs {
+				<form class="stack" method="post" action="/contact-methods/outgoing-webhook-signing-secrets/revoke">
+					<input type="hidden" name="csrf" value={ method.CSRF }/><input type="hidden" name="id" value={ method.ID }/><input type="hidden" name="signing_secret_id" value={ id }/>
+					if index == 0 {
+						<p><code>{ id }</code> (signs requests)</p>
+					} else {
+						<p><code>{ id }</code></p>
+					}
+					if len(method.SigningSecretIDs) > 1 {
+						<button class="btn">Revoke this webhook signing secret</button>
+					}
+				</form>
+			}
+			if len(method.SigningSecretIDs) < 2 {
+				<form method="post" action="/contact-methods/outgoing-webhook-signing-secrets">
+					<input type="hidden" name="csrf" value={ method.CSRF }/><input type="hidden" name="id" value={ method.ID }/><button class="btn">Add a second webhook signing secret (for rotation)</button>
+				</form>
+			}
+			<form class="stack" method="post" action="/contact-methods/outgoing-webhook-bearer-token">
+				<input type="hidden" name="csrf" value={ method.CSRF }/><input type="hidden" name="id" value={ method.ID }/><label class="field">Webhook bearer token (optional)<input name="outgoing_webhook_bearer_token" autocomplete="off" placeholder="Leave empty to remove the token"/></label><button class="btn">Save webhook bearer token</button>
+			</form>
+		</div>
+	</details>
+}
+
+// contactMethodPanel is one saved contact method, with its forms when the
+// viewer may edit it.
+templ contactMethodPanel(frame pageFrame, method contactMethodView) {
+	<section class="panel">
+		<div class="panel-head">
+			<h3>{ method.Facts.CardTitle }</h3>
+			<span class="small faint">
+				if method.Shared {
+					Shared with the team
+				} else if method.CanEdit {
+					Yours
+				} else {
+					Owned by { method.OwnerName }
+				}
+			</span>
+		</div>
+		<div class="panel-body contact-panel">
+			<p class="contact-destination">{ method.SentToText() }</p>
+			<p class={ lastTestClass(method) }>
+				Last test:
+				if method.LastTestView != nil {
+					@deliveryLink(frame, *method.LastTestView)
+				} else {
+					Not tested yet
+				}
+			</p>
+			@contactMethodEmergencyTest(frame, method)
+			if method.CanEdit {
+				<form class="stack" method="post" action="/contact-methods/save">
+					<input type="hidden" name="csrf" value={ method.CSRF }/><input type="hidden" name="id" value={ method.ID }/><input type="hidden" name="contact_method_type" value={ method.ContactMethodType }/><input type="hidden" name="revision" value={ strconv.FormatInt(method.Revision, 10) }/>
+					@contactMethodSharedField(method.Shared)
+					@contactMethodValueField(method)
+					@contactMethodPushoverDeviceField(method)
+					@contactMethodSubscriptionFields(method)
+					<button class="btn primary">Save { method.CardTitleInSentence }</button>
+				</form>
+				<div class="row">
+					<form method="post" action="/contact-methods/test">
+						<input type="hidden" name="csrf" value={ method.CSRF }/><input type="hidden" name="id" value={ method.ID }/><button class="btn">Send test</button>
+					</form>
+					<form method="post" action="/contact-methods/remove">
+						<input type="hidden" name="csrf" value={ method.CSRF }/><input type="hidden" name="id" value={ method.ID }/><input type="hidden" name="revision" value={ strconv.FormatInt(method.Revision, 10) }/><button class="btn quiet">Remove</button>
+					</form>
+				</div>
+				if len(method.SigningSecretIDs) > 0 {
+					@contactMethodSigningSecrets(method)
+				}
+			} else if method.Shared {
+				<p class="faint small">Only administrators can edit shared contact methods.</p>
+			} else {
+				<p class="faint small">Only { method.OwnerName } can edit this personal contact method.</p>
+			}
+		</div>
+	</section>
+}
+
+// contactMethodNotifications lists deliveries, newest first.
+templ contactMethodNotifications(frame pageFrame, deliveries []deliveryPageView) {
+	<ul class="contact-notifications">
+		for _, delivery := range deliveries {
+			<li>
+				<div class="row spread">
+					<strong class="small">{ delivery.PurposeLabel() }</strong><time class="faint small">{ frame.Clock(delivery.CreatedAt) }</time>
+				</div>
+				<p class="small contact-destination">{ delivery.Recipient }</p>
+				<p class="small">
+					@deliveryLink(frame, delivery)
+				</p>
+			</li>
+		}
+		if len(deliveries) == 0 {
+			<li class="muted small">No delivery records yet.</li>
+		}
+	</ul>
+}
+
+// contactMethodsPageBody is the Contact methods page's body.
+templ contactMethodsPageBody(frame pageFrame, data contactMethodPageData) {
+	<div class="stack contacts-page">
+		if data.Error != "" {
+			<p class="contact-note contact-problem" role="alert">{ data.Error }</p>
+		}
+		if data.Notice != "" {
+			<p class="contact-note" role="status">{ data.Notice }</p>
+		}
+		if shown := data.ShownSecret; shown != nil {
+			<section class="panel">
+				<div class="panel-head">
+					<h2>Save your webhook signing secret now</h2>
+				</div>
+				<div class="panel-body">
+					<p>The webhook signing secret is shown only once.</p>
+					<p>Signing secret ID: <code>{ shown.SigningSecretID }</code></p>
+					<p>Webhook signing secret (hex): <code>{ shown.SecretHex }</code></p>
+					<p class="small muted">Each request carries <code>Mmhotline-Signature: timestamp_unix_seconds=…,hmac_sha256_hex=…</code>. Decode the hex secret into 32 bytes and compute HMAC-SHA256 over the timestamp, a dot, and the exact request body.</p>
+				</div>
+			</section>
+		}
+		if data.ContactCard.Available {
+			if data.ContactCard.Changed {
+				<p class="contact-note" role="status">MMHotline now calls from new numbers. <a href="/mmhotline-contact-card.vcf">Download the MMHotline contact card</a> again and allow the MMHotline contact through Do Not Disturb.</p>
+			} else if data.HasAutomatedVoiceCall && data.ContactCard.NeverDownloaded {
+				<section class="panel">
+					<div class="panel-head">
+						<h2>Make sure SOS calls wake you</h2>
+					</div>
+					<div class="panel-body">
+						<ol>
+							<li><a href="/mmhotline-contact-card.vcf">Download the MMHotline contact card</a> and add the MMHotline contact to your contacts.</li>
+							<li>Allow the MMHotline contact through Do Not Disturb. On iPhone, also turn on Emergency Bypass for the MMHotline contact.</li>
+							<li>Turn on Do Not Disturb and press “Send test” on your automated voice call panel.</li>
+						</ol>
+					</div>
+				</section>
+			} else if data.HasPhoneNumber {
+				<p class="small"><a href="/mmhotline-contact-card.vcf">Download the MMHotline contact card</a></p>
+			}
+		}
+		<section class="stack">
+			<h2>Your contact methods</h2>
+			<div class="contact-panels">
+				for _, method := range data.ContactMethods {
+					@contactMethodPanel(frame, method)
+				}
+				if len(data.ContactMethods) == 0 {
+					<section class="panel">
+						<div class="panel-body">
+							<p>No contact methods yet.</p>
+							<p class="muted small">Add a contact method below to receive alerts.</p>
+						</div>
+					</section>
+				}
+			</div>
+		</section>
+		<details class="more" if data.Error != "" || len(data.ContactMethods) == 0 { open }>
+			<summary>Add a contact method</summary>
+			<div class="body stack">
+				<p class="small muted">Saving a new contact method queues a test. Alerts can use the saved contact method immediately.</p>
+				<details class="fold">
+					<summary>Which alerts should I choose?</summary>
+					<div class="small muted">
+						<p>Info is for information only. Warning needs attention but wakes nobody. An SOS is urgent and wakes the person on call until someone claims the incident.</p>
+						<p>Each contact method also receives messages when the selected alerts are resolved.</p>
+					</div>
+				</details>
+				for _, setup := range data.MissingSendingServiceSetups {
+					<p class="small muted">
+						if data.Admin {
+							<a href={ "/sending-services/" + setup.SendingService }>Set up { setup.SendingServiceTitle }</a> before connecting a contact method that uses the sending service.
+						} else {
+							Ask an administrator to set up { setup.SendingServiceTitle } before connecting a contact method that uses the sending service.
+						}
+					</p>
+				}
+				<div class="contact-panels">
+					if form := data.New["email"]; form != nil {
+						<section class="panel">
+							<div class="panel-head">
+								<h3>Add email contact method</h3>
+							</div>
+							<form class="panel-body stack" method="post" action="/contact-methods/save">
+								<input type="hidden" name="csrf" value={ data.CSRF }/><input type="hidden" name="contact_method_type" value="email"/><label class="field">Email address<input type="email" name="email_address" value={ form.Value } required/></label>
+								@contactMethodSharedOption(data.Admin, form.Shared, true)
+								@contactMethodSubscriptionFields(*form)
+								<button class="btn primary">Add email</button>
+							</form>
+						</section>
+					}
+					if form := data.New["outgoing_webhook"]; form != nil {
+						<section class="panel">
+							<div class="panel-head">
+								<h3>Add outgoing webhook contact method</h3>
+							</div>
+							<form class="panel-body stack" method="post" action="/contact-methods/save">
+								<input type="hidden" name="csrf" value={ data.CSRF }/><input type="hidden" name="contact_method_type" value="outgoing_webhook"/>
+								<p class="small muted">MMHotline sends each alert as signed JSON in a POST request to a public HTTPS URL.</p>
+								<label class="field">Outgoing webhook URL<input type="url" name="outgoing_webhook_url" value={ form.Value } placeholder="https://example.com/alerts-from-mmhotline" required/></label><label class="field">Webhook bearer token (optional)<input name="outgoing_webhook_bearer_token" autocomplete="off"/></label>
+								@contactMethodSharedOption(data.Admin, form.Shared, false)
+								@contactMethodSubscriptionFields(*form)
+								<button class="btn primary">Add outgoing webhook</button>
+							</form>
+						</section>
+					}
+					if data.PhoneNumbersAvailable && data.New["automated_voice_call"] != nil {
+						<section class="panel">
+							<div class="panel-head">
+								<h3>Add a phone number</h3>
+							</div>
+							<form class="panel-body stack" method="post" action="/contact-methods/phone-number">
+								<input type="hidden" name="csrf" value={ data.CSRF }/>
+								<p class="small muted">MMHotline calls your number when an SOS needs you. Adding a phone number queues a test call.</p>
+								<label class="field">Phone number<input type="tel" name="phone_number_to_call" value={ data.NewPhoneNumber } placeholder="+1 202 555 0123" autocomplete="tel" required/></label>
+								<p class="small muted">{ data.PhoneNumberConsent }</p>
+								<button class="btn primary">Add phone number</button>
+							</form>
+						</section>
+					}
+					if form := data.New["pushover_notification"]; form != nil {
+						<section class="panel">
+							<div class="panel-head">
+								<h3>Add Pushover notification</h3>
+							</div>
+							<form class="panel-body stack" method="post" action="/contact-methods/save">
+								<input type="hidden" name="csrf" value={ data.CSRF }/><input type="hidden" name="contact_method_type" value="pushover_notification"/>
+								<p class="small muted">Use your personal Pushover user key. Saving sends a quiet test notification. The saved contact method then shows how to check that an SOS wakes this phone. Acknowledging an SOS in Pushover also claims the incident for you.</p>
+								<label class="field">Pushover user key<input name="pushover_user_key" value={ form.Value } minlength="30" maxlength="30" pattern="[A-Za-z0-9]{30}" required/></label><label class="field">Pushover device name (optional)<input name="pushover_device_name" value={ form.Device } maxlength="25" pattern="[A-Za-z0-9_\-]{1,25}"/></label>
+								<p class="small muted">Leave the device name empty to send to all your devices. Name one device to send only to it.</p>
+								@contactMethodSubscriptionFields(*form)
+								<button class="btn primary">Add Pushover notification</button>
+							</form>
+						</section>
+					}
+					if data.New["telegram_message"] != nil {
+						<section class="panel">
+							<div class="panel-head">
+								<h3>Add Telegram message</h3>
+							</div>
+							<div class="panel-body">
+								<p class="small muted">SOS messages include buttons to claim or resolve the incident.</p>
+								<form method="post" action="/connect-telegram">
+									<input type="hidden" name="csrf" value={ data.CSRF }/><input type="hidden" name="telegram_connection" value="personal_chat"/><button class="btn primary">Connect Telegram</button>
+								</form>
+								if data.Admin {
+									<form method="post" action="/connect-telegram">
+										<input type="hidden" name="csrf" value={ data.CSRF }/><input type="hidden" name="telegram_connection" value="team_group"/><button class="btn">Add the MMHotline bot to a Telegram group</button>
+									</form>
+								}
+							</div>
+						</section>
+					}
+					if data.New["slack_message"] != nil {
+						<section class="panel">
+							<div class="panel-head">
+								<h3>Add Slack message</h3>
+							</div>
+							<div class="panel-body">
+								<p class="small muted">SOS messages include buttons to claim or resolve the incident.</p>
+								<form method="post" action="/connect-slack">
+									<input type="hidden" name="csrf" value={ data.CSRF }/><input type="hidden" name="slack_connection" value="personal_direct_message"/><button class="btn primary">Connect Slack</button>
+								</form>
+								if data.Admin {
+									<form method="post" action="/connect-slack">
+										<input type="hidden" name="csrf" value={ data.CSRF }/><input type="hidden" name="slack_connection" value="shared_channel"/><button class="btn">Add a shared Slack channel</button>
+									</form>
+								}
+							</div>
+						</section>
+					}
+				</div>
+			</div>
+		</details>
+		<section class="panel">
+			<div class="panel-head">
+				<h2>Recent notifications</h2>
+				<span class="faint small">Newest first · up to 50 records</span>
+			</div>
+			@contactMethodNotifications(frame, data.Deliveries)
+			if len(data.OlderDeliveries) > 0 {
+				<div class="panel-body">
+					<details class="fold">
+						<summary>Older notifications ({ strconv.Itoa(len(data.OlderDeliveries)) })</summary>
+						<div>
+							@contactMethodNotifications(frame, data.OlderDeliveries)
+						</div>
+					</details>
+				</div>
+			}
+			<p class="panel-foot">Acceptance means the sending service or webhook receiver took the request. Acceptance does not prove a person read the notification or claimed the incident.</p>
+		</section>
+		if len(data.OtherContactMethods) > 0 {
+			<details class="more">
+				<summary>Other people's contact methods ({ strconv.Itoa(len(data.OtherContactMethods)) })</summary>
+				<div class="body contact-panels">
+					for _, method := range data.OtherContactMethods {
+						@contactMethodPanel(frame, method)
+					}
+				</div>
+			</details>
+		}
+	</div>
+}
+
+// deliveryPageData is the Delivery outcome page's data.
+type deliveryPageData struct {
+	Delivery deliveryPageView
+	Attempts []DeliveryAttempt
+}
+
+// deliveryPageBody is the Delivery outcome page's body.
+templ deliveryPageBody(frame pageFrame, data deliveryPageData) {
+	<div class="stack delivery-page">
+		<section class="panel">
+			<div class="panel-head">
+				<h2>
+					@deliveryOutcomeText(frame, data.Delivery)
+				</h2>
+			</div>
+			<div class="panel-body">
+				if reason := data.Delivery.ReasonText(); reason != "" {
+					<p>{ capitalize(reason) }</p>
+				}
+				<p class="contact-destination">{ data.Delivery.Recipient }</p>
+				if data.Delivery.IncidentID != "" {
+					<p><a href={ "/incidents/" + data.Delivery.IncidentID }>Back to the incident</a></p>
+				}
+				<dl class="kv">
+					<dt>Purpose</dt>
+					<dd>{ data.Delivery.PurposeLabel() }</dd>
+					<dt>Queued</dt>
+					<dd>{ frame.Clock(data.Delivery.CreatedAt) }, { frame.RelativeTime(data.Delivery.CreatedAt) }</dd>
+					if data.Delivery.CombinedInto != "" {
+						<dt>
+							if data.Delivery.State == "combined" {
+								Sent in
+							} else {
+								Combined into
+							}
+						</dt>
+						<dd><a href={ "/deliveries/" + data.Delivery.CombinedInto }>The combined message</a></dd>
+					}
+				</dl>
+				if (data.Delivery.State == "accepted" || data.Delivery.State == "delivered") && data.Delivery.CallResult != "calling" {
+					<p class="faint small">Acceptance does not prove a person read the notification or claimed the incident.</p>
+				}
+			</div>
+		</section>
+		<section class="panel">
+			<div class="panel-head">
+				<h2>Message as sent</h2>
+			</div>
+			<div class="panel-body">
+				<dl class="kv">
+					<dt>Subject</dt>
+					<dd>{ data.Delivery.Subject }</dd>
+				</dl>
+				<pre class="contact-message">{ data.Delivery.Message }</pre>
+			</div>
+		</section>
+		<details class="more">
+			<summary>Delivery attempts ({ strconv.Itoa(len(data.Attempts)) })</summary>
+			<div class="body">
+				<ol class="contact-notifications">
+					for _, attempt := range data.Attempts {
+						<li>
+							<div class="row spread">
+								<strong>Attempt { strconv.Itoa(attempt.Number) }: { attempt.OutcomeLabel() }</strong><span class="faint small">{ frame.Clock(attempt.StartedAt) }</span>
+							</div>
+							if !attempt.CompletedAt.IsZero() {
+								<p class="faint small">Finished { frame.Clock(attempt.CompletedAt) }</p>
+							}
+							if attempt.Diagnostic != "" {
+								<pre>{ attempt.Diagnostic }</pre>
+							}
+						</li>
+					}
+					if len(data.Attempts) == 0 {
+						<li class="muted small">No external attempt yet.</li>
+					}
+				</ol>
+			</div>
+		</details>
+	</div>
+}
+
+// connectTelegramBody is the page with the single-use Telegram start link.
+templ connectTelegramBody(link string, group bool) {
+	<div class="stack">
+		<section class="panel">
+			<div class="panel-head">
+				<h2>
+					if group {
+						Connect a team group
+					} else {
+						Connect your Telegram chat
+					}
+				</h2>
+			</div>
+			<div class="panel-body">
+				if group {
+					<p>Open the Telegram link, choose the Telegram group, and add the MMHotline bot. Team alerts then arrive in the selected Telegram group.</p>
+				} else {
+					<p>Open the Telegram link on the device where you use Telegram and press Start. Your alerts then arrive in the connected Telegram chat.</p>
+				}
+				<p><a class="btn primary" href={ link }>Open Telegram</a></p>
+				<p class="faint small">The Telegram link works once, for 15 minutes.</p>
+			</div>
+		</section>
+		<p><a href="/contact-methods">Back to contact methods</a></p>
+	</div>
+}
+
+// connectSlackBody is the page with the single-use Slack connection code.
+templ connectSlackBody(connection SlackConnection) {
+	<div class="stack">
+		<section class="panel">
+			<div class="panel-head">
+				<h2>
+					if connection.SharedChannel {
+						Connect a shared Slack channel
+					} else {
+						Connect your Slack direct messages
+					}
+				</h2>
+			</div>
+			<div class="panel-body">
+				if connection.SharedChannel {
+					<p>Invite the MMHotline app to your Slack channel, then mention the MMHotline app with the connection code:</p>
+					<pre><code>{ "@MMHotline " + connection.Code }</code></pre>
+					<p class="small muted">Alerts will be shared with the team in the connected Slack channel.</p>
+				} else {
+					<p>Open direct messages with the MMHotline app and send the connection code:</p>
+					<pre><code>{ connection.Code }</code></pre>
+				}
+				<p><a class="btn primary" href={ connection.AppURL }>Open MMHotline in Slack</a></p>
+				<p class="faint small">The connection code works once, for 15 minutes. Share the connection code only in the Slack conversation you want to connect.</p>
+			</div>
+		</section>
+		<p><a href="/contact-methods">Back to contact methods</a></p>
+	</div>
+}

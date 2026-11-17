@@ -30,19 +30,21 @@ func (a *App) sendDownAlarmTestHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view, err := a.SendDownAlarmTest(r.Context(), p)
-	if err != nil {
-		RenderPage(w, errorStatus(err), "MMHotline-down alarm test", `<section class="panel"><div class="panel-body"><p class="form-error" role="alert">{{.}}</p><a href="/dashboard">Back to the dashboard</a></div></section>`, publicError(err))
+	frame, ok := readFrameForPage(w)
+	if !ok {
 		return
 	}
-	RenderPage(w, 200, "MMHotline-down alarm test", `<section class="panel"><div class="panel-body"><p>The MMHotline-down alarm returned these results for the test alerts:</p><ul class="bullets">{{range .TestSends}}<li>{{.ContactMethodType}} to {{.PersonName}}: {{.Outcome}}</li>{{else}}<li>Nothing: the MMHotline-down alarm has nobody to reach.</li>{{end}}</ul><a href="/dashboard">Back to the dashboard</a></div></section>`, struct {
-		TestSends []struct{ ContactMethodType, PersonName, Outcome string }
-	}{testSendLines(view)})
+	if err != nil {
+		renderPage(w, errorStatus(err), "MMHotline-down alarm test", frame, nil, downAlarmTestErrorBody(publicError(err)))
+		return
+	}
+	renderPage(w, 200, "MMHotline-down alarm test", frame, nil, downAlarmTestResultBody(testSendLines(view)))
 }
 
-func testSendLines(view DownAlarmView) []struct{ ContactMethodType, PersonName, Outcome string } {
-	var lines []struct{ ContactMethodType, PersonName, Outcome string }
+func testSendLines(view DownAlarmView) []downAlarmTestLine {
+	var lines []downAlarmTestLine
 	for _, s := range view.TestSends {
-		lines = append(lines, struct{ ContactMethodType, PersonName, Outcome string }{s.ContactMethodType, s.PersonName, strings.TrimPrefix(s.testText(), "Test: "+s.ContactMethodType+" to "+s.PersonName+": ")})
+		lines = append(lines, downAlarmTestLine{s.ContactMethodType, s.PersonName, strings.TrimPrefix(s.testText(), "Test: "+s.ContactMethodType+" to "+s.PersonName+": ")})
 	}
 	return lines
 }

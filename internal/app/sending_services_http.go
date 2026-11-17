@@ -77,10 +77,11 @@ func (a *App) sendingServicePageViews(ctx context.Context, p Principal) ([]sendi
 	return views, nil
 }
 
-const sendingServiceState = `{{if .Failure.FailureReason}}<p class="form-error" role="alert">The latest settings check failed{{with .Failure.FailedAt}} at {{clock .}}{{end}}. {{if .IsSetUp}}The earlier setup remains in use.{{else}}The service is not set up.{{end}} Fix the settings file and apply the settings again.</p><details class="fold"><summary>Check failure details</summary><p class="small result">{{.Failure.FailureReason}}</p></details>{{end}}`
-
-var sendingServicesPageBody = `<div class="settings-page stack"><p class="muted">Set up the services that deliver your team's notifications, then add your own <a href="/contact-methods">contact methods</a>.</p><div class="settings-grid">{{range .Setups}}<section class="panel"><div class="panel-head"><h2>{{.SendingServiceTitle}}</h2>{{if .IsSetUp}}{{if .Failure.FailureReason}}<span class="tag warn">Check failed</span>{{else}}<span class="tag ok">Set up</span>{{end}}{{else}}<span class="tag">Not set up</span>{{end}}</div><div class="panel-body">` + sendingServiceState + `{{if .IsSetUp}}<details class="fold"><summary>Last successful check</summary><p class="small result">{{.Description}}</p></details><p class="faint small">Set up by {{.SetUpBy}} at {{clock .SetUpAt}}.</p>{{else}}<p>Not set up. Follow the setup guide to add {{.TitleInSentence}} to the settings file.</p>{{end}}</div><div class="panel-foot"><a href="/sending-services/{{.SendingService}}">{{if .IsSetUp}}Review{{else}}How to set up{{end}} {{.TitleInSentence}}</a></div></section>{{end}}</div><details class="more"><summary>Where sending services are set up</summary><div class="body">` + settingsFileNotice("<code>sending_services</code>") + `</div></details></div>`
-var sendingServiceSetupPageBody = `{{define "heading"}}<div><p class="crumbs"><a href="/sending-services">All sending services</a></p><h1>{{.Title}}</h1></div>{{end}}<div class="settings-page stack"><section class="panel"><div class="panel-head"><h2>{{.SendingServiceTitle}}</h2>{{if .IsSetUp}}{{if .Failure.FailureReason}}<span class="tag warn">Earlier setup in use</span>{{else}}<span class="tag ok">Set up · last check passed</span>{{end}}{{else}}<span class="tag">Not set up</span>{{end}}</div><div class="panel-body">` + sendingServiceState + `{{if .IsSetUp}}<details class="fold"><summary>Last successful check</summary><p class="small result">{{.Description}}</p></details><p class="faint small">Set up by {{.SetUpBy}} at {{clock .SetUpAt}}.</p><p>{{.NextStep}} <a href="/contact-methods">Contact methods</a></p>{{else}}<p>Follow the guide below, add the values to the settings file, then run <code>sudo mmhotline settings apply</code>. MMHotline checks the setup before saving.</p>{{end}}</div></section><section class="panel"><div class="panel-head"><h2>Set up {{.TitleInSentence}}</h2></div><div class="panel-body"><ol class="settings-guide">{{range .Guide}}<li><p>{{.Text}}{{if .URL}} <a href="{{.URL}}">{{.LinkLabel}}</a>{{end}}</p></li>{{end}}</ol><h3>Settings file keys</h3>{{$service := .SendingService}}<ul class="settings-fields">{{range .Fields}}<li><strong>{{.Label}}{{if .Optional}} (optional){{end}}</strong><p><code>sending_services.{{$service}}.{{range $index, $part := .KeyParts}}{{if $index}}_<wbr>{{end}}{{$part}}{{end}}</code></p><p class="small muted">{{.Help}}</p></li>{{end}}</ul><h3>Example settings</h3><pre class="settings-code" tabindex="0" aria-label="Example settings, scroll horizontally for long lines">{{.SectionExample}}</pre></div></section><details class="more"><summary>Where {{.TitleInSentence}} is set up</summary><div class="body">` + settingsFileNotice("<code>sending_services.{{.SendingService}}</code>") + `</div></details></div>`
+// sendingServicesPageData is the Sending services page's data.
+type sendingServicesPageData struct {
+	Setups []sendingServicePageView
+	settingsFileNoticeView
+}
 
 func (a *App) sendingServiceSetupAccess(w http.ResponseWriter, r *http.Request) (Principal, bool) {
 	p, err := a.BrowserPrincipal(r)
@@ -112,10 +113,11 @@ func (a *App) renderSendingServicesPage(w http.ResponseWriter, r *http.Request, 
 		HTTPError(w, err)
 		return
 	}
-	RenderPage(w, status, "Sending services", sendingServicesPageBody, struct {
-		Setups []sendingServicePageView
-		settingsFileNoticeView
-	}{setups, a.settingsFileNoticeView()})
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, status, "Sending services", frame, nil, sendingServicesPageBody(frame, sendingServicesPageData{setups, a.settingsFileNoticeView()}))
 }
 func (a *App) sendingServiceSetupPage(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.sendingServiceSetupAccess(w, r)
@@ -141,5 +143,10 @@ func (a *App) sendingServiceSetupPage(w http.ResponseWriter, r *http.Request) {
 			view.sendingServicePageView = setup
 		}
 	}
-	RenderPage(w, 200, "Set up "+definition.Title, sendingServiceSetupPageBody, view)
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	title := "Set up " + definition.Title
+	renderPage(w, 200, title, frame, sendingServiceSetupHeading(title), sendingServiceSetupPageBody(frame, view))
 }
