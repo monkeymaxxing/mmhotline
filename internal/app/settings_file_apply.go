@@ -108,13 +108,6 @@ func (a *App) settingsFileNoticeView() settingsFileNoticeView {
 	return settingsFileNoticeView{a.settingsFile.path, a.settingsFileFirstCommentLine()}
 }
 
-// settingsFileNotice is template text for the line that says where a page's
-// read-only settings are set: keys is the template text naming the keys, and
-// the page's data embeds settingsFileNoticeView.
-func settingsFileNotice(keys string) string {
-	return `<p class="muted">Set in <code>{{.SettingsFile}}</code>, in ` + keys + `.{{if .SettingsFileFirstLine}} The file's first line says: {{.SettingsFileFirstLine}}{{else}} An administrator edits the settings file with sudoedit, then runs <code>sudo mmhotline settings apply</code>.{{end}}</p>`
-}
-
 func (a *App) settingsPrincipal() Principal {
 	return Principal{SettingsFile: a.settingsFile.path}
 }

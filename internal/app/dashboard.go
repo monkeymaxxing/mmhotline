@@ -5,9 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/a-h/templ"
-	"html/template"
-	"io"
 	"net/http"
 	"slices"
 	"strconv"
@@ -633,18 +630,4 @@ func incidentActionLabel(kind string) string {
 		return "Result not sent to the triage agent"
 	}
 	return "Incident updated"
-}
-
-// downAlarmCardPlaceholder renders the MMHotline-down alarm panel from the old
-// html/template string downAlarmCard (down_alarm_http.go), until the panel's
-// templ component replaces it. The string reads DownAlarm, CSRF, and the
-// settings file notice from the dashboard's view.
-func downAlarmCardPlaceholder(frame pageFrame, view dashboardView) templ.Component {
-	return templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
-		t, err := template.New("down_alarm_card").Funcs(template.FuncMap{"clock": frame.Clock, "relativeTime": frame.RelativeTime}).Parse(downAlarmCard)
-		if err != nil {
-			return err
-		}
-		return t.Execute(w, view)
-	})
 }

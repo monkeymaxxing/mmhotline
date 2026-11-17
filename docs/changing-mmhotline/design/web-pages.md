@@ -65,30 +65,7 @@ Plain Go functions are called in `{ }` expressions:
 A page body that needs the time passes `frame` to its component, such as
 `dashboardBody(frame, data)`.
 
-## Writing templ that matches the old pages
-
-Until the last page moves, `RenderPage(w, status, title, body, data)` still
-renders an `html/template` body. `RenderPage` renders the heading and the
-body with `html/template`, then hands the HTML to `renderPage`, so both kinds
-of page share one frame. A converted page deletes its template string and
-calls `renderPage`. The last conversion deletes `RenderPage`, the
-`settingsFileNotice` string, `breakAfterSeparators`, and this section's
-translation table.
-
-| `html/template` | templ |
-| --- | --- |
-| `{{.Name}}` | `{ data.Name }`; strings, numbers, and booleans are allowed |
-| `{{if .X}}` | `if data.X != "" {`: say the condition. `html/template` treats `""`, `0`, `nil`, `false`, and an empty slice or map as false |
-| `{{with .X}}…{{.}}…{{end}}` | `if x := data.X; x != nil {` … `{ x.Title }` … `}` |
-| `{{range .Items}}…{{else}}…{{end}}` | `for _, item := range data.Items {` … `}`, then `if len(data.Items) == 0 {` … `}` |
-| `{{$page := .}}`, `$.CSRF` | the component's parameter: `data.CSRF` |
-| `{{template "x" .}}` with `{{define "x"}}` | a component `templ x(v T)` in the same `.templ` file, called as `@x(v)` |
-| `{{define "heading"}}` | a component such as `alertSourceHeading(title string, data alertSourcePageData)`, passed as `renderPage`'s heading |
-| `eq`, `ne`, `not`, `and`, `or`, `len`, `printf` | `==`, `!=`, `!`, `&&`, `\|\|`, `len()`, `fmt.Sprintf` |
-| `{{clock .At}}`, `{{relativeTime .At}}` | `{ frame.Clock(data.At) }`, `{ frame.RelativeTime(data.At) }` |
-| `{{breakAfterSeparators .Key}}` | `@withBreaksAfterSeparators(data.Key)` |
-| A Go string joined into the template, such as `settingsFileNotice(...)` | a component, or `{ constName }` for plain text |
-| A `template.HTML` field in the view struct | a component. Use `templ.Raw` only for HTML that is already escaped, with a comment saying where the HTML comes from |
+## Writing templ
 
 ### Spaces between inline elements
 
@@ -116,29 +93,19 @@ templ sanitizes the value of `href`, `action`, `formaction`, and `src` with
 `templ.URL`, then escapes the value for HTML. Pass a plain `string`. Do not
 wrap the value in `templ.SafeURL`, which turns the sanitizing off.
 
-templ's result differs from `html/template`'s in two ways:
+templ keeps relative URLs and `http`, `https`, `mailto`, `tel`, `ftp`, and
+`ftps` URLs, and replaces any other scheme with
+`about:invalid#TemplFailedSanitizationURL`. templ does not percent-encode:
+a space, a non-ASCII character, or a quote in a URL is written as it is,
+HTML-escaped. Record IDs, fixed codes such as a sending service's name, and
+URLs built with `net/url` hold none of these. Encode a value from data that
+may hold one in Go, with `url.PathEscape` or `url.QueryEscape`.
 
-- **Encoding.** `html/template` percent-encodes characters that are not
-  allowed in a URL: `/x y/ü` became `/x%20y/%c3%bc`, and `"`, `<`, and `>`
-  became `%22`, `%3c`, and `%3e`. templ writes the characters as they are,
-  HTML-escaped.
-- **Schemes.** Both keep relative URLs and `http`, `https`, and `mailto`
-  URLs. `html/template` replaced any other scheme with `#ZgotmplZ`. templ
-  also allows `tel`, `ftp`, and `ftps`, and replaces other schemes with
-  `about:invalid#TemplFailedSanitizationURL`.
+### HTML from Go
 
-So a URL comes out the same when the URL holds no space, non-ASCII
-character, or quote. Record IDs, fixed codes such as a sending service's
-name, and URLs built with `net/url` qualify. For each URL value from data,
-check where the value comes from: `.URL`, `.ReviewURL`, `.WebURL`,
-`.PageURL`, `.Target`, `.TakenOverLink`, `.Next`, `.Link`, `.AppURL`, and the
-path parts such as `/approvals/{ID}`. Encode a value that may hold such a
-character in Go, with `url.PathEscape` or `url.QueryEscape`.
-
-The golden comparison compares attribute values whole, so the comparison
-catches a changed URL only when the fixture data has such a character. Today
-only the Slack setup page has percent-encoded characters, in a link built
-already encoded.
+A page never takes HTML from a Go string. Write the markup as a component.
+`templ.Raw` is only for HTML that is already escaped or fixed in code, with
+a comment saying where the HTML comes from.
 
 ### Live sections
 

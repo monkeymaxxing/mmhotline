@@ -2275,16 +2275,12 @@ func dashboardBody(frame pageFrame, view dashboardView) templ.Component {
 			}
 		}
 		if view.DownAlarm != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, " ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = downAlarmCardPlaceholder(frame, view).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = downAlarmPanel(frame, *view.DownAlarm, view.CSRF, view.settingsFileNoticeView).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

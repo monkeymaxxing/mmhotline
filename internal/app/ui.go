@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
-	"html/template"
 	"net/http"
 	"strings"
 	"time"
@@ -29,7 +28,7 @@ func ShowDevelopmentModeNotice(fakeSendingServicesURL string) {
 	developmentModeNotice = fakeSendingServicesURL
 }
 
-// navigationPageWriter carries the request to RenderPage, which reads the
+// navigationPageWriter carries the request to readFrameForPage, which reads the
 // frame's data only when it renders a page, never for a redirect, an asset,
 // or JSON. member says whether the request's identity is a team member: a
 // person refused at sign-in sees no menu and no red bar.
@@ -82,48 +81,6 @@ func renderPage(w http.ResponseWriter, status int, title string, frame pageFrame
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write(b.Bytes())
-}
-
-// RenderPage renders a page whose body is an html/template, a code-owned
-// template, never a body supplied by a user, in the same frame as renderPage.
-// It stays only while pages move to templ.
-//
-// The heading is the block "heading", whose dot is the frame's data: .Title
-// and the page's own data as .Data. A page that prints its own heading block
-// redefines it in its body with {{define "heading"}}…{{end}}; every other page
-// keeps the frame's h1. The body is parsed as its own template, "body", in a
-// second Parse call: html/template lets a later Parse call redefine a
-// template until the first execution, while a second definition within one
-// Parse call is an error. The body is rendered only when data is not empty,
-// as {{with .Data}} did in the frame.
-func RenderPage(w http.ResponseWriter, status int, title, body string, data any) {
-	frame, ok := readFrameForPage(w)
-	if !ok {
-		return
-	}
-	t, err := template.New("page").Funcs(template.FuncMap{"lower": strings.ToLower, "capitalize": capitalize, "breakAfterSeparators": breakAfterSeparators, "minutes": minutesText, "severityLabel": severityLabel, "severityMeaning": severityMeaning, "scheduleTypeLabel": scheduleTypeLabel, "incidentStatusLabel": incidentStatusLabel,
-		"clock": frame.Clock, "relativeTime": frame.RelativeTime}).Parse(`{{block "heading" .}}<h1>{{.Title}}</h1>{{end}}`)
-	if err == nil {
-		_, err = t.New("body").Parse(body)
-	}
-	if err != nil {
-		renderPageError(w, "MMHotline could not display the requested page.", 500)
-		return
-	}
-	var heading, bodyHTML bytes.Buffer
-	err = t.ExecuteTemplate(&heading, "heading", struct {
-		Title, DevelopmentModeNotice string
-		Data                         any
-		pageFrame
-	}{title, developmentModeNotice, data, frame})
-	if notEmpty, _ := template.IsTrue(data); err == nil && notEmpty {
-		err = t.ExecuteTemplate(&bodyHTML, "body", data)
-	}
-	if err != nil {
-		renderPageError(w, "MMHotline could not display the requested page.", 500)
-		return
-	}
-	renderPage(w, status, title, frame, templ.Raw(heading.String()), templ.Raw(bodyHTML.String()))
 }
 
 // renderPageError can still show a browser a way back when reading the frame
@@ -298,13 +255,6 @@ func timeZoneLine(zone *time.Location) string {
 		return "Times are in " + name + ", the team's time zone."
 	}
 	return "Times are " + city + " time (" + name + "), the team's time zone."
-}
-
-// breakAfterSeparators lets values made of parts, such as the sender incident
-// key app002/disk/root_disk_usage, wrap after slashes and underscores, for
-// html/template pages; templ pages use withBreaksAfterSeparators.
-func breakAfterSeparators(s string) template.HTML {
-	return template.HTML(strings.NewReplacer("/", "/<wbr>", "_", "_<wbr>").Replace(template.HTMLEscapeString(s)))
 }
 
 // partsAfterSeparators splits s after each slash and underscore:

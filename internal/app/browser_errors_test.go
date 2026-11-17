@@ -1,16 +1,21 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"mmhotline/internal/cloudflareaccess"
+
+	"github.com/a-h/templ"
 )
 
 // pageLinkText checks a link's destination and readable label without coupling
@@ -146,7 +151,8 @@ func TestBrowserRenderingFailureStillHasAWayBack(t *testing.T) {
 	request := httptest.NewRequest("GET", "/dashboard", nil)
 	request.Header.Set("Accept", "text/html")
 	response := httptest.NewRecorder()
-	RenderPage(&navigationPageWriter{ResponseWriter: response, request: request}, 200, "Broken page", "{{", true)
+	broken := templ.ComponentFunc(func(context.Context, io.Writer) error { return errors.New("broken page") })
+	renderPage(&navigationPageWriter{ResponseWriter: response, request: request}, 200, "Broken page", pageFrame{TimeZone: time.UTC}, nil, broken)
 	if response.Code != http.StatusInternalServerError || pageLinkText(response.Body.String(), "/dashboard") == "" {
 		t.Fatalf("rendering failure stranded the browser: %d %s", response.Code, response.Body.String())
 	}

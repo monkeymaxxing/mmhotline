@@ -22,7 +22,7 @@ import (
 	"mmhotline/internal/htmlgolden"
 )
 
-// goldenPages lists every HTML render in this package: each RenderPage call
+// goldenPages lists every HTML render in this package: each renderPage call
 // and renderPageError, with the states the golden test covers and the states
 // it does not, with the reason. TestGoldenPages renders each covered state
 // through the page's real handler and compares it with its golden file under
@@ -105,7 +105,7 @@ var goldenPages = []goldenPage{
 }
 
 type goldenPage struct {
-	// render names the RenderPage call: its file, function, and route.
+	// render names the renderPage call: its file, function, and route.
 	render, page string
 	states       []string
 	// notCovered gives, for each state the test does not render, the reason.

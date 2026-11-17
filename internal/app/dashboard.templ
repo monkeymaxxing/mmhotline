@@ -403,8 +403,7 @@ templ dashboardBody(frame pageFrame, view dashboardView) {
 			@triageAgentAtWorkPanel(frame, *view.TriageAgent)
 		}
 		if view.DownAlarm != nil {
-			// MERGE: replace with @downAlarmPanel(frame, *data.DownAlarm, data.CSRF, data.SettingsFileNotice) from lane B
-			@downAlarmCardPlaceholder(frame, view)
+			@downAlarmPanel(frame, *view.DownAlarm, view.CSRF, view.settingsFileNoticeView)
 		}
 	</div>
 	@systemPanelsBody(frame, view.System)

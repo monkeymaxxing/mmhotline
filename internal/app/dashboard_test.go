@@ -519,10 +519,8 @@ func TestIncidentActionLabelsAndSeverityBadges(t *testing.T) {
 		}
 	}
 	for severity, label := range map[string]string{"info": "Info", "warn": "Warning", "sos": "SOS", "resolved-info": "Resolved info", "resolved-warn": "Resolved warning", "resolved-sos": "Resolved SOS"} {
-		w := httptest.NewRecorder()
-		RenderPage(w, 200, "Alert", `<span class="badge {{.}}">{{severityLabel .}}</span>`, severity)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), `<span class="badge `+severity+`">`+label+`</span>`) {
-			t.Fatalf("severity badge: %d %s", w.Code, w.Body.String())
+		if got := severityLabel(severity); got != label {
+			t.Fatalf("severity %s: %s", severity, got)
 		}
 	}
 }

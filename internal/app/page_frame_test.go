@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/a-h/templ"
 )
 
 // liveSectionText is the text of the page's live section with that id,
@@ -259,15 +261,18 @@ func TestNoPageHasAnInlineStyle(t *testing.T) {
 // A page may print its own heading in place of the frame's h1; every other
 // page keeps the frame's h1 with its title.
 func TestAPageMayPrintItsOwnHeading(t *testing.T) {
-	for _, test := range []struct{ body, want, absent string }{
-		{`<p>Body</p>`, "<h1>Plain page</h1>", ""},
-		{`{{define "heading"}}<div class="head"><h1>Own heading of {{.Data.Name}}</h1></div>{{end}}<p>Body of {{.Name}}</p>`, "<h1>Own heading of db01</h1>", "<h1>Plain page</h1>"},
+	for _, test := range []struct {
+		heading      templ.Component
+		want, absent string
+	}{
+		{nil, "<h1>Plain page</h1>", ""},
+		{templ.Raw(`<div class="head"><h1>Own heading of db01</h1></div>`), "<h1>Own heading of db01</h1>", "<h1>Plain page</h1>"},
 	} {
 		w := httptest.NewRecorder()
-		RenderPage(w, 200, "Plain page", test.body, struct{ Name string }{"db01"})
+		renderPage(w, 200, "Plain page", pageFrame{TimeZone: time.UTC}, test.heading, templ.Raw(`<p>Body of db01</p>`))
 		page := w.Body.String()
 		if w.Code != 200 || !strings.Contains(page, test.want) || strings.Count(page, "<h1") != 1 || test.absent != "" && strings.Contains(page, test.absent) || !strings.Contains(page, "<p>Body") {
-			t.Errorf("body %s: %d %s", test.body, w.Code, page)
+			t.Errorf("heading %q: %d %s", test.want, w.Code, page)
 		}
 	}
 }
