@@ -1,0 +1,404 @@
+package app
+
+import (
+	"strconv"
+	"strings"
+)
+
+// triageAgentPageBody is the Triage agent page: the setup of the triage
+// agent and the review agent, the software review, the commit review, the
+// internet access, and the connections the agent's proxy handled.
+templ triageAgentPageBody(frame pageFrame, data triageAgentPageData) {
+	<div class="settings-page stack">
+		if data.Error != "" {
+			<p class="form-error" role="alert">{ data.Error }</p>
+		}
+		if !data.SandboxInstalled {
+			<section class="panel">
+				<div class="panel-head">
+					<h2>Triage agent not available</h2>
+				</div>
+				<div class="panel-body">
+					<p class="line-warn">
+						@triageAgentSandboxNotice()
+					</p>
+					<p class="small muted">The <a href="/agent-playbook-rules">rules for running the agent's playbooks</a> decide which fixes need a person.</p>
+				</div>
+			</section>
+		} else {
+			if data.LatestSetupTest != nil && data.LatestSetupTest.Status() == "failed" {
+				<p class="form-error" role="alert">
+					The latest triage agent setup test failed.
+					if data.Setup != nil {
+						The earlier setup remains in use.
+					}
+					Fix <code>triage_agent</code> in the settings file and apply the settings again. The setup test details below give the reason.
+				</p>
+			}
+			<section class="panel">
+				<div class="panel-head">
+					<h2>Triage agent setup</h2>
+					@signInTag(data.Setup)
+				</div>
+				<div class="panel-body">
+					if data.Setup != nil {
+						@agentSetupDetails(frame, "Triage agent", "triage agent", "triage_agent", data.Setup, data.LatestSignInCheck, data.CSRF, "check-sign-in")
+					} else {
+						<p>Triage agent: not set up</p>
+						<p>Add <code>triage_agent</code> to the settings file, then run <code>sudo mmhotline settings apply</code>.</p>
+					}
+					<p class="small muted">The triage agent investigates SOS incidents before MMHotline wakes a person. The <a href="/agent-playbook-rules">rules for running the agent's playbooks</a> decide which fixes need approval.</p>
+					<details class="fold">
+						<summary>How setup is checked</summary>
+						<p>The coding agent, its credential, its model, and its reasoning effort are tested before they apply: MMHotline runs one test prompt with them, and keeps the earlier setup when the test fails. Codex takes an API key, a Codex access token, or a ChatGPT sign-in made just for MMHotline; Claude Code an API key or its subscription token from <code>claude setup-token</code>.</p>
+					</details>
+				</div>
+			</section>
+			if data.LatestSetupTest != nil {
+				<details class="more">
+					<summary>Latest setup test: { data.LatestSetupTest.Status() }</summary>
+					<div class="body stack">
+						<p>Run { data.LatestSetupTest.ID }, started by { data.LatestSetupTest.StartedBy } at { frame.Clock(data.LatestSetupTest.StartedAt) }.</p>
+						if data.LatestSetupTest.FailureReason != "" {
+							<p class="form-error">{ data.LatestSetupTest.FailureReason }</p>
+						}
+						<h3>Steps</h3>
+						@setupTestSteps(frame, data.LatestSetupTest.Steps)
+						<h3>Answer</h3>
+						<pre>{ data.LatestSetupTest.Answer }</pre>
+						<p>{ data.LatestSetupTest.UsageText() }</p>
+					</div>
+				</details>
+			}
+			<section class="panel">
+				<div class="panel-head">
+					<h2>Software review</h2>
+				</div>
+				<div class="panel-body">
+					if data.ScheduledSoftwareReviewIsOff() {
+						<p>Scheduled software review: { data.SoftwareReviewIntervalHours.Text() }. The triage agent wakes only for alerts.</p>
+					} else {
+						<p>Scheduled software review: { data.SoftwareReviewIntervalHours.Text() }.</p>
+					}
+					<details class="fold">
+						<summary>What the software review does</summary>
+						<p>The software review starts the triage agent with the team's task from <code>scheduled_software_review_task.md</code> in the systems repository, such as checking the servers' packages and programs for known flaws. Each finding reaches people as a report at its alert severity. Each review costs one run of the coding agent. To turn the scheduled review on, add the task file and set <code>triage_agent.software_review_interval_hours</code> in the settings file. To start one review now, such as to learn what a review costs, run <code>sudo mmhotline triage-agent run-software-review</code> on the server.</p>
+					</details>
+					if data.SoftwareReviewIntervalChangedAt != nil {
+						<p>Set by { data.SoftwareReviewIntervalChangedBy } at { frame.Clock(*data.SoftwareReviewIntervalChangedAt) }.</p>
+					}
+					if !data.ScheduledSoftwareReviewIsOff() {
+						if data.NextSoftwareReviewDueAt != nil {
+							<p>Next scheduled software review due at { frame.Clock(*data.NextSoftwareReviewDueAt) }.</p>
+						} else {
+							<p>Next scheduled software review due: at once.</p>
+						}
+					}
+					if data.LatestSoftwareReview != nil {
+						<h3>Latest software review: { reviewRunStateLabel(data.LatestSoftwareReview.State) }</h3>
+						@reviewRunTimes(frame, data.LatestSoftwareReview, false)
+						<details class="fold">
+							<summary>Software review run identifier</summary>
+							<p><code>{ data.LatestSoftwareReview.RunID }</code></p>
+						</details>
+						@reviewRunFailureReason(data.LatestSoftwareReview)
+						<p>Reports: { data.LatestSoftwareReview.ReportCountsByAlertSeverity.SOS } SOS, { data.LatestSoftwareReview.ReportCountsByAlertSeverity.Warn } Warning, { data.LatestSoftwareReview.ReportCountsByAlertSeverity.Info } Info.</p>
+						<p>{ data.LatestSoftwareReview.UsageText() }</p>
+					} else {
+						<p>No software review has run yet.</p>
+					}
+				</div>
+			</section>
+			<section id="latest-commit-review" class="panel">
+				<div class="panel-head">
+					<h2>Commit review</h2>
+				</div>
+				<div class="panel-body">
+					<p>When the settings let the triage agent approve, MMHotline starts a commit review run for each commit no trusted key signed that the triage agent may review. The agent approves an ordinary change, or decides that a person must review the commit; the decisions are on the <a href="/approvals">Approvals</a> page.</p>
+					if data.LatestCommitReview != nil {
+						<h3>Latest commit review: { reviewRunStateLabel(data.LatestCommitReview.State) }</h3>
+						@reviewRunTimes(frame, data.LatestCommitReview, true)
+						@reviewRunFailureReason(data.LatestCommitReview)
+						<p>{ data.LatestCommitReview.UsageText() }</p>
+					} else {
+						<p>No commit review has run yet.</p>
+					}
+				</div>
+			</section>
+			<section class="panel">
+				<div class="panel-head">
+					<h2>Review agent</h2>
+					@signInTag(data.ReviewAgent.Setup)
+				</div>
+				<div class="panel-body">
+					if data.ReviewAgent.LatestSetupTest != nil && data.ReviewAgent.LatestSetupTest.Status() == "failed" {
+						<p class="form-error" role="alert">
+							The latest review agent setup test failed.
+							if data.ReviewAgent.Setup != nil {
+								The earlier setup remains in use.
+							}
+							Fix <code>review_agent</code> in the settings file and apply the settings again. The setup test details below give the reason.
+						</p>
+					}
+					if data.ReviewAgent.Setup != nil {
+						@agentSetupDetails(frame, "Review agent", "review agent", "review_agent", data.ReviewAgent.Setup, data.ReviewAgent.LatestSignInCheck, data.CSRF, "review-agent-check-sign-in")
+					} else {
+						<p>Review agent: not set up</p>
+						<p class="small muted">To add a second coding agent that reviews proposed playbooks, set <code>review_agent</code> in the settings file.</p>
+					}
+					<details class="fold">
+						<summary>How playbook review works</summary>
+						<p>A review agent is a second coding agent. When a review agent is set up, the review agent must approve each playbook the triage agent asks to run before the rules for running the agent's playbooks apply. When the review agent refuses a playbook, the refusal reason goes back to the triage agent, which may revise the playbook and ask again. After the review agent's third refusal in a row on a problem, a person decides. Each review is a fresh run in the triage agent's sandbox, in a new empty home directory: the review agent sees the playbook and the triage agent's diagnosis, never the logs, and reaches only the review agent's coding agent service.</p>
+						<p>Any coding agent can review, the triage agent's own included. A coding agent of another vendor than the triage agent's is recommended: its model is less likely to share the triage agent's mistakes, and like every review agent it never sees the logs that could mislead the triage agent.</p>
+					</details>
+					if data.ReviewAgent.LatestSetupTest != nil {
+						<details class="fold">
+							<summary>Latest review agent setup test: { data.ReviewAgent.LatestSetupTest.Status() }</summary>
+							<p>Run { data.ReviewAgent.LatestSetupTest.ID }, started by { data.ReviewAgent.LatestSetupTest.StartedBy } at { frame.Clock(data.ReviewAgent.LatestSetupTest.StartedAt) }.</p>
+							if data.ReviewAgent.LatestSetupTest.FailureReason != "" {
+								<p class="form-error">{ data.ReviewAgent.LatestSetupTest.FailureReason }</p>
+							}
+							@setupTestSteps(frame, data.ReviewAgent.LatestSetupTest.Steps)
+							<pre>{ data.ReviewAgent.LatestSetupTest.Answer }</pre>
+							<p>{ data.ReviewAgent.LatestSetupTest.UsageText() }</p>
+						</details>
+					}
+				</div>
+			</section>
+			<details class="more">
+				<summary>Internet access and connections</summary>
+				<div class="body stack">
+					<section class="panel">
+						<div class="panel-head">
+							<h2>Internet access</h2>
+						</div>
+						<div class="panel-body">
+							if data.InternetAccess == "any_site" {
+								<p>Any site, with an instruction to use well-known sources. The triage agent reaches the internet only through MMHotline's logging proxy.</p>
+							} else {
+								<p>Listed hosts only. The triage agent reaches the internet only through MMHotline's logging proxy.</p>
+							}
+						</div>
+					</section>
+					<section class="panel">
+						<div class="panel-head">
+							<h2>Listed hosts</h2>
+						</div>
+						<div class="panel-body">
+							if data.HostsFromTheSystemsRepositoryListedAt != nil {
+								<p>At the start of each run in the systems repository, MMHotline lists each server of its inventories at port 22, so the triage agent can read the servers over SSH. It also lists the host of each vendor page in <code>software_outside_the_distribution.yml</code>, each program's <code>releases_page</code> and <code>security_advisories_page</code>, so the software review can read them. The servers and the vendor pages' hosts below were listed at the start of the latest run, { frame.Clock(*data.HostsFromTheSystemsRepositoryListedAt) }; a server or a page removed since stays listed until the next run.</p>
+							} else {
+								<p>At the start of each run in the systems repository, MMHotline lists each server of its inventories at port 22, so the triage agent can read the servers over SSH. It also lists the host of each vendor page in <code>software_outside_the_distribution.yml</code>, each program's <code>releases_page</code> and <code>security_advisories_page</code>, so the software review can read them.</p>
+							}
+							if data.InventoryServersNotListedBecause != "" {
+								<p class="form-error">At the start of the latest run, MMHotline could not list every inventory server: { data.InventoryServersNotListedBecause }</p>
+							}
+							if data.VendorPageHostsNotListedBecause != "" {
+								<p class="form-error">At the start of the latest run, MMHotline could not list the host of every vendor page in <code>software_outside_the_distribution.yml</code>: { data.VendorPageHostsNotListedBecause }</p>
+							}
+							<div class="scroll">
+								<table class="table">
+									<thead>
+										<tr>
+											<th>Host</th>
+											<th>Port</th>
+											<th>Listed because</th>
+										</tr>
+									</thead>
+									<tbody>
+										for _, host := range data.ListedHosts {
+											<tr>
+												<td>{ host.Host }</td>
+												<td>{ host.Port }</td>
+												<td>{ host.ListedBecause }</td>
+											</tr>
+										}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</section>
+					<section class="panel">
+						<div class="panel-head">
+							<h2>Recent connections</h2>
+						</div>
+						<div class="panel-body">
+							<div class="scroll">
+								<table class="table">
+									<thead>
+										<tr>
+											<th>Time</th>
+											<th>Host and port</th>
+											<th>Decision</th>
+											<th>Bytes sent</th>
+											<th>Bytes received</th>
+											<th>Action</th>
+										</tr>
+									</thead>
+									<tbody>
+										for _, connection := range data.RecentConnections {
+											<tr>
+												<td>{ frame.Clock(connection.StartedAt) }</td>
+												<td>{ connection.Host }:{ connection.Port }</td>
+												<td>
+													if connection.Decision == "allowed" {
+														Allowed
+													} else {
+														Refused: { connection.RefusalReason }
+													}
+												</td>
+												<td>{ connection.BytesSent }</td>
+												<td>{ connection.BytesReceived }</td>
+												<td>
+													if connection.CanAddListedHost {
+														To allow the connection, add <code>{ "{host: " + connection.Host + ", port: " + strconv.Itoa(connection.Port) + "}" }</code> to <code>triage_agent.listed_hosts</code> in the settings file.
+													}
+												</td>
+											</tr>
+										}
+										if len(data.RecentConnections) == 0 {
+											<tr>
+												<td colspan="6">No connections yet.</td>
+											</tr>
+										}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</section>
+				</div>
+			</details>
+		}
+		<details class="more">
+			<summary>Where the triage agent is set up</summary>
+			<div class="body">
+				@settingsFileNoticeLine(data.settingsFileNoticeView) {
+					<code>triage_agent</code> and <code>review_agent</code>
+				}
+			</div>
+		</details>
+	</div>
+}
+
+// triageAgentSandboxNotice says the sandbox is not installed, with the
+// install command in code type.
+templ triageAgentSandboxNotice() {
+	{{ before, after, found := strings.Cut(TriageAgentSandboxNotInstalled, "sudo mmhotline install") }}
+	if found {
+		{ before }<code>sudo mmhotline install</code>{ after }
+	} else {
+		{ before }
+	}
+}
+
+// signInTag is the tag in the head of an agent's setup panel.
+templ signInTag(setup *TriageAgentSetup) {
+	if setup == nil {
+		<span class="tag">Not set up</span>
+	} else if setup.SignInWorks {
+		<span class="tag ok">Sign-in works</span>
+	} else {
+		<span class="tag sos">Sign-in failed</span>
+	}
+}
+
+// agentSetupDetails says how an agent that is set up signs in, when its
+// credential expires, and offers to check the sign-in now. label begins a
+// sentence, noun is inside one, and settingsKey is the agent's part of the
+// settings file.
+templ agentSetupDetails(frame pageFrame, label, noun, settingsKey string, setup *TriageAgentSetup, signInCheck *TriageAgentRun, csrf, action string) {
+	<p>{ label }: { setup.Title() }.</p>
+	<p>Set up by { setup.SetUpBy } at { frame.Clock(setup.SetUpAt) }.</p>
+	<p
+		if !setup.SignInWorks {
+			class="form-error"
+			role="alert"
+		}
+	>
+		Sign-in to { setup.CodingAgentTitle() }
+		if setup.SignInWorks {
+			works.
+		} else {
+			fails: { setup.SignInFailureReason }.
+		}
+		Last checked at { frame.Clock(setup.SignInLastCheckedAt) }.
+	</p>
+	if setup.CredentialExpiresAt != nil && setup.CredentialType == "access_token" {
+		<p>The Codex access token expires on { setup.CredentialExpiresAt.Format("2006-01-02") }, the date in <code>{ settingsKey + ".credential_expires_on" }</code>. MMHotline reminds administrators 30 days and 7 days before the token expires. To renew the token, make a new Codex access token on ChatGPT's Access tokens page, put it in <code>{ settingsKey + ".credential" }</code> and its end date in <code>{ settingsKey + ".credential_expires_on" }</code>, and apply the settings file.</p>
+	} else if setup.CredentialExpiresAt != nil {
+		<p>The subscription token expires at { frame.Clock(*setup.CredentialExpiresAt) }, a year after the token applied. MMHotline reminds administrators 30 days and 7 days before the token expires. To renew the token, run <code>claude setup-token</code>, put the new token in <code>{ settingsKey + ".credential" }</code>, and apply the settings file.</p>
+	}
+	<p>MMHotline checks the sign-in once a day with the setup test's prompt, unless a run of the { noun } succeeded in the last 24 hours, and tells administrators when the sign-in fails and when the sign-in works again.</p>
+	if signInCheck != nil && signInCheck.State == "running" {
+		<p role="status">Checking the sign-in now: started by { signInCheck.StartedBy } at { frame.Clock(signInCheck.StartedAt) }.</p>
+	}
+	<form method="post" action="/triage-agent">
+		<input type="hidden" name="csrf" value={ csrf }/><input type="hidden" name="action" value={ action }/><button class="btn">Check the sign-in now</button>
+	</form>
+}
+
+// setupTestSteps lists the steps of a setup test run.
+templ setupTestSteps(frame pageFrame, steps []TriageAgentRunStep) {
+	<ol>
+		for _, step := range steps {
+			<li>
+				<p>{ frame.Clock(step.OccurredAt) } · { setupTestStepKindLabel(step.Kind) }</p>
+				<pre>{ step.Text }</pre>
+			</li>
+		}
+		if len(steps) == 0 {
+			<li>No steps yet.</li>
+		}
+	</ol>
+}
+
+func setupTestStepKindLabel(kind string) string {
+	switch kind {
+	case "command":
+		return "Command"
+	case "message":
+		return "Message"
+	case "tool":
+		return "Tool use"
+	}
+	return "Agent step"
+}
+
+func reviewRunStateLabel(state string) string {
+	switch state {
+	case "finished":
+		return "Finished"
+	case "running":
+		return "Running"
+	case "failed":
+		return "Failed"
+	}
+	return "Stopped"
+}
+
+// reviewRunTimes says who started a review run and when it started and
+// ended. A commit review run also names its run identifier.
+templ reviewRunTimes(frame pageFrame, run *ReviewRun, withRunID bool) {
+	if withRunID && run.EndedAt != nil {
+		<p>Run <code>{ run.RunID }</code>, started by { run.StartedBy } at { frame.Clock(run.StartedAt) }, ended at { frame.Clock(*run.EndedAt) }.</p>
+	} else if withRunID {
+		<p>Run <code>{ run.RunID }</code>, started by { run.StartedBy } at { frame.Clock(run.StartedAt) }.</p>
+	} else if run.EndedAt != nil {
+		<p>Started by { run.StartedBy } at { frame.Clock(run.StartedAt) }, ended at { frame.Clock(*run.EndedAt) }.</p>
+	} else {
+		<p>Started by { run.StartedBy } at { frame.Clock(run.StartedAt) }.</p>
+	}
+}
+
+// reviewRunFailureReason gives a review run's failure reason, as an error
+// when the run failed.
+templ reviewRunFailureReason(run *ReviewRun) {
+	if run.FailureReason != "" {
+		<p
+			if run.State == "failed" {
+				class="form-error"
+			}
+		>{ run.FailureReason }</p>
+	}
+}
+
