@@ -3319,7 +3319,7 @@ Unrecognized task.
 | Kind of action | ID | Why |
 | --- | --- | --- |
 | Start or restart a service | `start_or_restart_a_service` | Starting a stopped service is the most common fix. `start_at_boot`, `masked`, and `refresh` change more than the service start requested by the task. MMX's `systemd_service` has no `restarted` state; the marker file keeps a rerun of the playbook from restarting the service again |
-| Free disk space | `free_disk_space` | Free disk space tasks remove old logs, downloaded packages, and images no container uses. Old files elsewhere, such as a database's, can be the data itself. MMX refuses a directory with a symlink in its path and never crosses into another filesystem below the directory, but a directory under `/var/log` could itself be a mount point of other data, so only `/var/log` acts without a person |
+| Free disk space | `free_disk_space` | Free disk space tasks remove old logs, downloaded packages, and images no container uses. Old files elsewhere, such as a database's, can be the data itself. MMX refuses a directory with a symlink in its path and never crosses into another filesystem below the directory, but a directory under `/var/log` could itself be a mount point of other data, so only `/var/log` acts without a person. Inside `/var/log`, only the files logrotate leaves behind count as old logs: the age must be at least one day and every pattern must be one of `*.gz`, `*.xz`, `*.zst`, `*.bz2`, `*.[0-9]`, `*.[0-9].gz`, and `*.old`. Deleting a live log that a process still has open frees no space, and fresh logs are an incident's evidence. This is not a hard limit: any other `delete_old_files` task is an unrecognized task, and a person can approve it |
 | Pull a container image again | `pull_a_container_image_again` | Fetches the image a tag names now, such as after a broken pull. Podman logs in to the registry that `image` names, and the playbook writes `image`. A registry login from the vault would go to any registry the agent names, so `image`, `registry_username`, and `registry_password` must be known before the run |
 | Reboot a server | `reboot_a_server` | The `reboot` module's two check commands, `run_only_if_this_command_succeeds` and `skip_if_this_command_succeeds`, are programs, which a person who approves a reboot does not expect |
 | Block a network range | `block_a_network_range` | Adds blocks and keeps every other rule. A rule with a port, or an allow rule, changes which services are reachable. Blocking an inventory group can block the team's own servers, so `from_inventory_group` is excluded from Block a network range |
@@ -3379,7 +3379,7 @@ Free disk space (free_disk_space):
     - apt_downloaded_package_files:
         state: absent
 
-- delete_old_files. Arguments: directory, name_patterns, older_than, include_subdirectories. Conditions: delete_old_files.directory must be /var/log itself (include_subdirectories: true also selects log directories below /var/log). Example:
+- delete_old_files. Arguments: directory, name_patterns, older_than, include_subdirectories. Conditions: delete_old_files.directory must be /var/log itself (include_subdirectories: true also selects log directories below /var/log); delete_old_files.older_than must be at least 1d: a fresh log is the evidence of an incident; delete_old_files.name_patterns must be only rotated-log patterns (*.gz, *.xz, *.zst, *.bz2, *.[0-9], *.[0-9].gz, *.old): a live log that a process has open frees no space when deleted. Example:
 
     - delete_old_files:
         directory: /var/log

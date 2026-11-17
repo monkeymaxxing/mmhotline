@@ -95,6 +95,11 @@ var sampleOneOffs = []struct {
  {"field":"http.headers","value":{"Accept":"application/json"},"status":"resolved"},
  {"field":"http.method","value":"GET","status":"literal"},
  {"field":"http.url","value":"https://api.cloudflare.com/client/v4/zones/023e105f4ecef8ad9ca31a8372d0c353/dns_records","status":"resolved"}]}`}, ChangeDNSRecords},
+	{"delete every rotated-log pattern older than 36 hours", []string{`{"path":"free_disk_space/task_1","node":"app002","action":"delete_old_files","module_kind":"core","status":"ready","arguments":[
+ {"field":"delete_old_files.directory","value":"/var/log","status":"resolved"},
+ {"field":"delete_old_files.include_subdirectories","value":false,"status":"literal"},
+ {"field":"delete_old_files.name_patterns","value":["*.gz","*.xz","*.zst","*.bz2","*.[0-9]","*.[0-9].gz","*.old"],"status":"literal"},
+ {"field":"delete_old_files.older_than","value":"36h","status":"literal"}]}`}, FreeDiskSpace},
 }
 
 func TestSampleOneOffsAreRecognized(t *testing.T) {
@@ -130,6 +135,14 @@ func TestNearMissesAreUnrecognizedTasks(t *testing.T) {
 	deleteOldFiles := func(directory string) string {
 		return `{"path":"fix/task_1","action":"delete_old_files","module_kind":"core","status":"ready","arguments":[{"field":"delete_old_files.directory","value":"` + directory + `","status":"resolved"},{"field":"delete_old_files.older_than","value":"7d","status":"literal"}]}`
 	}
+	deleteLogs := func(olderThan, patterns string) string {
+		return `{"path":"fix/task_1","action":"delete_old_files","module_kind":"core","status":"ready","arguments":[{"field":"delete_old_files.directory","value":"/var/log","status":"resolved"},{"field":"delete_old_files.name_patterns","value":` + patterns + `,"status":"literal"},{"field":"delete_old_files.older_than","value":"` + olderThan + `","status":"literal"}]}`
+	}
+	const (
+		// Written out, not read from the table, so a run before the fix fails.
+		atLeastADay     = "delete_old_files.older_than must be at least 1d: a fresh log is the evidence of an incident"
+		rotatedLogsOnly = "delete_old_files.name_patterns must be only rotated-log patterns (*.gz, *.xz, *.zst, *.bz2, *.[0-9], *.[0-9].gz, *.old): a live log that a process has open frees no space when deleted"
+	)
 	firewall := func(rule string) string {
 		return `{"path":"fix/task_1","action":"ufw","module_kind":"core","status":"ready","arguments":[{"field":"ufw.incoming_rules","value":[` + rule + `],"status":"literal"},{"field":"ufw.incoming_rules_not_listed","value":"keep","status":"literal"}]}`
 	}
@@ -162,6 +175,13 @@ func TestNearMissesAreUnrecognizedTasks(t *testing.T) {
 		{"ufw that removes the listed rules", `{"path":"fix/task_1","action":"ufw","module_kind":"core","status":"ready","arguments":[{"field":"ufw.incoming_rules","value":[{"action":"deny","from":"203.0.113.0/24","protocol":"tcp_and_udp"}],"status":"literal"},{"field":"ufw.incoming_rules_not_listed","value":"keep","status":"literal"},{"field":"ufw.state","value":"absent","status":"literal"}]}`, "ufw.state must be present or left out"},
 		{"ufw rule without a from", firewall(`{"action":"deny","incoming_interface":"eth0","protocol":"tcp_and_udp"}`), blocksOnly},
 		{"ufw whose rules are known only during the run", `{"path":"fix/task_1","action":"ufw","module_kind":"core","status":"ready","arguments":[{"field":"ufw.incoming_rules","value":null,"reference":"{{ .vars.blocked }}","status":"runtime"},{"field":"ufw.incoming_rules_not_listed","value":"keep","status":"literal"}]}`, blocksOnly},
+		{"delete_old_files in /var/log of files under a day old", deleteLogs("12h", `["*.gz"]`), atLeastADay},
+		{"delete_old_files in /var/log of files under a day old, written in minutes", deleteLogs("90m", `["*.gz"]`), atLeastADay},
+		{"delete_old_files in /var/log with an age that is no duration", deleteLogs("soon", `["*.gz"]`), atLeastADay},
+		{"delete_old_files in /var/log of live logs", deleteLogs("7d", `["*.log"]`), rotatedLogsOnly},
+		{"delete_old_files in /var/log of every file", deleteLogs("7d", `["*"]`), rotatedLogsOnly},
+		{"delete_old_files in /var/log of rotated and live logs together", deleteLogs("7d", `["*.gz","*.log"]`), rotatedLogsOnly},
+		{"delete_old_files in /var/log with no patterns", deleteLogs("7d", `[]`), rotatedLogsOnly},
 		{"delete_old_files in a database's directory", deleteOldFiles("/var/lib/postgresql/16/main"), varLogOnly},
 		{"delete_old_files out of /var/log with ..", deleteOldFiles("/var/log/../lib"), varLogOnly},
 		{"delete_old_files in a directory named like /var/log", deleteOldFiles("/var/logs"), varLogOnly},

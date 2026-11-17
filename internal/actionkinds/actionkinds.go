@@ -9,9 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Kind is one kind of action a node task can be.
@@ -213,13 +216,40 @@ var patterns = []pattern{
 		examples: []string{`- apt_downloaded_package_files:
     state: absent`}},
 	// Old files elsewhere, such as a database's, can be the data itself.
+	// Within /var/log, only the files logrotate leaves behind are old logs:
+	// deleting a live log that a process still has open frees no space (the
+	// process keeps writing to the deleted file), and fresh logs are the
+	// evidence of an incident. So the age must be at least a day and every
+	// pattern must name rotated logs. Any other delete is not refused, only
+	// left to a person to approve.
 	{module: "delete_old_files", kind: FreeDiskSpace, moduleKind: "core",
 		arguments: []string{"directory", "name_patterns", "older_than", "include_subdirectories"},
-		conditions: []condition{{"delete_old_files.directory must be /var/log itself (include_subdirectories: true also selects log directories below /var/log)", func(task explainedTask) bool {
-			directory, ok := task.read("directory")
-			text, isText := directory.(string)
-			return ok && isText && isVarLog(text)
-		}}},
+		conditions: []condition{
+			{"delete_old_files.directory must be /var/log itself (include_subdirectories: true also selects log directories below /var/log)", func(task explainedTask) bool {
+				directory, ok := task.read("directory")
+				text, isText := directory.(string)
+				return ok && isText && isVarLog(text)
+			}},
+			{"delete_old_files.older_than must be at least 1d: a fresh log is the evidence of an incident", func(task explainedTask) bool {
+				olderThan, ok := task.read("older_than")
+				text, isText := olderThan.(string)
+				return ok && isText && atLeastOneDay(text)
+			}},
+			{"delete_old_files.name_patterns must be only rotated-log patterns (" + strings.Join(rotatedLogPatterns, ", ") + "): a live log that a process has open frees no space when deleted", func(task explainedTask) bool {
+				patterns, ok := task.read("name_patterns")
+				list, isList := patterns.([]any)
+				if !ok || !isList || len(list) == 0 {
+					return false
+				}
+				for _, item := range list {
+					text, isText := item.(string)
+					if !isText || !slices.Contains(rotatedLogPatterns, text) {
+						return false
+					}
+				}
+				return true
+			}},
+		},
 		examples: []string{`- delete_old_files:
     directory: /var/log
     name_patterns: ["*.gz", "*.[0-9]"]
@@ -552,6 +582,29 @@ func setsNoHostHeader(task explainedTask) bool {
 		}
 	}
 	return true
+}
+
+// rotatedLogPatterns are the file names logrotate leaves behind: compressed,
+// numbered, and ".old" copies, never the live log.
+var rotatedLogPatterns = []string{"*.gz", "*.xz", "*.zst", "*.bz2", "*.[0-9]", "*.[0-9].gz", "*.old"}
+
+// atLeastOneDay reads older_than as MMX does: a count of days such as 7d, or a
+// Go duration such as 36h or 90m.
+func atLeastOneDay(text string) bool {
+	var duration time.Duration
+	if days, isDays := strings.CutSuffix(text, "d"); isDays {
+		count, err := strconv.ParseInt(days, 10, 64)
+		if err != nil || count <= 0 || count > math.MaxInt64/int64(24*time.Hour) {
+			return false
+		}
+		duration = time.Duration(count) * 24 * time.Hour
+	} else {
+		var err error
+		if duration, err = time.ParseDuration(text); err != nil {
+			return false
+		}
+	}
+	return duration >= 24*time.Hour
 }
 
 // isVarLog accepts exactly /var/log. MMX's delete_old_files refuses a
