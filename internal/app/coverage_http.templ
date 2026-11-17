@@ -1,0 +1,339 @@
+package app
+
+import "strconv"
+
+// coverageHeading is the on-call page's heading: the title and the line that
+// says when the schedule hands over.
+templ coverageHeading(title string, view coveragePageView) {
+	<div class="head oncall-head">
+		<div>
+			<h1>{ title }</h1>
+			<p class="meta">{ view.Rhythm }</p>
+		</div>
+	</div>
+}
+
+// oncallStatus is a person's state, in the team list and in "Your
+// availability".
+templ oncallStatus(member teamMemberView) {
+	if member.Status == "on_call" {
+		<span class="tag work">On call</span>
+	} else if member.Status == "backup" {
+		<span class="tag">Backup</span>
+	} else if member.Status == "unavailable" {
+		<span class="tag">Unavailable until { member.Until }</span>
+	} else {
+		<span class="tag ok">Available</span>
+	}
+}
+
+// The parts below, written right after text or an element, each begin with
+// the space they need, so nothing extra shows when they are empty.
+
+templ youTag(you bool) {
+	if you {
+		{ " " }<span class="tag work nodot">You</span>
+	}
+}
+
+templ youMark(you bool) {
+	if you {
+		{ " " }<span class="faint">(you)</span>
+	}
+}
+
+templ wakeStepLead(lead string) {
+	if lead != "" {
+		<span class="then">{ lead }</span>
+	}
+}
+
+templ wakeStepPeople(people []personChip) {
+	for _, person := range people {
+		<span class="who"><span class="avatar" aria-hidden="true">{ person.Initial }</span>{ person.Name }</span>
+	}
+}
+
+templ wakeSteps(steps []wakeStepView) {
+	for _, step := range steps {
+		@wakeStepLead(step.Lead)@wakeStepPeople(step.People)
+	}
+}
+
+templ wakeSkipped(skipped []personChip) {
+	for _, person := range skipped {
+		<span class="who skipped"><span class="avatar gray" aria-hidden="true">{ person.Initial }</span>{ person.Name } ({ person.Note })</span>
+	}
+}
+
+// coverageBody is the on-call page. The "Your availability" panel stays on
+// one line up to its form's revision field: the stand-in guide in
+// docs/changing-mmhotline/testing.md reads the first revision after that heading's line.
+templ coverageBody(view coveragePageView) {
+	<div class="stack oncall">
+		if view.Error != "" {
+			<p class="oncall-note sos" role="alert">{ view.Error }</p>
+		}
+		<section class="panel oncall-now" id="on-call-now" data-live>
+			<div class="cols">
+				<div class="oncall-person">
+					if view.OnCallNow.Initial != "" {
+						<span class="avatar big" aria-hidden="true">{ view.OnCallNow.Initial }</span>
+					}
+					<div>
+						<h2 class="oncall-label">On call now</h2>
+						<p class="oncall-name">{ view.OnCallNow.Name }@youTag(view.OnCallNow.You)</p>
+						if view.OnCallNow.Until != "" {
+							<p class="muted small">{ view.OnCallNow.Until }</p>
+						}
+						if view.OnCallNow.Why != "" {
+							<p class="faint small">{ view.OnCallNow.Why }</p>
+						}
+					</div>
+				</div>
+				<div class="oncall-order">
+					<h2 class="oncall-label">Who an SOS wakes, in order</h2>
+					<div class="chain">@wakeSteps(view.WakeOrder.Steps)@wakeSkipped(view.WakeOrder.Skipped)</div>
+					<p class="faint small">{ view.WakeOrder.After }</p>
+					if view.WakeOrder.TriageAgentOn != "" {
+						<p class="faint small">{ view.WakeOrder.TriageAgentOn }</p>
+					}
+				</div>
+			</div>
+			if view.OnCallNow.Muted != "" {
+				<p class="oncall-note warn">{ view.OnCallNow.Muted }</p>
+			}
+		</section>
+		if view.Coming.Title != "" {
+			<section class="panel quiet" id="coming-on-call" data-live>
+				<div class="panel-head"><h2>{ view.Coming.Title }</h2></div>
+				<div class="panel-body">
+					if len(view.Coming.Periods) > 0 {
+						<div class="weeks">
+							for _, period := range view.Coming.Periods {
+								<div class={ "week", templ.KV("now", period.Now) }>{ period.Label }<b>{ period.Name }</b></div>
+							}
+						</div>
+					}
+					if view.Coming.Problem != "" {
+						<p class="oncall-note warn">{ view.Coming.Problem }</p>
+					}
+					<p class="faint small">{ view.Coming.Note }</p>
+				</div>
+			</section>
+		}
+		<div class="grid3">
+			<section class="panel" id="your-availability">
+				<div class="panel-head">
+					<h2>Your availability</h2>
+					@oncallStatus(view.Availability.Status)
+				</div>
+				<div class="panel-body">
+					<p>
+						if view.Availability.Unavailable {
+							You are unavailable until { view.Availability.Until }.
+						} else {
+							You are available.
+						}
+					</p>
+					<p class="small muted">{ view.Availability.WhileUnavailable }</p>
+					if view.Availability.Unavailable {
+						<form method="post" action="/on-call">
+							<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="revision" value={ strconv.FormatInt(view.Availability.Revision, 10) }/><input type="hidden" name="end" value="1"/><button class="btn primary block" name="action" value="unavailable">I'm available again</button>
+						</form>
+					}
+					<form method="post" action="/on-call">
+						<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="revision" value={ strconv.FormatInt(view.Availability.Revision, 10) }/><label class="field">For how long<input name="duration" value={ view.Duration } aria-describedby="unavailable-duration-help"/></label>
+						<p class="faint small" id="unavailable-duration-help">For example 30m, 2h, or 3d, up to 30 days.</p>
+						<button class="btn block" name="action" value="unavailable">
+							if view.Availability.Unavailable {
+								Change how long
+							} else {
+								Set yourself unavailable
+							}
+						</button>
+					</form>
+				</div>
+			</section>
+			<section class="panel">
+				<div class="panel-head">
+					<h2>
+						if view.Taking.ViewerIsOnCall {
+							Hand over early
+						} else {
+							Take on call
+						}
+					</h2>
+				</div>
+				<div class="panel-body">
+					if view.Taking.YouAreOnCall != "" {
+						<p class="small muted">{ view.Taking.YouAreOnCall }</p>
+						<p class="small muted">To hand over sooner, ask the next responder to sign in and choose Take on call on the On call page. MMHotline then wakes the next responder first, until the time chosen by the next responder.</p>
+					}
+					if view.Taking.Holder != "" {
+						<p class="small muted">{ view.Taking.Holder }</p>
+					}
+					if view.Taking.CanTake {
+						<p class="small muted">Taking on call makes MMHotline wake you first for a new SOS, until the time you choose.</p>
+						<form method="post" action="/on-call">
+							<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="action" value="claim_on_call"/><input type="hidden" name="revision" value={ strconv.FormatInt(view.Taking.Revision, 10) }/><input type="hidden" name="take_from_member_id" value={ view.Taking.TakeFromMemberID }/><label class="field">For how long<input name="duration" value={ view.Duration } aria-describedby="take-on-call-duration-help"/></label>
+							<p class="faint small" id="take-on-call-duration-help">For example 30m, 2h, or 3d, up to 30 days.</p>
+							<button class="btn block">
+								if view.Taking.TakeFromName != "" {
+									Take on call from { view.Taking.TakeFromName }
+								} else {
+									Take on call
+								}
+							</button>
+						</form>
+					} else if !view.Taking.ViewerIsOnCall {
+						<p class="small muted">Make yourself available before taking on call.</p>
+					}
+					if view.Taking.CanGiveBack {
+						<form method="post" action="/on-call">
+							<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="action" value="end_on_call_claim"/><input type="hidden" name="revision" value={ strconv.FormatInt(view.Taking.Revision, 10) }/><button class="btn block">Give on call back to the schedule</button>
+						</form>
+					}
+				</div>
+			</section>
+			<section class="panel">
+				<div class="panel-head">
+					<h2>Mute the team</h2>
+					if view.TeamMute.Active {
+						<span class="tag warn">Muted until { view.MutedUntil }</span>
+					} else {
+						<span class="tag">Not muted</span>
+					}
+				</div>
+				<div class="panel-body">
+					<p class="small muted">For planned work. While the team is muted, MMHotline sends no Pushover notifications or automated voice calls. Other contact methods send only if “Send even when the team is muted” is on.</p>
+					if view.Admin {
+						<form method="post" action="/on-call">
+							<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="action" value="team_mute"/><input type="hidden" name="revision" value={ strconv.FormatInt(view.TeamMute.Revision, 10) }/><label class="field">For how long<input name="duration" value={ view.Duration } aria-describedby="mute-duration-help"/></label>
+							<p class="faint small" id="mute-duration-help">For example 30m, 2h, or 3d, up to 30 days.</p>
+							if view.TeamMute.Active {
+								<button class="btn block">Mute the team</button><button class="btn primary block" name="end" value="1">Unmute the team</button>
+							} else {
+								<button class="btn block">Mute the team</button>
+							}
+						</form>
+					} else {
+						<p class="small faint">Only an administrator can mute the team.</p>
+					}
+				</div>
+			</section>
+		</div>
+		<section class="panel" id="team-now" data-live>
+			<div class="panel-head">
+				<h2>The team</h2>
+				<a href="/contact-methods" class="small">Your contact methods</a>
+			</div>
+			<ul class="oncall-team">
+				for _, member := range view.Team {
+					<li>
+						<span class={ "avatar", templ.KV("gray", member.Status == "unavailable") } aria-hidden="true">{ member.Initial }</span><span><strong>{ member.Name }</strong>@youMark(member.You)</span><span>@oncallStatus(member)</span><span class={ "small", templ.KV("muted", member.Wakes != ""), templ.KV("oncall-warn", member.Wakes == "") }>
+							if member.Wakes != "" {
+								Woken by { member.Wakes }
+							} else if member.You {
+								Nothing set up can wake you at night
+							} else {
+								Nothing set up can wake them at night
+							}
+						</span><span class="small faint">{ member.Role }</span>
+					</li>
+				}
+			</ul>
+			<p class="panel-foot">To be woken at night, a person needs a Pushover notification with Critical Alerts on, or an automated voice call.</p>
+		</section>
+		<div class="folds">
+			if len(view.Changes) > 0 {
+				<details class="more">
+					<summary><span>Recent changes <span class="faint">{ len(view.Changes) }</span></span></summary>
+					<div class="body">
+						<ol class="timeline oncall-changes">
+							for _, change := range view.Changes {
+								<li><time datetime={ change.DateTime }>{ change.At }</time><span class="dot"></span><div>{ change.Text }</div></li>
+							}
+						</ol>
+					</div>
+				</details>
+			}
+			if view.Schedule.Code != "" {
+				<details class="more">
+					<summary>The schedule code</summary>
+					<div class="body">
+						<pre><code>{ view.Schedule.Code }</code></pre>
+						if len(view.Schedule.TestCases) > 0 {
+							<h3>Test cases</h3>
+							<div class="scroll">
+								<table class="table">
+									<thead><tr><th scope="col">When, in the schedule's time zone</th><th scope="col">Expected person on call</th><th scope="col">Expected backup</th></tr></thead>
+									<tbody>
+										for _, testCase := range view.Schedule.TestCases {
+											<tr><td>{ testCase.When }</td><td>{ testCase.ExpectedPrimary }</td><td>{ testCase.ExpectedBackup }</td></tr>
+										}
+									</tbody>
+								</table>
+							</div>
+						}
+						if len(view.Schedule.StoredShifts) > 0 {
+							<h3>Stored shifts</h3>
+							<div class="scroll">
+								<table class="table">
+									<thead><tr><th scope="col">When</th><th scope="col">On call</th><th scope="col">Backup</th></tr></thead>
+									<tbody>
+										for _, shift := range view.Schedule.StoredShifts {
+											<tr><td>{ shift.When }</td><td>{ shift.Primary }</td><td>{ shift.Backup }</td></tr>
+										}
+									</tbody>
+								</table>
+							</div>
+						}
+						if len(view.Schedule.Versions) > 0 {
+							<h3>Saved versions of the code</h3>
+							<ul class="oncall-versions">
+								for _, version := range view.Schedule.Versions {
+									<li>Saved { version }</li>
+								}
+							</ul>
+						}
+					</div>
+				</details>
+			}
+			<details class="more">
+				<summary>Where the schedule is set</summary>
+				<div class="body">
+					@settingsFileNoticeLine(view.settingsFileNoticeView) {
+						<code>on_call_schedule</code>
+					}
+					if view.Schedule.Kind != "" {
+						<dl class="kv">
+							<dt>Schedule type</dt>
+							<dd>{ scheduleTypeLabel(view.Schedule.Kind) }</dd>
+							<dt>Time zone</dt>
+							<dd>{ view.Schedule.TimeZone }</dd>
+							if view.Schedule.Handover != "" {
+								<dt>Handover</dt>
+								<dd>{ view.Schedule.Handover }</dd>
+							}
+							if view.Schedule.FirstStartDate != "" {
+								<dt>First week starts</dt>
+								<dd>{ view.Schedule.FirstStartDate }</dd>
+							}
+							for _, slot := range view.Schedule.Slots {
+								<dt>{ slot.Label }</dt>
+								<dd>{ slot.Name }</dd>
+							}
+							<dt>Backup</dt>
+							<dd>{ view.Schedule.Backup }</dd>
+							<dt>Time to claim an SOS</dt>
+							<dd>{ view.EscalateIfUnclaimedAfter }, then MMHotline wakes the next person</dd>
+						</dl>
+					} else {
+						<p class="small muted">No schedule is set yet, so an SOS wakes everyone who is available.</p>
+					}
+				</div>
+			</details>
+		</div>
+	</div>
+}
