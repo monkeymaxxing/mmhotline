@@ -197,7 +197,9 @@ inventory, and waits for MMHotline's answer. The request-playbook-run command
 works only inside a triage agent run.
 Commit the playbook first. The request includes your commits, which MMHotline
 pushes when the commits change nothing outside one_time_playbooks/ and
-triage_agent_notes/. MMHotline then checks whether the playbook may run.
+triage_agent_notes/. A change to a one-time playbook that someone else
+changed last, including deleting or renaming it, waits for a person: write a
+new playbook instead. MMHotline then checks whether the playbook may run.
 When allowed, MMHotline runs the playbook and returns the end of the run's output.
 
 FILE holds your diagnosis in Markdown, at most 64 KiB: what you found, the

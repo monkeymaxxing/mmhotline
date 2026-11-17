@@ -99,7 +99,7 @@ func FuzzAgentCommitsBundle(f *testing.F) {
 			bundle[index] = damageTo
 		}
 
-		result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, bundle, base, originIsTrusted)
+		result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, bundle, base, originIsTrusted, r.owned)
 		main := r.originMain(t)
 		pushed := err == nil && result.Outcome == Pushed
 		switch {

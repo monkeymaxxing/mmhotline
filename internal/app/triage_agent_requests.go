@@ -180,7 +180,7 @@ func (a *App) decideTriageAgentRequest(run *triageAgentActiveRun, requestID stri
 	}
 	var answer triageagent.Answer
 	if len(bundle) > 0 {
-		commits, err := systemsrepository.ReceiveAgentCommits(run.ctx, filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), bundle, base, a.trustedCommit(nil))
+		commits, err := systemsrepository.ReceiveAgentCommits(run.ctx, filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), bundle, base, a.trustedCommit(nil), a.triageAgentsOwnCommits(run.ctx))
 		outcome, reason := receivedAgentCommitsOutcome(commits, err)
 		if err := a.Store.WithTransaction(run.ctx, func(tx *sql.Tx) error {
 			return insertTriageAgentCommits(tx, run.id, requestID, base, commits, outcome, reason)

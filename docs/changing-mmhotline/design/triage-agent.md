@@ -809,7 +809,58 @@ a program, and a submodule brings in another repository. A path with a `..` or
 `.git` part also waits. `git add` never makes a path with a `..` or `.git`
 part, but a crafted commit can. A `.git` part breaks every checkout of the
 repository. Deleting files
-inside `one_time_playbooks/` and `triage_agent_notes/` is fine.
+inside `triage_agent_notes/` is fine.
+
+#### One-time playbooks someone else changed last
+
+The agent may change, delete, or rename only the one-time playbooks it
+wrote and changed last. A change, deletion, or rename of any other file in
+`one_time_playbooks/` waits for a person, with the reason "is a one-time
+playbook that someone other than the triage agent changed last". New files
+are fine, and so is a file the agent added earlier in the same run.
+
+Reason: inside MMHotline, an edited playbook is already safe, because a run
+happens only at the commit MMHotline judged, and any change makes an
+approval stale. But a person who read a playbook may later run it by hand
+with `mmx run` from a desk, and must run what the person read. A file the
+agent wrote and a person then changed counts as the person's.
+
+MMHotline judges each commit of the agent's against each of its parents.
+For every file in `one_time_playbooks/` that the commit changes, deletes,
+or renames away, and that the parent holds, MMHotline finds the last commit
+of the file at the parent with `git rev-list --max-count=1 PARENT -- PATH`,
+and asks whether that commit is the agent's own. It judges each parent, not
+only the run's base: the agent could fetch a person's newer commit from
+origin, build on it, and put both in its bundle. The merge with newer
+commits on origin is judged the same way against origin's branch tip, so a
+person's edit on origin during the run is never overwritten without a
+person.
+
+How MMHotline knows the agent's own commits depends on
+[`triage_agent.trusted_commits`](#checking-commits-before-mmx-and-triage-agent-runs):
+
+- **`signed_by_a_trusted_key_or_reviewed`:** a commit with a good signature
+  by `triage_agent.commit_signing_public_key`. Only the agent's key makes
+  that signature, and a person's commit cannot be changed to carry it
+  without becoming another commit.
+- **`every_commit_on_origin`:** no signature is read. MMHotline records each
+  commit of the agent's it pushed that origin lacked before, as the ref
+  `refs/mmhotline/pushed-triage-agent-commits/COMMIT_ID` in MMHotline's
+  copy, which the agent cannot write and which is never pushed. A commit of
+  the bundle that MMHotline has not pushed yet counts as the agent's while
+  origin lacks it. A commit origin already has, such as a person's commit
+  the agent fetched and put in its bundle, is not the agent's. A commit
+  name or email address the agent sets proves nothing, so MMHotline reads
+  neither. The record lives only in MMHotline's copy: after the copy is
+  cloned again, such as on a rebuilt server, the agent's earlier playbooks
+  count as someone else's and their changes wait for a person.
+
+Either way, MMHotline's merges and every commit MMHotline cannot place
+count as someone else's, so a doubtful change waits for a person. Without
+signatures, one case remains: a person's commit that origin's branch lacks,
+such as one on another branch the agent can read, counts as the agent's if
+the agent puts it in its bundle. `every_commit_on_origin` already requires
+that only keys holding root on every server can push to origin.
 
 Any other change waits for a person, and a person approves it on a page that is
 [planned](README.md#planned). Until then, MMHotline keeps such commits under a
@@ -920,8 +971,9 @@ nothing reads them, and the settings check refuses each one that is present.
 With the default value they stay required. The push filter, not signatures,
 limits the triage agent's own commits: a commit of the agent that changes
 anything outside `one_time_playbooks/` and `triage_agent_notes/`, such as
-`AGENTS.md`, is not pushed and stays under MMHotline's private ref for a
-person, with either value.
+`AGENTS.md`, or a one-time playbook someone else changed last, is not
+pushed and stays under MMHotline's private ref for a person, with either
+value.
 
 With the default value, the required setting `triage_agent.commit_signing_public_key` is one OpenSSH
 public key line, the public half of the SSH key the triage agent uses to sign
@@ -1353,7 +1405,8 @@ forward to the new trusted commit.
    commits that do not descend from the base. MMHotline lists every path
    that any commit after the base changes, with `git diff-tree -r
    --no-renames` for each commit, and pushes only when every listed change
-   is allowed.
+   is allowed, including the rule for
+   [one-time playbooks someone else changed last](#one-time-playbooks-someone-else-changed-last).
 5. When origin's branch already has the agent's commit, MMHotline pushes
    nothing. Every bundle of a run starts at the base, so the end of the run,
    or a later request, carries the commits an earlier request pushed, and they
@@ -1372,12 +1425,16 @@ forward to the new trusted commit.
    A conflict waits for a person. MMHotline then checks the merged files
    against origin's branch tip, with `git diff-tree -r --no-renames`, by the
    same rules as the agent's commits, and the merge waits for a person when
-   any change is not allowed. Git's merge follows a person's renames, so an
+   any change is not allowed. A one-time playbook whose last commit on origin
+   is not the agent's own, such as one a person changed during the run, is
+   judged by its last commit at origin's tip. Git's merge follows a person's renames, so an
    agent's edit to a file that a person moved out of the agent folders would
    otherwise land at the new path. When MMHotline's
    copy sets `commit.gpgsign`, MMHotline signs the merge with that copy's
    signing key, because the server applies only signed commits; a merge it
-   cannot sign waits for a person. The push is a plain push, never forced, so
+   cannot sign waits for a person. After a push, MMHotline records the
+   agent's commits that origin lacked before, for `every_commit_on_origin`.
+   The push is a plain push, never forced, so
    Git refuses it when origin moved again; MMHotline then fetches and merges
    again, three tries in all, before the commits wait for a person.
 6. After a push, MMHotline removes the private ref. MMHotline fast-forwards

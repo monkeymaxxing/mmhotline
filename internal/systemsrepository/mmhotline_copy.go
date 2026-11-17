@@ -13,7 +13,37 @@ import (
 
 // agentFolders are the only folders the agent's commits may change without a
 // person: its dated one-time MMX playbooks and one note per triage session.
-var agentFolders = []string{"one_time_playbooks/", "triage_agent_notes/"}
+var agentFolders = []string{oneTimePlaybooks, "triage_agent_notes/"}
+
+// oneTimePlaybooks holds the agent's playbooks and a person's too. The agent
+// may change, delete, or rename only the files it wrote and changed last.
+const oneTimePlaybooks = "one_time_playbooks/"
+
+// othersPlaybookReason is why the agent's change to a one-time playbook
+// waits: a person who read the playbook may later run it by hand.
+const othersPlaybookReason = "is a one-time playbook that someone other than the triage agent changed last"
+
+// pushedAgentCommitRefs records, in MMHotline's copy, each commit of the
+// agent's that MMHotline pushed and origin lacked before: one ref per commit,
+// named by its ID. The agent cannot write MMHotline's copy, and the refs are
+// never pushed.
+const pushedAgentCommitRefs = "refs/mmhotline/pushed-triage-agent-commits/"
+
+// TriageAgentsOwnCommits says how the push filter tells the triage agent's
+// own commits from everyone else's. A wrong yes would let the agent change a
+// playbook a person wrote; a wrong no only makes a change wait for a person.
+// The zero value counts no commit as the agent's.
+type TriageAgentsOwnCommits struct {
+	// SigningKey is the triage agent's commit signing public key line: the
+	// agent's commits carry a good signature by it, which nobody else can make.
+	SigningKey string
+	// PushedByMMHotline, for settings that trust every commit on origin and
+	// read no signature, counts the commits MMHotline pushed from the
+	// agent's bundles that origin lacked, and the bundle's own commits that
+	// origin lacks. A commit of origin's that the agent put in its bundle is
+	// not the agent's.
+	PushedByMMHotline bool
+}
 
 // MMHotline's merge commits carry the identity configured in its copy, the
 // mmhotline user's, which the server's signature check may compare with the
@@ -121,9 +151,9 @@ func BundleThrough(ctx context.Context, directory, baseCommitID string) (bundle 
 //
 // An error means MMHotline could not finish, such as when origin cannot be
 // reached; the result still names the private ref once the commits are in it.
-func ReceiveAgentCommits(ctx context.Context, directory string, bundle []byte, baseCommitID string, trusted TrustedCommit) (result ReceivedAgentCommits, err error) {
+func ReceiveAgentCommits(ctx context.Context, directory string, bundle []byte, baseCommitID string, trusted TrustedCommit, owned TriageAgentsOwnCommits) (result ReceivedAgentCommits, err error) {
 	lockErr := withCopyLock(ctx, directory, CopyLockOptions{}, func() error {
-		result, err = receiveAgentCommits(ctx, directory, bundle, baseCommitID, trusted)
+		result, err = receiveAgentCommits(ctx, directory, bundle, baseCommitID, trusted, owned)
 		return nil
 	})
 	if lockErr != nil {
@@ -132,7 +162,7 @@ func ReceiveAgentCommits(ctx context.Context, directory string, bundle []byte, b
 	return result, err
 }
 
-func receiveAgentCommits(ctx context.Context, directory string, bundle []byte, baseCommitID string, trusted TrustedCommit) (ReceivedAgentCommits, error) {
+func receiveAgentCommits(ctx context.Context, directory string, bundle []byte, baseCommitID string, trusted TrustedCommit, owned TriageAgentsOwnCommits) (ReceivedAgentCommits, error) {
 	if err := checkCommitID(baseCommitID); err != nil {
 		return ReceivedAgentCommits{}, err
 	}
@@ -176,7 +206,13 @@ func receiveAgentCommits(ctx context.Context, directory string, bundle []byte, b
 	if err != nil {
 		return result, fmt.Errorf("list the agent's commits: %w", err)
 	}
+	branch, err := checkedOutBranch(ctx, directory)
+	if err != nil {
+		return result, err
+	}
+	isOwn := owned.checker(ctx, directory, branch, strings.Fields(commits))
 	var changes strings.Builder
+	var othersPlaybooks []PathThatWaits
 	for _, commit := range strings.Fields(commits) {
 		// diff-tree, unlike git diff, ignores diff settings in the configuration;
 		// --ignore-submodules=none shows every submodule change even so, and
@@ -186,20 +222,25 @@ func receiveAgentCommits(ctx context.Context, directory string, bundle []byte, b
 			return result, fmt.Errorf("list the agent's changes: %w", err)
 		}
 		changes.WriteString(changed)
+		// Each commit against each of its parents, not only against the
+		// base: a bundle can hold a commit of origin's newer than the base,
+		// such as a person's edit, and the agent's commit after it.
+		waiting, err := othersPlaybooksChangedBy(ctx, directory, commit, isOwn)
+		if err != nil {
+			return result, err
+		}
+		othersPlaybooks = appendNew(othersPlaybooks, waiting...)
 	}
 	if result.PathsThatWait, err = pathsThatWait(changes.String()); err != nil {
 		return result, err
 	}
+	result.PathsThatWait = appendNew(result.PathsThatWait, othersPlaybooks...)
 	if len(result.PathsThatWait) > 0 {
 		result.Outcome = WaitsForAPerson
 		result.Reason = "a person must approve these changes: " + pathsThatWaitText(result.PathsThatWait)
 		return result, nil
 	}
-	branch, err := checkedOutBranch(ctx, directory)
-	if err != nil {
-		return result, err
-	}
-	pushed, waitsBecause, err := pushAgentCommits(ctx, directory, branch, result.AgentCommitID)
+	pushed, waitsBecause, err := pushAgentCommits(ctx, directory, branch, result.AgentCommitID, isOwn)
 	if err != nil {
 		return result, err
 	}
@@ -239,6 +280,113 @@ func pathsThatWait(rawChanges string) ([]PathThatWaits, error) {
 		// Several commits can change one path the same way; list it once.
 		if reason := changeWaitsBecause(fields[index+1], record[1]); reason != "" && !slices.Contains(waiting, PathThatWaits{Path: fields[index+1], Reason: reason}) {
 			waiting = append(waiting, PathThatWaits{Path: fields[index+1], Reason: reason})
+		}
+	}
+	return waiting, nil
+}
+
+func appendNew(paths []PathThatWaits, more ...PathThatWaits) []PathThatWaits {
+	for _, path := range more {
+		if !slices.Contains(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+// checker answers whether a commit is the triage agent's own, as owned says,
+// and remembers each answer. bundleCommits are the commits of the agent's
+// bundle after the run's base; branch is origin's branch MMHotline pushes to.
+func (owned TriageAgentsOwnCommits) checker(ctx context.Context, directory, branch string, bundleCommits []string) func(commit string) (bool, error) {
+	answers := map[string]bool{}
+	originCommit := ""
+	return func(commit string) (bool, error) {
+		if answer, found := answers[commit]; found {
+			return answer, nil
+		}
+		answer, err := false, error(nil)
+		switch {
+		case owned.SigningKey != "":
+			answer, err = signedByKey(ctx, directory, commit, owned.SigningKey)
+		case owned.PushedByMMHotline:
+			_, refErr := runGit(ctx, directory, nil, "rev-parse", "--verify", "--quiet", pushedAgentCommitRefs+commit)
+			answer = refErr == nil
+			if !answer && slices.Contains(bundleCommits, commit) {
+				// The run's own commits, not pushed yet. A commit origin
+				// already has came from someone else, even in the bundle.
+				if originCommit == "" {
+					originCommit, err = fetchOrigin(ctx, directory, branch)
+				}
+				if err == nil {
+					var onOrigin bool
+					onOrigin, err = IsAncestor(ctx, directory, commit, originCommit)
+					answer = !onOrigin
+				}
+			}
+		}
+		if err != nil {
+			return false, fmt.Errorf("check whether commit %s is the triage agent's own: %w", commit, err)
+		}
+		answers[commit] = answer
+		return answer, nil
+	}
+}
+
+// othersPlaybooksChangedBy lists each one-time playbook that commit changes,
+// deletes, or renames away against any of its parents, where the parent's
+// last commit of the file is not the triage agent's own.
+func othersPlaybooksChangedBy(ctx context.Context, directory, commit string, isOwn func(string) (bool, error)) ([]PathThatWaits, error) {
+	parents, err := runGit(ctx, directory, nil, "rev-list", "--parents", "--max-count=1", commit)
+	if err != nil {
+		return nil, fmt.Errorf("list the parents of commit %s: %w", commit, err)
+	}
+	var waiting []PathThatWaits
+	for _, parent := range strings.Fields(parents)[1:] {
+		changes, err := runGit(ctx, directory, nil, "diff-tree", "-r", "-z", "--no-renames", "--ignore-submodules=none", parent, commit)
+		if err != nil {
+			return nil, fmt.Errorf("list the changes of commit %s: %w", commit, err)
+		}
+		found, err := othersPlaybooksThatWait(ctx, directory, parent, changes, isOwn)
+		if err != nil {
+			return nil, err
+		}
+		waiting = appendNew(waiting, found...)
+	}
+	return waiting, nil
+}
+
+// othersPlaybooksThatWait lists each path of rawChanges, git diff-tree -z
+// output of changes from commit before, that is a file in
+// one_time_playbooks/ at before whose last commit there is not the triage
+// agent's own. A file new at before, or one it lacks, is the agent's to add.
+func othersPlaybooksThatWait(ctx context.Context, directory, before, rawChanges string, isOwn func(string) (bool, error)) ([]PathThatWaits, error) {
+	paths, err := pathsOfChanges(rawChanges)
+	if err != nil {
+		return nil, err
+	}
+	var waiting []PathThatWaits
+	for _, path := range paths {
+		if !strings.HasPrefix(path, oneTimePlaybooks) {
+			continue
+		}
+		if _, err := runGit(ctx, directory, nil, "cat-file", "-e", before+":"+path); exitCode(err) > 0 {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		// rev-list is plumbing, and its history simplification gives the
+		// commit git log names for the file: a merge only when it differs
+		// from every parent there. The pathspec is taken as written.
+		last, err := runGit(ctx, directory, []string{"GIT_LITERAL_PATHSPECS=1"}, "rev-list", "--max-count=1", before, "--", path)
+		if err != nil {
+			return nil, fmt.Errorf("find the last commit of %s: %w", path, err)
+		}
+		own, err := isOwn(strings.TrimSpace(last))
+		if err != nil {
+			return nil, err
+		}
+		if !own {
+			waiting = append(waiting, PathThatWaits{Path: path, Reason: othersPlaybookReason})
 		}
 	}
 	return waiting, nil
@@ -286,7 +434,7 @@ func changeWaitsBecause(path, newMode string) string {
 // person's. The merge is built with merge-tree and commit-tree, which never
 // touch the working tree or run a hook. It returns the pushed commit, or why
 // the commits wait for a person.
-func pushAgentCommits(ctx context.Context, directory, branch, agentCommitID string) (pushed, waitsBecause string, err error) {
+func pushAgentCommits(ctx context.Context, directory, branch, agentCommitID string, isOwn func(string) (bool, error)) (pushed, waitsBecause string, err error) {
 	for range pushAttempts {
 		originCommit, err := fetchOrigin(ctx, directory, branch)
 		if err != nil {
@@ -331,7 +479,13 @@ func pushAgentCommits(ctx context.Context, directory, branch, agentCommitID stri
 			if err != nil {
 				return "", "", err
 			}
-			if len(waiting) > 0 {
+			// A person can change the agent's playbook on origin during the
+			// run, and the merge would then carry the agent's edit over it.
+			others, err := othersPlaybooksThatWait(ctx, directory, originCommit, changes, isOwn)
+			if err != nil {
+				return "", "", err
+			}
+			if waiting = appendNew(waiting, others...); len(waiting) > 0 {
 				return "", "a person must approve these changes, which the merge with newer commits on origin makes: " + pathsThatWaitText(waiting), nil
 			}
 			signing, err := signsCommits(ctx, directory)
@@ -359,6 +513,9 @@ func pushAgentCommits(ctx context.Context, directory, branch, agentCommitID stri
 		// A plain push: Git refuses it when origin moved since the fetch.
 		_, pushErr := runGit(ctx, directory, nil, "push", "--quiet", "origin", target+":refs/heads/"+branch)
 		if pushErr == nil {
+			// A record that fails to write only makes a later change of the
+			// agent's to these files wait for a person.
+			_ = recordPushedAgentCommits(ctx, directory, originCommit, agentCommitID)
 			return target, "", nil
 		}
 		// Only a push refused because origin moved is tried again.
@@ -368,6 +525,21 @@ func pushAgentCommits(ctx context.Context, directory, branch, agentCommitID stri
 		}
 	}
 	return "", fmt.Sprintf("origin's %s changed during each of %d tries to push the agent's commits", branch, pushAttempts), nil
+}
+
+// recordPushedAgentCommits records each commit of the agent's that the push
+// brought to origin: those after originCommit, which origin had before.
+func recordPushedAgentCommits(ctx context.Context, directory, originCommit, agentCommitID string) error {
+	commits, err := runGit(ctx, directory, nil, "rev-list", originCommit+".."+agentCommitID)
+	if err != nil {
+		return err
+	}
+	for _, commit := range strings.Fields(commits) {
+		if _, err := runGit(ctx, directory, nil, "update-ref", pushedAgentCommitRefs+commit, commit); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // signsCommits reads whether MMHotline's copy is set up to sign commits, with

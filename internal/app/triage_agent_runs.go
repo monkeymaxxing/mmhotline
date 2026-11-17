@@ -587,7 +587,7 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 	var commits systemsrepository.ReceivedAgentCommits
 	var commitsErr error
 	if received {
-		commits, commitsErr = systemsrepository.ReceiveAgentCommits(context.Background(), filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), event.AgentCommitsBundle, base, a.trustedCommit(nil))
+		commits, commitsErr = systemsrepository.ReceiveAgentCommits(context.Background(), filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), event.AgentCommitsBundle, base, a.trustedCommit(nil), a.triageAgentsOwnCommits(context.Background()))
 	}
 	event.Answer, event.Reason, event.SessionID = run.redact(event.Answer), run.redact(event.Reason), run.redact(event.SessionID)
 	testRun := testRunPurpose(run.purpose)

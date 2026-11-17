@@ -391,6 +391,21 @@ func (a *App) trustedCommit(check *CommitCheck) systemsrepository.TrustedCommit 
 	}
 }
 
+// triageAgentsOwnCommits says how the push filter knows the triage agent's
+// own commits: by the agent's signature, or, when the settings trust every
+// commit on origin and no signature is read, by MMHotline's record of the
+// commits it pushed for the agent. A failed read counts no commit as the
+// agent's, so the agent's changes to existing one-time playbooks wait.
+func (a *App) triageAgentsOwnCommits(ctx context.Context) systemsrepository.TriageAgentsOwnCommits {
+	every, err := trustsEveryCommitOnOrigin(ctx, a.Store.db)
+	if err != nil || every {
+		return systemsrepository.TriageAgentsOwnCommits{PushedByMMHotline: err == nil}
+	}
+	var key string
+	_ = a.Store.db.QueryRowContext(ctx, `SELECT commit_signing_public_key FROM triage_agent_commit_check_state WHERE id=1`).Scan(&key)
+	return systemsrepository.TriageAgentsOwnCommits{SigningKey: key}
+}
+
 // mmxRefusal is the plain refusal of an MMX run while a commit on origin's
 // branch waits for review, or when the check failed; "" lets MMX run. MMX
 // runs only when nothing waits on origin's branch, so a request judged at

@@ -1097,7 +1097,9 @@ mmhotline triage-agent request-playbook-run --playbook PATH --inventory NAME --d
   review agent and the people who approve read it.
 - The request carries the agent's commits, which MMHotline pushes when
   they change nothing outside `one_time_playbooks/` and
-  `triage_agent_notes/`.
+  `triage_agent_notes/`, and change, delete, or rename only the one-time
+  playbooks the agent itself changed last
+  ([the push filter](../changing-mmhotline/design/triage-agent.md#what-mmhotline-pushes-without-a-person)).
 
 | Exit code | Meaning |
 | --- | --- |

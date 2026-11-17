@@ -22,6 +22,8 @@ import (
 // mmhotline and agent are the two copies on the team's server.
 type repositories struct {
 	root, origin, person, mmhotline, agent string
+	// owned is how the push filter knows the agent's own commits.
+	owned TriageAgentsOwnCommits
 }
 
 const (
@@ -105,7 +107,8 @@ func setUpRepositories(t *testing.T) repositories {
 	writeFile(t, home, ".gitconfig", "[user]\n\tname = MMHotline triage agent\n\temail = mmhotline-triage-agent@example.com\n", 0o644)
 	root := t.TempDir()
 	r := repositories{root: root, origin: filepath.Join(root, "origin.git"), person: filepath.Join(root, "person"),
-		mmhotline: filepath.Join(root, "mmhotline", DirectoryName), agent: filepath.Join(root, "agent", DirectoryName)}
+		mmhotline: filepath.Join(root, "mmhotline", DirectoryName), agent: filepath.Join(root, "agent", DirectoryName),
+		owned: TriageAgentsOwnCommits{PushedByMMHotline: true}}
 	git(t, root, "init", "--quiet", "--bare", "--initial-branch=main", r.origin)
 	git(t, root, "clone", "--quiet", r.origin, r.person)
 	for _, directory := range []string{r.person} {
@@ -147,7 +150,7 @@ func (r repositories) endRun(t *testing.T, base string) ReceivedAgentCommits {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, bundle, base, originIsTrusted)
+	result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, bundle, base, originIsTrusted, r.owned)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +466,7 @@ func TestAgentPlaybookAndNoteArePushed(t *testing.T) {
 			t.Fatalf("MMHotline's clean working tree was not fast-forwarded: %v", err)
 		}
 	}
-	if refs := git(t, r.mmhotline, "for-each-ref", "refs/mmhotline/"); refs != "" {
+	if refs := git(t, r.mmhotline, "for-each-ref", "refs/mmhotline/agent-commits/"); refs != "" {
 		t.Fatalf("a pushed commit's private ref is kept: %s", refs)
 	}
 }
@@ -559,7 +562,7 @@ func TestCommitsThatAreRefused(t *testing.T) {
 	t.Run("not a bundle", func(t *testing.T) {
 		r := setUpRepositories(t)
 		base := r.startRun(t)
-		result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, []byte("not a bundle\n"), base, originIsTrusted)
+		result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, []byte("not a bundle\n"), base, originIsTrusted, r.owned)
 		if err != nil || result.Outcome != Refused || !strings.Contains(result.Reason, "not usable") {
 			t.Fatalf("result: %+v, %v", result, err)
 		}
@@ -569,7 +572,7 @@ func TestCommitsThatAreRefused(t *testing.T) {
 		oversized := make([]byte, MaximumBundleSize+1)
 		base := strings.Repeat("a", 40)
 		size := strconv.Itoa(MaximumBundleSize + 1)
-		result, err := ReceiveAgentCommits(t.Context(), directory, oversized, base, originIsTrusted)
+		result, err := ReceiveAgentCommits(t.Context(), directory, oversized, base, originIsTrusted, TriageAgentsOwnCommits{})
 		if err != nil || result.Outcome != Refused || !strings.Contains(result.Reason, size) {
 			t.Fatalf("result: %+v, %v", result, err)
 		}
@@ -645,7 +648,13 @@ func TestOriginMovedDuringTheRun(t *testing.T) {
 			lines = append(lines, fmt.Sprintf("# line %02d of a one-time playbook that a person will promote", line))
 		}
 		original := strings.Join(lines, "\n") + "\n"
-		r.personPushes(t, oneTime, original)
+		// The agent wrote the playbook in an earlier run, so it may edit it.
+		first := r.startRun(t)
+		writeFile(t, r.agent, oneTime, original, 0o644)
+		commitAll(t, r.agent, "Write the one-time playbook")
+		if result := r.endRun(t, first); result.Outcome != Pushed {
+			t.Fatalf("the agent's playbook: %+v", result)
+		}
 		base := r.startRun(t)
 		git(t, r.person, "pull", "--quiet", "--ff-only")
 		if err := os.MkdirAll(filepath.Join(r.person, "playbooks"), 0o755); err != nil {

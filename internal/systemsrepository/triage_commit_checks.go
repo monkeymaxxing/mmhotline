@@ -159,20 +159,7 @@ func CommitsThatNeedReview(ctx context.Context, directory, last, target string, 
 		trusted[fingerprint] = true
 		allowedSigners += "trusted namespaces=\"git\" " + strings.TrimSpace(key) + "\n"
 	}
-	signers, err := os.CreateTemp("", "mmhotline-commit-signers-*")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(signers.Name()) // private temporary file, never repository data
-	_, writeErr := signers.WriteString(allowedSigners)
-	closeErr := signers.Close()
-	if writeErr != nil {
-		return nil, writeErr
-	}
-	if closeErr != nil {
-		return nil, closeErr
-	}
-	output, err := runGit(ctx, directory, nil, "-c", "gpg.ssh.allowedSignersFile="+signers.Name(), "-c", "gpg.ssh.program=ssh-keygen", "-c", "log.showSignature=false", "log", "--no-decorate", "--no-show-signature", "--no-notes", "--no-patch", "-z", "--format=%H%x00%G?%x00%GF", revision, "--")
+	output, err := signatures(ctx, directory, allowedSigners, revision)
 	if err != nil {
 		return nil, fmt.Errorf("check the signatures of systems repository commits: %w", err)
 	}
@@ -212,6 +199,42 @@ func CommitsThatNeedReview(ctx context.Context, directory, last, target string, 
 		refused = append(refused, commit)
 	}
 	return refused, nil
+}
+
+// signatures lists, for each commit of revision, its ID, Git's signature
+// status, and the signing key's fingerprint, each ended by a NUL, with
+// allowedSigners as the only keys Git knows.
+func signatures(ctx context.Context, directory, allowedSigners string, revision ...string) (string, error) {
+	signers, err := os.CreateTemp("", "mmhotline-commit-signers-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(signers.Name()) // private temporary file, never repository data
+	_, writeErr := signers.WriteString(allowedSigners)
+	closeErr := signers.Close()
+	if writeErr != nil {
+		return "", writeErr
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+	arguments := []string{"-c", "gpg.ssh.allowedSignersFile=" + signers.Name(), "-c", "gpg.ssh.program=ssh-keygen", "-c", "log.showSignature=false", "log", "--no-decorate", "--no-show-signature", "--no-notes", "--no-patch", "-z", "--format=%H%x00%G?%x00%GF"}
+	return runGit(ctx, directory, nil, append(append(arguments, revision...), "--")...)
+}
+
+// signedByKey says whether commit has a good signature by key, one OpenSSH
+// public key line.
+func signedByKey(ctx context.Context, directory, commit, key string) (bool, error) {
+	fingerprint, err := CommitSigningKeyFingerprint(key)
+	if err != nil {
+		return false, err
+	}
+	output, err := signatures(ctx, directory, "signer namespaces=\"git\" "+strings.TrimSpace(key)+"\n", "--no-walk", commit)
+	if err != nil {
+		return false, fmt.Errorf("check the signature of commit %s: %w", commit, err)
+	}
+	fields := strings.Split(output, "\x00")
+	return len(fields) >= 3 && fields[0] == commit && fields[1] == "G" && fields[2] == fingerprint, nil
 }
 
 // readCommitFacts adds the author, commit date, message, and diff that a
