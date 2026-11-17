@@ -24,7 +24,7 @@ tool that sends alerts to MMHotline, such as your monitoring tool.
   alerts, such as the WireGuard address `10.20.0.1`. `ip -brief addr` lists
   the server's addresses.
 - **Cloudflare, which a first test does not need.** For a first test,
-  write `web_url: http://localhost:8480` in step 2 and skip step 8: see
+  keep `web_url=http://localhost:8480` in step 2's block and skip step 8: see
   [The team has no Cloudflare](#if-something-is-different). So that people
   can open MMHotline's pages from their phones, you add later a
   Cloudflare account with Zero Trust and a domain whose DNS Cloudflare
@@ -95,67 +95,61 @@ in your own.
 2. **Write the settings file.** MMHotline reads the team's settings from
    one file, `/etc/mmhotline/mmhotline_settings.yml`, which the
    [settings file reference](reference/settings-file.md) describes key by
-   key. Make the folder and an
-   empty file that only root can read, and open it:
+   key. The block below writes a first file for you. Change the four lines
+   after `set -eu` to yours, then paste the whole block:
+
+   - `name` and `email`: you, with the email address you will sign in with.
+   - `private_address`: the server's private address, where your tools
+     send alerts. `ip -brief addr` lists the server's addresses.
+   - `web_url`: keep `http://localhost:8480` for a first test without
+     Cloudflare. With Cloudflare, write the address people will open, at
+     the host name you put behind Cloudflare Access in step 8, such as
+     `https://ops.example.com`.
+
+   The next two lines fill themselves: the server's time zone, and last
+   Monday as the day the on-call schedule starts.
 
    ```sh
+   (
+   set -eu
+   name="Barbara Example"
+   email=barbara@example.com
+   private_address=10.20.0.1
+   web_url=http://localhost:8480
+   time_zone=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
+   first_monday=$(date -d 'last monday' +%F)
+   file=/etc/mmhotline/mmhotline_settings.yml
+   if sudo test -e "$file"; then
+     echo "$file already exists, so this block changed nothing. To change it, see Change the settings."
+     exit 1
+   fi
    sudo install -d -m 0755 /etc/mmhotline
-   sudo install -m 0640 /dev/null /etc/mmhotline/mmhotline_settings.yml
-   sudoedit /etc/mmhotline/mmhotline_settings.yml
-   ```
-
-   Paste the file below, then change the values to yours:
-
-   - `web_url`: the address people will open, at the host name you put
-     behind Cloudflare Access in step 8. With no Cloudflare, write
-     `http://localhost:8480` (`http://127.0.0.1:8480` also works).
-     MMHotline refuses any other address that does not start with
-     `https://`, such as `http://SERVER_IP:8480`.
-   - `alert_intake_listen_address`: the server's private address, with the
-     port `8484`.
-   - `people`: you, with the email address you will sign in with at
-     Cloudflare, as `administrator`.
-   - `on_call_schedule`: puts you on call every week from Monday 09:00.
-     `time_zone` is your team's time zone name, such as `Europe/Bucharest`
-     or `America/New_York`, or `UTC`. `first_start_date` is a Monday in that
-     time zone, in quotes, such as `"2026-11-02"`. With
-     `backup_option: everyone_available`, an SOS that nobody claims in time
-     wakes everyone else who is available. Start with yourself alone; you
-     add the team and its rotation after this page.
-   - `web_url` is also the start of the links in notifications.
-   - `signing_secrets`: leave `THE 64 HEXADECIMAL CHARACTERS` for now; step 3
-     puts in the real secret.
-
-   USE A MONDAY THAT HAS ALREADY PASSED FOR `first_start_date`, SUCH AS LAST MONDAY. NO ONE IS ON CALL BEFORE THE START DATE.
-
-   The settings check does not look at today's date, so it will not catch a
-   future date.
-
-   ```yaml
-   # Written by hand with sudoedit. Apply a change with sudo mmhotline settings apply.
+   sudo install -m 0640 /dev/null "$file"
+   sudo tee "$file" > /dev/null <<EOF
+   # Change a setting with sudoedit, then run: sudo mmhotline settings apply
    team_name: Operations
-   web_url: https://ops.example.com
+   web_url: $web_url
    web_listen_address: 127.0.0.1:8480
-   alert_intake_listen_address: 10.20.0.1:8484
+   alert_intake_listen_address: $private_address:8484
 
    rules_for_running_agent_playbooks: {}
    services_whose_changes_a_person_must_approve: []
    sending_services: {}
 
    people:
-     - name: Barbara Example
-       sign_in_email_address: barbara@example.com
+     - name: "$name"
+       sign_in_email_address: $email
        role: administrator
 
    on_call_schedule:
      escalate_if_unclaimed_after_minutes: 5
      schedule_type: weekly_rotation
-     time_zone: America/New_York
+     time_zone: ${time_zone:-UTC}
      handoff_hour: 9
      handoff_minute: 0
      handoff_weekday: 1
-     first_start_date: "2026-11-02"
-     rotation_sign_in_email_addresses: [barbara@example.com]
+     first_start_date: "$first_monday"
+     rotation_sign_in_email_addresses: [$email]
      backup_option: everyone_available
 
    alert_sources:
@@ -164,14 +158,29 @@ in your own.
        signing_secrets: ["THE 64 HEXADECIMAL CHARACTERS"]
        warn_after_no_check_in_for_minutes: 2
        sos_after_no_check_in_for_minutes: 5
+   EOF
+   echo "Wrote $file: $name is on call every week from Monday $first_monday, 09:00 ${time_zone:-UTC}."
+   )
    ```
 
-   Keep `web_listen_address` as it is: MMHotline serves its pages only on
-   the server itself, where Cloudflare's connector reaches them. The three
-   empty settings are for parts you set up later, such as the triage
-   agent, the team's coding agent that investigates alerts. A coding agent
-   without a terminal writes the file with any tool that keeps its owner
-   and mode.
+   **Check:** it prints `Wrote /etc/mmhotline/mmhotline_settings.yml:`
+   with your name and last Monday's date.
+
+   What the file says:
+   - you are the team's only person, an `administrator`, on call every
+     week from Monday 09:00. With `backup_option: everyone_available`, an
+     SOS that nobody claims in time wakes everyone else who is available.
+     You add the team and its rotation after this page.
+   - `signing_secrets` holds a placeholder: step 3 puts in the real secret.
+   - `web_listen_address` stays as it is: MMHotline serves its pages only
+     on the server itself, where Cloudflare's connector reaches them.
+   - The three empty settings are for parts you set up later, such as the
+     triage agent, the team's coding agent that investigates alerts.
+
+   MMHotline refuses a `web_url` that does not start with `https://`,
+   except `http://localhost:8480` and `http://127.0.0.1:8480`. A coding
+   agent without a terminal writes the same file with any tool that keeps
+   its owner and mode.
 
 3. **Make the alert source's signing secret.** Your monitoring tool signs
    each alert with this secret. MMHotline makes it, saves it in the
@@ -426,8 +435,8 @@ read [Handle an incident](how-to/handle-an-incident.md).
 - **The phone does not sound, but the test was `accepted`:** Pushover took
   the message, so the phone's settings stop it. Follow
   [Make an emergency alert wake you](how-to/connect-pushover.md).
-- **The team has no Cloudflare:** write `web_url: http://localhost:8480`
-  in step 2, skip step 8, and open MMHotline with a sign-in link, as
+- **The team has no Cloudflare:** keep `web_url=http://localhost:8480`
+  in step 2's block, skip step 8, and open MMHotline with a sign-in link, as
   [Sign in during a Cloudflare outage](how-to/sign-in-during-a-cloudflare-outage.md)
   says. The links in notifications then open only on a computer that runs
   that SSH forward. To claim or resolve an incident with no browser at all,
