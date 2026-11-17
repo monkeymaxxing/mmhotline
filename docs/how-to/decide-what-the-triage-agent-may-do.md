@@ -105,7 +105,10 @@ says how MMHotline matches each task to a kind.
    it run any playbook without a person: any command as root on every
    server, or a task that copies MMHotline's own database to a server,
    where the agent reads it. The database holds the sending services'
-   tokens and the agents' credentials. The same holds for
+   tokens and the agents' credentials. When MMHotline's own server is in
+   the inventory, the agent can also claim and resolve incidents there with
+   `mmhotline incidents claim` and `resolve`, which stops MMHotline
+   contacting people about them. The same holds for
    `unrecognized_task: {rule: act_then_report}`. A review agent lowers the
    chance, but does not rule it out. Use this preset only for an inventory
    where that is acceptable, such as a test inventory.

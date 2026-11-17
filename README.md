@@ -563,9 +563,10 @@ check before moving on.
   email or chat for SOS.
 - To read what happened, use `sudo mmhotline incidents list`,
   `sudo mmhotline incidents show --incident-id ID`, and
-  `sudo mmhotline alerts list`, with `--json`. No command claims or resolves
-  an incident: a person does that, or the tool that sent the alert resolves
-  it.
+  `sudo mmhotline alerts list`, with `--json`. To claim or resolve with
+  only a terminal, run `sudo mmhotline incidents claim --incident-id ID
+  --sign-in-email-address ADDRESS` and `sudo mmhotline incidents resolve
+  --incident-id ID`. The tool that sent the alert can also resolve it.
 
 ## When an SOS arrives
 

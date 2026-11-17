@@ -373,9 +373,10 @@ read [Handle an incident](how-to/handle-an-incident.md).
   and [Publish a status page](how-to/publish-a-status-page.md).
 - **Read what happened from the server, or from a coding agent:**
   `sudo mmhotline incidents list`, `sudo mmhotline incidents show --incident-id ID`,
-  and `sudo mmhotline alerts list`, each with `--json`. No command claims
-  or resolves an incident: a person does that, or the tool that sent the
-  alert resolves it.
+  and `sudo mmhotline alerts list`, each with `--json`. To claim or resolve
+  with only a terminal, use `sudo mmhotline incidents claim` and
+  `sudo mmhotline incidents resolve`. The tool that sent the alert can also
+  resolve it.
 - **Back up the database continuously,** so a lost server does not lose
   the team's history: [Continuous backup](how-to/back-up-and-restore-the-database.md).
   The install's `Backup: not set up` line points there too.
@@ -412,7 +413,11 @@ read [Handle an incident](how-to/handle-an-incident.md).
   in step 2, skip step 8, and open MMHotline with a sign-in link, as
   [Sign in during a Cloudflare outage](how-to/sign-in-during-a-cloudflare-outage.md)
   says. The links in notifications then open only on a computer that runs
-  that SSH forward.
+  that SSH forward. To claim or resolve an incident with no browser at all,
+  run `sudo mmhotline incidents claim` and `sudo mmhotline incidents resolve`
+  on the server, as
+  [Handle an incident](how-to/handle-an-incident.md#claim-and-resolve-from-the-servers-terminal)
+  says.
 - **A page says "Not a team member" or "Sign in through Cloudflare
   Access":** see
   [Put MMHotline behind Cloudflare Access](how-to/put-mmhotline-behind-cloudflare-access.md#if-something-is-different).

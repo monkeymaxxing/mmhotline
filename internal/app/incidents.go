@@ -1037,6 +1037,10 @@ func incidentActorName(ctx context.Context, tx *sql.Tx, actor string) (string, e
 	if actor == "triage_agent" {
 		return "Triage agent", nil
 	}
+	// The mmhotline command's Unix user, as commit-reviews names its reviewer.
+	if strings.HasPrefix(actor, "unix_user:") {
+		return "the mmhotline command, run by " + strings.TrimPrefix(actor, "unix_user:"), nil
+	}
 	return "MMHotline", nil
 }
 func incidentTargetNames(ctx context.Context, tx *sql.Tx, i Incident) (string, error) {

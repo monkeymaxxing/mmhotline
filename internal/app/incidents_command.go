@@ -17,8 +17,12 @@ type IncidentsCommandRequest struct {
 	IncidentID   string    `json:"incident_id,omitempty"`
 	OpenedSince  time.Time `json:"opened_since,omitzero"`
 	OpenedBefore time.Time `json:"opened_before,omitzero"`
-	// SignInEmailAddress is send-test-sos's one person to test.
+	// SignInEmailAddress is send-test-sos's one person to test, and the
+	// member who claims for claim.
 	SignInEmailAddress string `json:"sign_in_email_address,omitempty"`
+	// Note is the optional one-line note of claim and resolve, as the
+	// incident page takes one.
+	Note string `json:"note,omitempty"`
 }
 
 // CommandIncident is an SOS incident as the command prints it, with the
@@ -73,6 +77,9 @@ const maximumIncidentAlertsShown = 100
 func (a *App) incidentsCommand(ctx context.Context, p Principal, action string, request IncidentsCommandRequest, result *CommandResult) error {
 	if action == "send-test-sos" {
 		return a.sendTestSOSCommand(ctx, p, request.SignInEmailAddress, result)
+	}
+	if action == "claim" || action == "resolve" {
+		return a.claimOrResolveIncidentCommand(ctx, p, action, request, result)
 	}
 	if action != "list" && action != "show" {
 		return ErrNotFound
@@ -414,4 +421,104 @@ func personNameOrThePerson(names map[string]string, memberID string) string {
 // would have been.
 func pushoverAcknowledgementDidNotClaimMessage(name string) string {
 	return fmt.Sprintf("%[1]s's phone acknowledged, but the acknowledgement came from another Pushover user, so it did not claim the incident. The contact method uses a key that isn't %[1]s's own Pushover user key, such as a group key.", name)
+}
+
+// byTheCommand says where a claim or resolve came from, for the incident's
+// history: the Unix user who ran the command.
+func byTheCommand(p Principal) string {
+	return " with the mmhotline command, run by " + p.UnixUser
+}
+
+// claimOrResolveIncidentCommand claims or resolves an incident for a person
+// with only a terminal on the server, with the rules of the incident page
+// (claimIncidentTx, resolveIncidentTx). A claim names the member who takes
+// the incident (a Unix user is not linked to a member), and the history also
+// says which Unix user ran the command. A resolve is recorded as the Unix
+// user, as commit-reviews mark-reviewed records its reviewer.
+func (a *App) claimOrResolveIncidentCommand(ctx context.Context, p Principal, action string, request IncidentsCommandRequest, result *CommandResult) error {
+	if request.IncidentID == "" {
+		return fmt.Errorf("%w: --incident-id is required", ErrInvalid)
+	}
+	note, err := checkIncidentNote(request.Note)
+	if err != nil {
+		return err
+	}
+	var claimer Member
+	var message string
+	err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+		if _, err := RequireMember(ctx, tx, p, true); err != nil {
+			return err
+		}
+		if action == "claim" {
+			if request.SignInEmailAddress == "" {
+				return fmt.Errorf("%w: --sign-in-email-address is required: name the member who claims the incident, because the Unix user %s is not linked to a member", ErrInvalid, p.UnixUser)
+			}
+			normalized, err := normalizeSignInEmailAddress(request.SignInEmailAddress)
+			if err != nil {
+				return err
+			}
+			if claimer, err = personBySignInEmailAddress(ctx, tx, normalized); err != nil {
+				return err
+			}
+		}
+		i, err := readIncident(ctx, tx, request.IncidentID)
+		if errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("%w: no SOS incident has ID %s", ErrNotFound, request.IncidentID)
+		}
+		if err != nil {
+			return err
+		}
+		if i.Status == "resolved" {
+			return fmt.Errorf("%w: SOS incident %s is already resolved at %s. Nothing was changed", ErrConflict, i.ID, commandTime(i.ResolvedAt))
+		}
+		at := a.Now().UTC()
+		if action == "resolve" {
+			if _, err = resolveIncidentTx(ctx, tx, i, "unix_user:"+p.UnixUser, "", "", note, at); err != nil {
+				return err
+			}
+			message = fmt.Sprintf("SOS incident %s is resolved. MMHotline stopped contacting people about it. Nothing more to do.", i.ID)
+			return nil
+		}
+		// Claiming your own claim changes nothing, as on the page.
+		if i.Status == "claimed" && i.OwnerMemberID == claimer.ID {
+			message = fmt.Sprintf("%s already owns SOS incident %s. Nothing was changed. Next: when the problem is fixed, run: sudo mmhotline incidents resolve --incident-id %s", claimer.Name, i.ID, i.ID)
+			return nil
+		}
+		taken := ""
+		if i.OwnerMemberID != "" {
+			if taken, err = incidentMemberName(ctx, tx, i.OwnerMemberID); err != nil {
+				return err
+			}
+		}
+		i, err = claimIncidentTx(ctx, tx, i, claimer, byTheCommand(p), note, at)
+		if err != nil {
+			return err
+		}
+		switch {
+		case i.Status == "resolved":
+			message = fmt.Sprintf("%s claimed SOS incident %s. It was a test, so MMHotline resolved it after the claim. Nothing more to do.", claimer.Name, i.ID)
+		case taken != "":
+			message = fmt.Sprintf("%s took over SOS incident %s from %s. MMHotline contacts nobody else about it. Next: when the problem is fixed, run: sudo mmhotline incidents resolve --incident-id %s", claimer.Name, i.ID, taken, i.ID)
+		default:
+			message = fmt.Sprintf("%s now owns SOS incident %s. MMHotline stopped contacting people about it. Next: when the problem is fixed, run: sudo mmhotline incidents resolve --incident-id %s", claimer.Name, i.ID, i.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	// The incident as it is now, as `incidents list` shows it; the message
+	// last, because it says what happened and what to do next.
+	i, err := a.GetIncident(ctx, p, request.IncidentID)
+	if err != nil {
+		return err
+	}
+	members, err := a.membersForHistory(ctx, p)
+	if err != nil {
+		return err
+	}
+	incident := a.commandIncident(i, memberNames(members))
+	result.Incident = &incident
+	result.Message = message
+	return nil
 }

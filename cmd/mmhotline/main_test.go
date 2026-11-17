@@ -305,6 +305,41 @@ func TestCommandPeerAuthorization(t *testing.T) {
 	}
 }
 
+// A claim stops MMHotline contacting people, so on a server only root may
+// claim or resolve through the command socket: never the triage agent's or
+// the review agent's user, the triage user, or the mmhotline user that runs
+// MMX for the agent, even when the request names root as its Unix user. Fails
+// if the peer check lets any of them through.
+func TestOnlyRootClaimsOrResolvesThroughTheCommandSocket(t *testing.T) {
+	const mmhotlineUser = 990
+	for _, body := range []string{
+		`{"unix_user":"root","group":"incidents","action":"claim","incidents":{"incident_id":"4f2a","sign_in_email_address":"alex@example.com"}}`,
+		`{"unix_user":"root","group":"incidents","action":"resolve","incidents":{"incident_id":"4f2a"}}`,
+	} {
+		for _, peer := range []struct {
+			name    string
+			uid     uint32
+			allowed bool
+		}{
+			{"root", 0, true},
+			{"mmhotline, which runs MMX for the agent", mmhotlineUser, false},
+			{"mmhotline-triage-agent", 991, false},
+			{"mmhotline-review-agent", 992, false},
+			{"triage", 1001, false},
+		} {
+			reached := false
+			handler := checkCommandPeer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
+			request := httptest.NewRequest("POST", "http://mmhotline/command", strings.NewReader(body))
+			request = request.WithContext(context.WithValue(request.Context(), commandPeerContextKey{}, commandPeer{authorizeCommandPeer(peer.uid, mmhotlineUser, "linux")}))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if reached != peer.allowed || !peer.allowed && response.Code != http.StatusForbidden {
+				t.Fatalf("%s sent %s: reached the command handler %v, status %d", peer.name, body, reached, response.Code)
+			}
+		}
+	}
+}
+
 func TestUnixSocketsArePrivateAndReplaceStaleSockets(t *testing.T) {
 	path := filepath.Join(shortSocketDirectory(t), "command.sock")
 	stale, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
