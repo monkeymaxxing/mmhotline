@@ -809,11 +809,14 @@ MMX runs stop before that commit until a person reviews it, or a key the
 team trusts signs it. Review it, as
 [Review a commit](how-to/review-a-commit.md) says.
 
-### "No commit signing keys are applied, so MMHotline refuses every MMX run and commit check."
+### "... no systems_repository_commits section, so MMHotline trusts no commit ..."
 
-`settings show` prints this note when the triage agent is set up and the
-settings file lists no commit signing keys. Add the team's keys, as
-[Review a commit](how-to/review-a-commit.md#set-up) says.
+`settings show` prints this note, and every MMX run and
+`commit-reviews check` is refused with it, while the applied settings have
+no `systems_repository_commits` section, such as during a lock-out or
+after an upgrade that moved the commit keys there. Add the section, as
+[Review a commit](how-to/review-a-commit.md#set-up) says, and apply the
+settings.
 
 ### "... check_only has no rule; it needs a person until you add one"
 

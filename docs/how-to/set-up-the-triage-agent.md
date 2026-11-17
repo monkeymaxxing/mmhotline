@@ -218,15 +218,15 @@ has the inventory address `203.0.113.11` and the private address
 
 3. **Choose how MMHotline trusts commits, then make the agent sign its commits.**
    MMHotline checks each commit on origin before MMX runs it. The setting
-   `triage_agent.trusted_commits` has two values:
+   `systems_repository_commits.trusted_commits` has two values:
 
-   - `signed_by_a_trusted_key_or_reviewed` (the value when you leave the
-     setting out): a commit passes when a key you trust signed it, or when a
-     person reviewed it. This step and the next sign the agent's commits.
+   - `signed_by_a_trusted_key_or_reviewed`: a commit passes when a key you
+     trust signed it, or when a person reviewed it. This step and the next
+     sign the agent's commits.
    - `every_commit_on_origin`: every commit on origin passes. Skip the rest
      of this step and the key settings of
      [Set up the agent](#set-up-the-agent), step 3: the agent need not sign,
-     and the settings leave out the four signing and approval keys.
+     and the settings leave out the signing and approval keys.
 
    **USE `every_commit_on_origin` ONLY WHEN ORIGIN IS ON THE TEAM'S OWN
    SERVER, ONLY KEYS THAT ALREADY HOLD ROOT ON EVERY SERVER CAN PUSH TO IT,
@@ -265,7 +265,7 @@ has the inventory address `203.0.113.11` and the private address
    `triage_agent.commit_signing_public_key` in
    [Set up the agent](#set-up-the-agent), step 3.
 
-   Reason: with the default `triage_agent.trusted_commits`, MMHotline's
+   Reason: with `signed_by_a_trusted_key_or_reviewed`, MMHotline's
    commit check passes the agent's commits to `one_time_playbooks/` and
    `triage_agent_notes/` only when this key signed them. Unsigned commits
    wait for a commit review, and MMHotline reads a requested playbook only at
@@ -471,14 +471,18 @@ has the inventory address `203.0.113.11` and the private address
      [Keep the agents signed in](keep-the-agents-signed-in.md#make-a-chatgpt-sign-in-for-mmhotline)
      says how to make it.
 
-3. **Add the `triage_agent` section to the settings file,** with
+3. **Add the `systems_repository_commits` and `triage_agent` sections to
+   the settings file,** with
    `sudoedit /etc/mmhotline/mmhotline_settings.yml`. A team whose deploy
-   tool writes the file adds the section in the systems repository and
-   keeps the credential in its vault.
+   tool writes the file adds the sections in the systems repository and
+   keeps the credential in its vault. A team that already has
+   `systems_repository_commits`, as
+   [Review a commit](review-a-commit.md#set-up) sets it up, keeps it and
+   may change `a_person` to `a_person_or_the_triage_agent`.
 
    ```yaml
-   triage_agent:
-     commit_signing_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGUdoc+44+a4QWDPzegMsM38OwWeeUot9ceymJ5D1H0i MMHotline triage agent" # The line of /var/lib/mmhotline-triage-agent/.ssh/id_ed25519.pub.
+   systems_repository_commits:
+     trusted_commits: signed_by_a_trusted_key_or_reviewed
      trusted_commit_signing_public_keys: # Your team's signing keys.
        - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKkV3VQGyLmAYtl/HR7x93Qw22ugM6k9OhTepuWlHFPr Barbara's desk"
        - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPY0ynRIHnG58nyyazSZJWIqQ0zGxWHo5AF4GMnzX3fM util01"
@@ -488,6 +492,9 @@ has the inventory address `203.0.113.11` and the private address
        - triage_agent_rules.md
        - AGENTS.md
        - roles/every_server/files/sudoers_triage # triage's sudo rules on the servers, wherever your repository keeps them
+
+   triage_agent:
+     commit_signing_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGUdoc+44+a4QWDPzegMsM38OwWeeUot9ceymJ5D1H0i MMHotline triage agent" # The line of /var/lib/mmhotline-triage-agent/.ssh/id_ed25519.pub.
      coding_agent: claude_code
      credential_type: subscription_token
      credential: "THE TOKEN FROM claude setup-token"
@@ -507,7 +514,7 @@ has the inventory address `203.0.113.11` and the private address
 
    - With `trusted_commits: every_commit_on_origin` (see
      [the choice in the preparation](#prepare-the-servers-and-the-systems-repository),
-     step 3), add that line and leave out `commit_signing_public_key`,
+     step 3), write that value and leave out `commit_signing_public_key`,
      `trusted_commit_signing_public_keys`,
      `commits_without_a_trusted_signature_are_approved_by`, and
      `paths_only_a_person_may_approve`; the settings check refuses them.
@@ -575,8 +582,9 @@ has the inventory address `203.0.113.11` and the private address
    `settings apply` prints, among its lines:
 
    ```text
-   triage_agent.commit_signing_public_key, triage_agent.trusted_commit_signing_public_keys: applied.
-   triage_agent.commits_without_a_trusted_signature_are_approved_by, triage_agent.paths_only_a_person_may_approve: applied.
+   systems_repository_commits.trusted_commits: applied.
+   triage_agent.commit_signing_public_key, systems_repository_commits.trusted_commit_signing_public_keys: applied.
+   systems_repository_commits.commits_without_a_trusted_signature_are_approved_by, systems_repository_commits.paths_only_a_person_may_approve: applied.
    triage_agent.coding_agent, triage_agent.credential_type, triage_agent.credential, triage_agent.credential_expires_on, triage_agent.model, triage_agent.reasoning_effort: applied.
    triage_agent.internet_access: applied.
    ...

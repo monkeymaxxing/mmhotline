@@ -377,7 +377,7 @@ func (p preparation) checks() []preparationCheck {
 	// 3. The agent signs its commits.
 	signingDetail := "git signs with the applied commit signing key"
 	if p.agentSetUp && p.trustsEveryCommitOnOrigin {
-		signingDetail = "not needed: triage_agent.trusted_commits is every_commit_on_origin, so the settings trust every commit on origin and MMHotline checks no signature"
+		signingDetail = "not needed: systems_repository_commits.trusted_commits is every_commit_on_origin, so the settings trust every commit on origin and MMHotline checks no signature"
 	}
 	add(3, 3, "The agent signs its commits", signingDetail, p.signingProblem())
 
@@ -520,7 +520,7 @@ func (p preparation) signingProblem() string {
 		return ""
 	}
 	if p.appliedSigningKey == "" {
-		return "no triage_agent.commit_signing_public_key is applied"
+		return "no triage_agent.commit_signing_public_key is applied; MMHotline applies it with systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed"
 	}
 	gitConfig := filepath.Join(p.agentHome, ".gitconfig")
 	if !fileExists(gitConfig) {

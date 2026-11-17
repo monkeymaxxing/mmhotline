@@ -332,21 +332,21 @@ func TestChangedKeysKeepTheCheckedThroughCommit(t *testing.T) {
 	if decision := a.RunPlaybook(t.Context(), request, newer); decision.Outcome != triageagent.Refused || !strings.Contains(decision.Message, "which no key the team trusts signed") {
 		t.Fatalf("new commit of the removed key: %+v", decision)
 	}
-	// A lock-out applies settings without the triage_agent section: the keys
-	// go and the check is refused, but the checked-through commit stays, so
-	// the check need not read the whole history when the section returns.
+	// A lock-out applies settings without the systems_repository_commits
+	// section: the keys go and the check is refused, but the checked-through
+	// commit stays, so the check need not read the whole history when the
+	// section returns.
+	setTrustedCommitsForTest(t, a, `null`)
 	if err := a.setCommitSigningKeys(t.Context(), systemsrepository.CommitSigningKeys{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.checkCommitsThrough(t.Context(), commit); !errors.Is(err, errCommitSigningKeysNotSet) {
-		t.Fatalf("check without keys: %v", err)
+	if _, err := a.checkCommitsThrough(t.Context(), commit); !errors.Is(err, errNoCommitIsTrusted) {
+		t.Fatalf("check without the section: %v", err)
 	}
 	if last := lastCheckedCommit(t, a); last != commit {
 		t.Fatalf("checkpoint after the lock-out %q, want %s", last, commit)
 	}
-	if err := a.setCommitSigningKeys(t.Context(), systemsrepository.CommitSigningKeys{TriageAgent: testTriageAgentCommitSigningPublicKey}); err != nil {
-		t.Fatal(err)
-	}
+	recordCommitSigningKeyForTest(t, a)
 	if last := lastCheckedCommit(t, a); last != commit {
 		t.Fatalf("checkpoint after the keys returned %q, want %s", last, commit)
 	}
@@ -615,8 +615,8 @@ func commitInCopyOnly(t *testing.T, directory, path string) string {
 }
 
 // settings show lists the commit signing keys MMHotline applied, by type,
-// comment, and fingerprint; during a lock-out it says none are applied, and
-// the check names that cause instead of a generic failure.
+// comment, and fingerprint. TestLeavingOutSystemsRepositoryCommitsTrustsNothing
+// covers settings show and the check during a lock-out.
 func TestSettingsShowListsTheAppliedCommitSigningKeys(t *testing.T) {
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
@@ -632,19 +632,6 @@ func TestSettingsShowListsTheAppliedCommitSigningKeys(t *testing.T) {
 		if !strings.Contains(view.Text(), want) {
 			t.Errorf("settings show lacks %q:\n%s", want, view.Text())
 		}
-	}
-
-	if err := f.a.setCommitSigningKeys(ctx, systemsrepository.CommitSigningKeys{}); err != nil {
-		t.Fatal(err)
-	}
-	if view, err = f.a.SettingsFileState(ctx); err != nil || !strings.Contains(view.Text(), "No commit signing keys are applied") {
-		t.Errorf("settings show during a lock-out (%v):\n%s", err, view.Text())
-	}
-	commitRunMMXInCopy(t, f.a, "")
-	head := testGit(t, filepath.Join(f.a.Store.Dir, "systems_repository"), "rev-parse", "HEAD")
-	_, raw := commandRequest(t, f.a, CommandRequest{Group: "commit-reviews", Action: "check", CommitReviews: CommitReviewsCommandRequest{CommitID: head}}, 409)
-	if !strings.Contains(raw, "no commit signing keys are applied, such as during a lock-out") {
-		t.Errorf("check during a lock-out: %s", raw)
 	}
 }
 

@@ -241,12 +241,13 @@ type TriageAgentView struct {
 	InternetAccess   string                  `json:"internet_access"`
 	ListedHosts      []TriageAgentListedHost `json:"listed_hosts"`
 	// CommitSigningPublicKey is the applied triage_agent.commit_signing_public_key,
-	// a public key; absent while none is applied. sudo mmhotline triage-agent
+	// a public key; absent while none is applied, such as without the
+	// systems_repository_commits section. sudo mmhotline triage-agent
 	// check-preparation compares it with the agent's own git settings.
 	CommitSigningPublicKey string `json:"commit_signing_public_key,omitempty"`
 	// TrustsEveryCommitOnOrigin is true when the applied
-	// triage_agent.trusted_commits is every_commit_on_origin: no commit
-	// signing key is applied then, and none is needed.
+	// systems_repository_commits.trusted_commits is every_commit_on_origin:
+	// no commit signing key is applied then, and none is needed.
 	TrustsEveryCommitOnOrigin bool `json:"trusts_every_commit_on_origin,omitempty"`
 	// InventoryServersNotListedBecause says why the latest run in the systems
 	// repository could not list every inventory server, if it could not.

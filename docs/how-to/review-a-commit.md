@@ -49,10 +49,10 @@ explains the check.
 
 ## Before you start
 
-- The triage agent is set up, as
-  [Set up the triage agent](set-up-the-triage-agent.md) says. Reason: the
-  trusted keys are part of its `triage_agent` section; without the
-  section, every MMX run and every commit check is refused.
+- The settings file has, or gets in step 1, a `systems_repository_commits`
+  section. Reason: without the section MMHotline trusts no commit, and
+  every MMX run and every commit check is refused. The triage agent is
+  optional: without it, a person reviews every commit that waits.
 - Each person, and each machine that commits, such as `util01`, signs
   commits with an SSH key. On each person's computer:
 
@@ -70,10 +70,11 @@ explains the check.
 ## Set up
 
 1. **List the keys and choose who may approve the others,** in the
-   `triage_agent` section of the settings file:
+   `systems_repository_commits` section of the settings file:
 
    ```yaml
-   triage_agent:
+   systems_repository_commits:
+     trusted_commits: signed_by_a_trusted_key_or_reviewed
      trusted_commit_signing_public_keys:
        - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKkV3VQGyLmAYtl/HR7x93Qw22ugM6k9OhTepuWlHFPr Barbara's desk"
        - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPY0ynRIHnG58nyyazSZJWIqQ0zGxWHo5AF4GMnzX3fM util01"
@@ -83,8 +84,13 @@ explains the check.
        - triage_agent_rules.md
        - AGENTS.md
        - roles/every_server/files/sudoers_triage # triage's sudo rules on the servers, wherever your repository keeps them
-     # ...the rest of the section
    ```
+
+   - `trusted_commits`: `signed_by_a_trusted_key_or_reviewed` checks every
+     commit as this page says. `every_commit_on_origin` checks none: use
+     it only as the
+     [settings reference](../reference/settings-file.md#systems_repository_commits)
+     allows.
 
    - `trusted_commit_signing_public_keys`: one public key line for each
      person's desk and each machine that commits. When MMHotline's copy
@@ -93,7 +99,8 @@ explains the check.
    - `commits_without_a_trusted_signature_are_approved_by`:
      `a_person_or_the_triage_agent` lets the agent approve an ordinary
      change, such as a merge from the Git host's merge button. `a_person`
-     leaves every such commit to people.
+     leaves every such commit to people, and is the only value without
+     the `triage_agent` section.
    - `paths_only_a_person_may_approve`: the files that set the agent's own
      rules and powers, such as its sudo rules, and the settings file that
      holds the trusted keys. An entry ending in `/` is a folder. Keep the
@@ -108,9 +115,10 @@ explains the check.
    **Check:** among its lines:
 
    ```text
-   triage_agent.commit_signing_public_key, triage_agent.trusted_commit_signing_public_keys: applied.
-   triage_agent.commits_without_a_trusted_signature_are_approved_by, triage_agent.paths_only_a_person_may_approve: applied.
-     triage_agent.commits_without_a_trusted_signature_are_approved_by: The triage agent reviews each commit no trusted key signed and approves an ordinary change; a person reviews the triage agent's own commits outside its folders, and every commit that changes a path of triage_agent.paths_only_a_person_may_approve.
+   systems_repository_commits.trusted_commits: applied.
+   triage_agent.commit_signing_public_key, systems_repository_commits.trusted_commit_signing_public_keys: applied.
+   systems_repository_commits.commits_without_a_trusted_signature_are_approved_by, systems_repository_commits.paths_only_a_person_may_approve: applied.
+     systems_repository_commits.commits_without_a_trusted_signature_are_approved_by: The triage agent reviews each commit no trusted key signed and approves an ordinary change; a person reviews the triage agent's own commits outside its folders, and every commit that changes a path of systems_repository_commits.paths_only_a_person_may_approve.
    ```
 
    MMHotline uses only the applied keys and setting.
@@ -200,7 +208,7 @@ exactly one alert.
   `paths_only_a_person_may_approve`, and the agent's own commit that
   changes paths outside its two folders. The commit's page says why, such
   as
-  `Needs review: AGENTS.md is on triage_agent.paths_only_a_person_may_approve, so only a person may approve the commit.`
+  `Needs review: AGENTS.md is on systems_repository_commits.paths_only_a_person_may_approve, so only a person may approve the commit.`
 - **When the agent cannot review the commit,** because its run failed or
   ended without a decision, MMHotline sends the same warning, once, with
   the reason.
@@ -291,9 +299,10 @@ field and exit code.
   [Set up the triage agent](set-up-the-triage-agent.md#prepare-the-servers-and-the-systems-repository)
   says, step 3.
 - **Every MMX run and `commit-reviews check` is refused** and says so: the
-  settings file has no `triage_agent` section, such as during a lock-out,
-  so no keys apply. After the section returns, the check goes on from
-  where it stopped.
+  applied settings have no `systems_repository_commits` section, such as
+  during a lock-out or after an upgrade that moved the keys there, so
+  MMHotline trusts no commit. After the section returns and applies, the
+  check goes on from where it stopped.
 - **`check` or `trust-through` is refused for the commit ID:** MMHotline's
   copy lacks that commit after the fetch, or, for `trust-through`, the
   commit is not on `origin`'s branch. Push it first, and give the full ID.

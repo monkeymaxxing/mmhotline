@@ -23,7 +23,7 @@ import (
 // on the team made it; a short list of paths only a person approves keeps
 // the agent from widening its own powers or adding a key MMHotline trusts.
 
-// The values of triage_agent.commits_without_a_trusted_signature_are_approved_by.
+// The values of systems_repository_commits.commits_without_a_trusted_signature_are_approved_by.
 const (
 	commitsApprovedByAPerson                 = "a_person"
 	commitsApprovedByAPersonOrTheTriageAgent = "a_person_or_the_triage_agent"
@@ -41,17 +41,21 @@ type commitApprovalSettings struct {
 // writes the database, and the background loop's visit that follows sends
 // MMHotline's warning for each commit the agent may no longer review.
 var settingsCommitApprovalPart = settingsFilePart{
-	name: "triage_agent.commits_without_a_trusted_signature_are_approved_by, triage_agent.paths_only_a_person_may_approve",
-	value: triageAgentValue(func(agent SettingsTriageAgent) any {
-		return commitApprovalSettings{ApprovedBy: agent.CommitsWithoutATrustedSignatureAreApprovedBy, PathsOnlyAPersonMayApprove: agent.PathsOnlyAPersonMayApprove}
+	name: "systems_repository_commits.commits_without_a_trusted_signature_are_approved_by, systems_repository_commits.paths_only_a_person_may_approve",
+	value: fileValue(func(s Settings) any {
+		commits := s.SystemsRepositoryCommits
+		if commits == nil {
+			return nil
+		}
+		return commitApprovalSettings{ApprovedBy: commits.CommitsWithoutATrustedSignatureAreApprovedBy, PathsOnlyAPersonMayApprove: commits.PathsOnlyAPersonMayApprove}
 	}),
 	apply:       func(context.Context, *App, Settings) error { return nil },
 	keepsValues: true,
 }
 
 // readCommitApprovalSettings reads the applied settings. Before the
-// settings file applies them, and without a triage agent, only a person
-// approves.
+// settings file applies them, and without the systems_repository_commits
+// section, only a person approves.
 func readCommitApprovalSettings(ctx context.Context, tx *sql.Tx) (commitApprovalSettings, error) {
 	settings := commitApprovalSettings{ApprovedBy: commitsApprovedByAPerson}
 	_, err := appliedSettingsValue(ctx, tx, settingsCommitApprovalPart.name, &settings)
@@ -59,26 +63,31 @@ func readCommitApprovalSettings(ctx context.Context, tx *sql.Tx) (commitApproval
 }
 
 // checkCommitApprovalSettings checks the two settings as the settings check
-// does, naming each problem's key path, and notes what they mean.
-func checkCommitApprovalSettings(agent SettingsTriageAgent, problems *settingsProblems) {
-	const approvedBy = "triage_agent.commits_without_a_trusted_signature_are_approved_by"
-	switch agent.CommitsWithoutATrustedSignatureAreApprovedBy {
+// does, naming each problem's key path, and notes what they mean. The
+// triage agent approves only when the settings file sets it up.
+func checkCommitApprovalSettings(commits SettingsSystemsRepositoryCommits, triageAgentSectionPresent bool, problems *settingsProblems) {
+	const approvedBy = "systems_repository_commits.commits_without_a_trusted_signature_are_approved_by"
+	switch commits.CommitsWithoutATrustedSignatureAreApprovedBy {
 	case commitsApprovedByAPerson:
 		problems.note(approvedBy, "A person reviews every commit no trusted key signed before MMX runs past it.")
 	case commitsApprovedByAPersonOrTheTriageAgent:
-		note := "The triage agent reviews each commit no trusted key signed and approves an ordinary change; a person reviews the triage agent's own commits outside its folders, and every commit that changes a path of triage_agent.paths_only_a_person_may_approve."
-		if len(agent.PathsOnlyAPersonMayApprove) == 0 {
+		if !triageAgentSectionPresent {
+			problems.add(approvedBy, "a_person_or_the_triage_agent needs the triage_agent section: without it, use a_person")
+			break
+		}
+		note := "The triage agent reviews each commit no trusted key signed and approves an ordinary change; a person reviews the triage agent's own commits outside its folders, and every commit that changes a path of systems_repository_commits.paths_only_a_person_may_approve."
+		if len(commits.PathsOnlyAPersonMayApprove) == 0 {
 			note += " The list is empty, so the triage agent may approve a commit that changes its own rules or the trusted keys: list the files that set them."
 		}
 		problems.note(approvedBy, note)
 	default:
 		problems.add(approvedBy, "must be a_person or a_person_or_the_triage_agent")
 	}
-	for index, path := range agent.PathsOnlyAPersonMayApprove {
-		key := fmt.Sprintf("triage_agent.paths_only_a_person_may_approve[%d]", index)
+	for index, path := range commits.PathsOnlyAPersonMayApprove {
+		key := fmt.Sprintf("systems_repository_commits.paths_only_a_person_may_approve[%d]", index)
 		if err := checkPathOnlyAPersonMayApprove(path); err != nil {
 			problems.addError(key, err)
-		} else if slices.Contains(agent.PathsOnlyAPersonMayApprove[:index], path) {
+		} else if slices.Contains(commits.PathsOnlyAPersonMayApprove[:index], path) {
 			problems.add(key, path+" is listed twice")
 		}
 	}
@@ -129,12 +138,12 @@ func pathsOnlyAPersonMayApprove(list, changed []string) []string {
 func whyTheTriageAgentMayNotApprove(settings commitApprovalSettings, review CommitReview) string {
 	switch {
 	case settings.ApprovedBy != commitsApprovedByAPersonOrTheTriageAgent:
-		return "the settings let only a person approve a commit no trusted key signed (triage_agent.commits_without_a_trusted_signature_are_approved_by is a_person)"
+		return "the settings let only a person approve a commit no trusted key signed (systems_repository_commits.commits_without_a_trusted_signature_are_approved_by is a_person)"
 	case !review.NotSignedByATrustedKey():
 		return "the triage agent's own key signed the commit, and it changes paths outside one_time_playbooks/ and triage_agent_notes/; only a person reviews the triage agent's own commits"
 	}
 	if kept := pathsOnlyAPersonMayApprove(settings.PathsOnlyAPersonMayApprove, review.ChangedPaths); len(kept) > 0 {
-		return "the commit changes paths only a person may approve (triage_agent.paths_only_a_person_may_approve): " + strings.Join(kept, ", ")
+		return "the commit changes paths only a person may approve (systems_repository_commits.paths_only_a_person_may_approve): " + strings.Join(kept, ", ")
 	}
 	return ""
 }

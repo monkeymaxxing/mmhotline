@@ -99,6 +99,8 @@ const MaximumCommitReviewDiffBytes = 128 << 10
 // public key line: Trusted for the team's people and machines, such as each
 // person's desk and util01, and TriageAgent for the triage agent, whose
 // commits may change only its own folders.
+// TriageAgent is empty for a team without the triage agent: no commit is
+// then the triage agent's.
 type CommitSigningKeys struct {
 	Trusted     []string
 	TriageAgent string
@@ -145,11 +147,13 @@ func CommitsThatNeedReview(ctx context.Context, directory, last, target string, 
 		return nil, err
 	}
 	// The fingerprint Git reports with a good signature says whose key signed.
-	triageAgentFingerprint, err := CommitSigningKeyFingerprint(keys.TriageAgent)
-	if err != nil {
-		return nil, err
+	triageAgentFingerprint, allowedSigners := "", ""
+	if keys.TriageAgent != "" {
+		if triageAgentFingerprint, err = CommitSigningKeyFingerprint(keys.TriageAgent); err != nil {
+			return nil, err
+		}
+		allowedSigners = "triage-agent namespaces=\"git\" " + strings.TrimSpace(keys.TriageAgent) + "\n"
 	}
-	allowedSigners := "triage-agent namespaces=\"git\" " + strings.TrimSpace(keys.TriageAgent) + "\n"
 	trusted := map[string]bool{}
 	for _, key := range keys.Trusted {
 		fingerprint, err := CommitSigningKeyFingerprint(key)
@@ -181,7 +185,7 @@ func CommitsThatNeedReview(ctx context.Context, directory, last, target string, 
 		if err != nil {
 			return nil, err
 		}
-		if good && fingerprint == triageAgentFingerprint {
+		if good && triageAgentFingerprint != "" && fingerprint == triageAgentFingerprint {
 			if commit.Paths, err = pathsThatWait(changes); err != nil {
 				return nil, err
 			}

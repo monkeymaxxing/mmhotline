@@ -202,8 +202,9 @@ key paths, in this order:
 | `rules_for_running_agent_playbooks` | Saves each inventory's rules ([rules for running the agent's playbooks](#rules-for-running-the-agents-playbooks)) |
 | `services_whose_changes_a_person_must_approve` | Saves the list |
 | `alert_sources` | Saves, enables, and disables alert sources ([alert sources](#alert-sources)) |
-| `triage_agent.commit_signing_public_key, triage_agent.trusted_commit_signing_public_keys` | Saves the public SSH keys the commit check uses before every MMX run and triage agent run; a changed key leaves the checked-through commit as it is |
-| `triage_agent.commits_without_a_trusted_signature_are_approved_by, triage_agent.paths_only_a_person_may_approve` | Keeps the two settings of the triage agent's approval as applied values, which the commit review reads; no outside test. Its note says what the setting means. The background loop's next visit sends MMHotline's warning for each waiting commit the agent may no longer review ([the triage agent reviews a commit](triage-agent.md#the-triage-agent-reviews-a-commit-no-trusted-key-signed)) |
+| `systems_repository_commits.trusted_commits` | Keeps the value as an applied value, which the commit check reads; without the section the value is null and nothing is trusted |
+| `triage_agent.commit_signing_public_key, systems_repository_commits.trusted_commit_signing_public_keys` | Saves the public SSH keys the commit check uses before every MMX run and triage agent run; a changed key leaves the checked-through commit as it is. Without the `systems_repository_commits` section no key is saved; without the `triage_agent` section no triage agent key is saved |
+| `systems_repository_commits.commits_without_a_trusted_signature_are_approved_by, systems_repository_commits.paths_only_a_person_may_approve` | Keeps the two settings of the triage agent's approval as applied values, which the commit review reads; no outside test. Its note says what the setting means. The background loop's next visit sends MMHotline's warning for each waiting commit the agent may no longer review ([the triage agent reviews a commit](triage-agent.md#the-triage-agent-reviews-a-commit-no-trusted-key-signed)) |
 | `triage_agent.coding_agent, triage_agent.credential_type, triage_agent.credential, triage_agent.model, triage_agent.reasoning_effort` | Saves the triage agent's setup after its outside test ([the agents](#the-triage-agent-and-the-review-agent)) |
 | `triage_agent.internet_access`, `triage_agent.listed_hosts`, `triage_agent.sos_waits_for_the_agent_minutes`, `triage_agent.warn_waits_for_the_agent_minutes`, `triage_agent.sos_waits_for_a_server_replacement_minutes`, `triage_agent.software_review_interval_hours` | Save the triage agent's own settings, when its section is present. An SOS reads the applied `sos_waits_for_the_agent_minutes` as it opens its incident, and a warn reads the applied `warn_waits_for_the_agent_minutes` as it arrives (0 to 15; the key may be left out, which is 0; [a warn waits for the agent](triage-agent.md#a-warn-waits-for-the-agent)), and a server replacement reads `sos_waits_for_a_server_replacement_minutes`, 0 to 60, as it starts ([an SOS waits for a server replacement](triage-agent.md#an-sos-waits-for-a-server-replacement)). `software_review_interval_hours` is `off` or 1 to 8,760 hours; its part carries a note, "Scheduled software review: off. ..." or the interval ([the software review interval](triage-agent.md#the-software-review-interval)) |
 | `mmhotline_down_alarm.wake_the_person_on_call_after_minutes_without_a_check_in, mmhotline_down_alarm.wake_the_backup_after_minutes_without_a_check_in` | Saves the MMHotline-down alarm's wake times, which reach the Worker at the next check-in, within seconds. They are their own part, so changing them never sets up the MMHotline-down alarm again |
@@ -531,16 +532,36 @@ servers, and the hosts of the vendor pages in
 ([internet access](triage-agent.md#internet-access)). `listed_hosts` is usually
 `[]`.
 
-`triage_agent.commit_signing_public_key` and
-`triage_agent.trusted_commit_signing_public_keys` are required whenever
-`triage_agent` is present. The first is one OpenSSH public key line, such as
-the public `.pub` file of the SSH key that signs the triage agent's commits.
-The second is a list of such lines, the keys of the team's people and
-machines, such as each person's desk and util01. As in OpenSSH, everything
+The optional section `systems_repository_commits` decides which commits of
+the systems repository MMX and the triage agent may run, with or without
+the triage agent. Left out, nothing is trusted, as during a lock-out. Its
+`trusted_commits` is required inside the section:
+`signed_by_a_trusted_key_or_reviewed` or `every_commit_on_origin`
+([the commit check](triage-agent.md#checking-commits-before-mmx-and-triage-agent-runs)).
+The keys `trusted_commits`, `trusted_commit_signing_public_keys`,
+`commits_without_a_trusted_signature_are_approved_by`, and
+`paths_only_a_person_may_approve` moved there from `triage_agent`; under
+`triage_agent`, each is refused with `moved to
+systems_repository_commits.KEY`. Reason: a team without the optional
+triage agent still needs trusted commits for MMX's commit check.
+
+With `signed_by_a_trusted_key_or_reviewed`,
+`systems_repository_commits.trusted_commit_signing_public_keys` is
+required, and so is `triage_agent.commit_signing_public_key` when
+`triage_agent` is present. The agent's key stays in `triage_agent`: it is
+the agent's own, and MMHotline knows the agent's commits by it. Without
+`triage_agent` no agent key is needed, since there are no agent commits.
+With `every_commit_on_origin`, these keys are refused. Without
+`systems_repository_commits`, the agent's key is allowed and unused, so a
+lock-out removes one section only. The agent's key is one OpenSSH public
+key line, such as the public `.pub` file of the SSH key that signs the
+triage agent's commits. The trusted keys are a list of such lines, the
+keys of the team's people and machines, such as each person's desk and
+util01. As in OpenSSH, everything
 after the key is the key's comment, which is optional and may hold any text.
 The static check requires a known key type, base64 that decodes to a whole
 key, and a matching type string inside the decoded key; its message names
-the key path, such as `triage_agent.trusted_commit_signing_public_keys[1]`,
+the key path, such as `systems_repository_commits.trusted_commit_signing_public_keys[1]`,
 and the part that fails. The triage agent's key in the trusted list is a
 problem, because a trusted key's commits pass whatever they change.
 Before MMX runs and triage agent runs, MMHotline passes commits a trusted
@@ -553,13 +574,14 @@ that renders the settings file from a template fills in the keys there.
 `settings show` lists the keys' settings part and whether the keys applied;
 `settings show` prints no key value.
 
-`triage_agent.commits_without_a_trusted_signature_are_approved_by` and
-`triage_agent.paths_only_a_person_may_approve` are required whenever
-`triage_agent` is present. The first is `a_person` or
-`a_person_or_the_triage_agent`; the second is a list of paths in the systems
+`systems_repository_commits.commits_without_a_trusted_signature_are_approved_by`
+and `systems_repository_commits.paths_only_a_person_may_approve` are
+required with `signed_by_a_trusted_key_or_reviewed`. The first is
+`a_person` or `a_person_or_the_triage_agent`, which needs the
+`triage_agent` section; the second is a list of paths in the systems
 repository, as Git names them, an entry ending in `/` a directory, and may
 be empty. The static check names the key path of each problem, such as
-`triage_agent.paths_only_a_person_may_approve[2]`: another value, an empty
+`systems_repository_commits.paths_only_a_person_may_approve[2]`: another value, an empty
 path, a path that starts with `/`, a path with an empty, `.`, or `..` part,
 and a path listed twice. With `a_person_or_the_triage_agent`, the triage
 agent reviews each commit no trusted key signed that changes no listed path

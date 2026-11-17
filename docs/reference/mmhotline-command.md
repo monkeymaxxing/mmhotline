@@ -408,24 +408,25 @@ before the schedule that names them:
 6. `rules_for_running_agent_playbooks`
 7. `services_whose_changes_a_person_must_approve`
 8. `alert_sources`
-9. `triage_agent.commit_signing_public_key, triage_agent.trusted_commit_signing_public_keys`
-10. `triage_agent.commits_without_a_trusted_signature_are_approved_by, triage_agent.paths_only_a_person_may_approve`
-11. `triage_agent.coding_agent, triage_agent.credential_type, triage_agent.credential, triage_agent.credential_expires_on, triage_agent.model, triage_agent.reasoning_effort`
-12. `triage_agent.internet_access`
-13. `triage_agent.listed_hosts`
-14. `triage_agent.sos_waits_for_the_agent_minutes`
-15. `triage_agent.warn_waits_for_the_agent_minutes`
-16. `triage_agent.sos_waits_for_a_server_replacement_minutes`
-17. `triage_agent.software_review_interval_hours`
-18. `mmhotline_down_alarm.wake_the_person_on_call_after_minutes_without_a_check_in, mmhotline_down_alarm.wake_the_backup_after_minutes_without_a_check_in`
-19. `review_agent`
-20. `sending_services.pushover`
-21. `sending_services.twilio`
-22. `sending_services.telegram`
-23. `sending_services.slack`
-24. `sending_services.mail_server`
-25. `mmhotline_down_alarm`
-26. `status_page`
+9. `systems_repository_commits.trusted_commits`
+10. `triage_agent.commit_signing_public_key, systems_repository_commits.trusted_commit_signing_public_keys`
+11. `systems_repository_commits.commits_without_a_trusted_signature_are_approved_by, systems_repository_commits.paths_only_a_person_may_approve`
+12. `triage_agent.coding_agent, triage_agent.credential_type, triage_agent.credential, triage_agent.credential_expires_on, triage_agent.model, triage_agent.reasoning_effort`
+13. `triage_agent.internet_access`
+14. `triage_agent.listed_hosts`
+15. `triage_agent.sos_waits_for_the_agent_minutes`
+16. `triage_agent.warn_waits_for_the_agent_minutes`
+17. `triage_agent.sos_waits_for_a_server_replacement_minutes`
+18. `triage_agent.software_review_interval_hours`
+19. `mmhotline_down_alarm.wake_the_person_on_call_after_minutes_without_a_check_in, mmhotline_down_alarm.wake_the_backup_after_minutes_without_a_check_in`
+20. `review_agent`
+21. `sending_services.pushover`
+22. `sending_services.twilio`
+23. `sending_services.telegram`
+24. `sending_services.slack`
+25. `sending_services.mail_server`
+26. `mmhotline_down_alarm`
+27. `status_page`
 
 Each line ends in one of these. Text output counts the parts that did
 not change on one last line, such as `12 parts unchanged.`, and prints a
@@ -465,9 +466,9 @@ Other notes the parts print:
 - Under `triage_agent.software_review_interval_hours` while the review is
   off:
   `Scheduled software review: off. The triage agent wakes only for alerts; sudo mmhotline triage-agent run-software-review still runs one review, such as to learn what one costs.`
-- Under `triage_agent.commits_without_a_trusted_signature_are_approved_by`
+- Under `systems_repository_commits.commits_without_a_trusted_signature_are_approved_by`
   with `a_person_or_the_triage_agent`:
-  `The triage agent reviews each commit no trusted key signed and approves an ordinary change; a person reviews the triage agent's own commits outside its folders, and every commit that changes a path of triage_agent.paths_only_a_person_may_approve.`
+  `The triage agent reviews each commit no trusted key signed and approves an ordinary change; a person reviews the triage agent's own commits outside its folders, and every commit that changes a path of systems_repository_commits.paths_only_a_person_may_approve.`
 
 **The parts with an outside test** are saved only when the test passes:
 
@@ -693,8 +694,8 @@ Last applied: 2026-11-15T03:58:24Z
   ([settings file design](../changing-mmhotline/design/settings-file.md#notes-on-a-parts-outcome)).
 - **Commit signing keys:** `settings show` lists each applied commit
   signing key with its type, comment, and fingerprint. With the triage
-  agent set up and no keys, it says
-  `No commit signing keys are applied, so MMHotline refuses every MMX run and commit check.`
+  agent set up and no `systems_repository_commits` section applied, it says
+  `The settings file has no systems_repository_commits section, so MMHotline trusts no commit and refuses every MMX run and commit check.`
 - The dashboard shows administrators the parts that failed.
 - **Exit code:** `0` whatever the parts' states.
 
@@ -972,7 +973,7 @@ the fields below are inside `triage_agent`.
 | `setup.sign_in_last_checked_at` | The end of the agent's latest successful run or latest failed sign-in check, whichever is later. A passed setup test counts |
 | `setup.sign_in_works` | `false` when that latest run is a failed sign-in check |
 | `setup.sign_in_failure_reason` | Why that sign-in check failed; empty when sign-in works |
-| `commit_signing_public_key` | The applied `triage_agent.commit_signing_public_key`, a public key; absent while none is applied. [`check-preparation`](#mmhotline-triage-agent-check-preparation) compares it with the agent's git settings |
+| `commit_signing_public_key` | The applied `triage_agent.commit_signing_public_key`, a public key; absent while none is applied, such as without the `systems_repository_commits` section. [`check-preparation`](#mmhotline-triage-agent-check-preparation) compares it with the agent's git settings |
 | `internet_access` | `listed_hosts_only` or `any_site` |
 | `listed_hosts` | The automatic and added hosts |
 | `listed_hosts[].host`, `listed_hosts[].port` | The host and port |
@@ -2651,13 +2652,14 @@ Waits for review at https://ops.example.com/approvals/commits/5c281a5cc65bb8cb9a
 | Common flags | As above |
 
 - **The rule:** a commit signed by a key in
-  `triage_agent.trusted_commit_signing_public_keys` passes. A commit the
-  triage agent's key signed passes when it changes only the agent's two
-  folders. Every other commit waits for a review on the Approvals page.
-  With `triage_agent.commits_without_a_trusted_signature_are_approved_by:
+  `systems_repository_commits.trusted_commit_signing_public_keys` passes.
+  A commit the triage agent's key signed passes when it changes only the
+  agent's two folders. Every other commit waits for a review on the
+  Approvals page. With
+  `systems_repository_commits.commits_without_a_trusted_signature_are_approved_by:
   a_person_or_the_triage_agent`, the triage agent reviews a commit no
   trusted key signed that changes no path of
-  `triage_agent.paths_only_a_person_may_approve`, and approves it or
+  `systems_repository_commits.paths_only_a_person_may_approve`, and approves it or
   decides that a person must review it
   ([design](../changing-mmhotline/design/triage-agent.md#the-triage-agent-reviews-a-commit-no-trusted-key-signed)).
 - **What it does:** fetches origin into MMHotline's copy under the copy's
@@ -2783,7 +2785,7 @@ diff --git a/playbooks/check_disk.yml b/playbooks/check_disk.yml
 | `reason_kind` | `not_signed_by_a_trusted_key`: unsigned, signed by a key the settings file does not list, or a signature Git cannot verify. `triage_agent_change_needs_review`: signed by the triage agent's key, and changes paths outside its folders or adds a file type it may not add |
 | `reason` | The reason in words, such as `which no key the team trusts signed` |
 | `author`, `committed_at`, `message` | The commit's author, date, and message |
-| `paths_that_need_review` | Each `path` and `reason`: for `triage_agent_change_needs_review`, the paths outside the agent's folders; for a commit no trusted key signed, the changed paths of `triage_agent.paths_only_a_person_may_approve`, as applied now; otherwise empty |
+| `paths_that_need_review` | Each `path` and `reason`: for `triage_agent_change_needs_review`, the paths outside the agent's folders; for a commit no trusted key signed, the changed paths of `systems_repository_commits.paths_only_a_person_may_approve`, as applied now; otherwise empty |
 | `changed_paths` | Every path the commit changes, against each parent of a merge |
 | `found_at` | When MMHotline first found the commit |
 | `reviewed_by`, `reviewed_at` | Who reviewed it and when, such as `Barbara Example`, `the mmhotline command, run by barbara`, `the mmhotline command, run by root, marking every commit through abc1234 trusted`, or `the triage agent`; absent while it waits |

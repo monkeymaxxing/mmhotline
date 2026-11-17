@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"path/filepath"
@@ -13,11 +12,12 @@ import (
 	"mmhotline/internal/triageagent"
 )
 
-// everyCommitOnOriginSettingsYAML is the example with triage_agent.trusted_commits
-// every_commit_on_origin and its four signing and approval keys left out.
+// everyCommitOnOriginSettingsYAML is the example with
+// systems_repository_commits.trusted_commits every_commit_on_origin, and its
+// three signing and approval keys and the triage agent's key left out.
 func everyCommitOnOriginSettingsYAML() string {
-	fourKeys := regexp.MustCompile(`(?m)^  (commit_signing_public_key|trusted_commit_signing_public_keys|commits_without_a_trusted_signature_are_approved_by|paths_only_a_person_may_approve):.*\n`)
-	return strings.Replace(fourKeys.ReplaceAllString(exampleSettingsYAML, ""), "triage_agent:\n", "triage_agent:\n  trusted_commits: every_commit_on_origin\n", 1)
+	keys := regexp.MustCompile(`(?m)^  (commit_signing_public_key|trusted_commit_signing_public_keys|commits_without_a_trusted_signature_are_approved_by|paths_only_a_person_may_approve):.*\n`)
+	return strings.Replace(keys.ReplaceAllString(exampleSettingsYAML, ""), "trusted_commits: signed_by_a_trusted_key_or_reviewed", "trusted_commits: every_commit_on_origin", 1)
 }
 
 // trustEveryCommitOnOriginForTest applies what the settings file's part does
@@ -30,7 +30,7 @@ func trustEveryCommitOnOriginForTest(t *testing.T, a *App) {
 	}
 }
 
-func setTrustedCommitsForTest(t *testing.T, a *App, appliedJSON string) {
+func setTrustedCommitsForTest(t testing.TB, a *App, appliedJSON string) {
 	t.Helper()
 	if _, err := a.Store.db.Exec(`INSERT INTO settings_file_parts(part,applied_fingerprint,applied_at,applied_values,failure_reason,failed_at,notes) VALUES(?,'test',?,?,'',0,'[]')
 ON CONFLICT(part) DO UPDATE SET applied_values=excluded.applied_values`, settingsTrustedCommitsPart.name, a.Now().Unix(), appliedJSON); err != nil {
@@ -108,9 +108,9 @@ func TestEveryCommitOnOriginCommands(t *testing.T) {
 	}
 }
 
-// A settings file without a triage_agent section applies the value null and
-// no keys, and the check then trusts nothing, as before the key existed.
-func TestWithoutTheTriageAgentSectionNothingIsTrusted(t *testing.T) {
+// A settings file without the systems_repository_commits section applies
+// the value null and no keys, and the check then trusts nothing.
+func TestWithoutTheSystemsRepositoryCommitsSectionNothingIsTrusted(t *testing.T) {
 	a := foundationApp(t)
 	commitRunMMXInCopy(t, a, "")
 	trustEveryCommitOnOriginForTest(t, a)
@@ -122,7 +122,7 @@ func TestWithoutTheTriageAgentSectionNothingIsTrusted(t *testing.T) {
 	if err := a.setCommitSigningKeys(t.Context(), systemsrepository.CommitSigningKeys{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.checkCommitsThrough(t.Context(), tip); !errors.Is(err, errCommitSigningKeysNotSet) {
+	if _, err := a.checkCommitsThrough(t.Context(), tip); !errors.Is(err, errNoCommitIsTrusted) {
 		t.Fatalf("check without the section: %v", err)
 	}
 }
@@ -148,9 +148,9 @@ func TestEveryCommitOnOriginStartsNoCommitReviewRun(t *testing.T) {
 	}
 }
 
-// The settings file applies triage_agent.trusted_commits: the check trusts
-// every commit with it, the applied view says so, and leaving the key out
-// again brings the signing keys back.
+// The settings file applies systems_repository_commits.trusted_commits: the
+// check trusts every commit with it, the applied view says so, and
+// signed_by_a_trusted_key_or_reviewed brings the signing keys back.
 func TestSettingsFileAppliesTrustedCommits(t *testing.T) {
 	f := newSettingsFileFixture(t, everyCommitOnOriginSettingsYAML())
 	f.start()
@@ -165,21 +165,83 @@ func TestSettingsFileAppliesTrustedCommits(t *testing.T) {
 	f.write(exampleSettingsYAML)
 	f.apply()
 	if every, err = trustsEveryCommitOnOrigin(t.Context(), f.a.Store.db); err != nil || every {
-		t.Fatalf("after leaving the key out: %v, %v", every, err)
+		t.Fatalf("after the switch back: %v, %v", every, err)
 	}
 	var signingKey string
 	if err := f.a.Store.db.QueryRow(`SELECT commit_signing_public_key FROM triage_agent_commit_check_state`).Scan(&signingKey); err != nil || signingKey != testTriageAgentCommitSigningPublicKey {
 		t.Fatalf("signing key %q, %v", signingKey, err)
 	}
-	// Leaving the triage_agent section out trusts nothing again.
-	start, end := strings.Index(exampleSettingsYAML, "triage_agent:\n"), strings.Index(exampleSettingsYAML, "review_agent:\n")
-	f.write(exampleSettingsYAML[:start] + exampleSettingsYAML[end:])
-	f.apply()
-	if every, err = trustsEveryCommitOnOrigin(t.Context(), f.a.Store.db); err != nil || every {
-		t.Fatalf("without the section: %v, %v", every, err)
+}
+
+// Left out, the systems_repository_commits section trusts nothing, as the
+// Stack relies on during a lock-out: MMX's commit check refuses with the
+// plain cause, the triage agent, set up, holds no key and knows no commit as
+// its own, and settings show says so.
+func TestLeavingOutSystemsRepositoryCommitsTrustsNothing(t *testing.T) {
+	f := newSettingsFileFixture(t, exampleSettingsYAML)
+	f.start()
+	commitRunMMXInCopy(t, f.a, "")
+	directory := filepath.Join(f.a.Store.Dir, "systems_repository")
+	head := testGit(t, directory, "rev-parse", "HEAD")
+	if result, raw := commandRequest(t, f.a, CommandRequest{Group: "commit-reviews", Action: "check", CommitReviews: CommitReviewsCommandRequest{CommitID: head}}, 200); result.CommitCheck == nil || result.CommitCheck.TrustedThroughCommitID != head {
+		t.Fatalf("check with the section: %s", raw)
 	}
-	if _, err := f.a.checkCommitsThrough(context.Background(), strings.Repeat("b", 40)); !errors.Is(err, errCommitSigningKeysNotSet) {
-		t.Fatalf("check without the section: %v", err)
+	f.write(withoutSection(t, exampleSettingsYAML, "systems_repository_commits"))
+	f.apply()
+	_, raw := commandRequest(t, f.a, CommandRequest{Group: "commit-reviews", Action: "check", CommitReviews: CommitReviewsCommandRequest{CommitID: head}}, 409)
+	if !strings.Contains(raw, "no systems_repository_commits section, so MMHotline trusts no commit") {
+		t.Fatalf("check without the section: %s", raw)
+	}
+	_, raw = commandRequest(t, f.a, CommandRequest{Group: "commit-reviews", Action: "trust-through", CommitReviews: CommitReviewsCommandRequest{CommitID: head}}, 409)
+	if !strings.Contains(raw, "no systems_repository_commits section") {
+		t.Fatalf("trust-through without the section: %s", raw)
+	}
+	if owned := f.a.triageAgentsOwnCommits(t.Context()); owned.SigningKey != "" || owned.PushedByMMHotline {
+		t.Fatalf("the triage agent's own commits without the section: %+v", owned)
+	}
+	view, err := f.a.SettingsFileState(t.Context())
+	if err != nil || !strings.Contains(view.Text(), "The settings file has no systems_repository_commits section, so MMHotline trusts no commit") {
+		t.Fatalf("settings show (%v):\n%s", err, view.Text())
+	}
+}
+
+// With signed_by_a_trusted_key_or_reviewed and no triage_agent section, the
+// trusted keys alone decide: a commit a trusted key signed passes, and any
+// other commit, the triage agent's key's included, waits for a person.
+func TestSignaturesWithoutTheTriageAgentNeedNoAgentKey(t *testing.T) {
+	yaml := strings.Replace(withoutSection(t, withoutSection(t, exampleSettingsYAML, "triage_agent"), "review_agent"), "approved_by: a_person_or_the_triage_agent", "approved_by: a_person", 1)
+	f := newSettingsFileFixture(t, yaml)
+	f.start()
+	var agentKey string
+	if err := f.a.Store.db.QueryRow(`SELECT commit_signing_public_key FROM triage_agent_commit_check_state`).Scan(&agentKey); err != nil || agentKey != "" {
+		t.Fatalf("applied triage agent key %q, %v", agentKey, err)
+	}
+	commitRunMMXInCopy(t, f.a, "")
+	trusted := commitInCopy(t, f.a, "trusted", "roles/x.yml")
+	if result, raw := commandRequest(t, f.a, CommandRequest{Group: "commit-reviews", Action: "check", CommitReviews: CommitReviewsCommandRequest{CommitID: trusted}}, 200); result.CommitCheck == nil || result.CommitCheck.TrustedThroughCommitID != trusted {
+		t.Fatalf("check of a trusted commit: %s", raw)
+	}
+	agents := commitInCopy(t, f.a, "triage agent", "one_time_playbooks/fix.yml")
+	result, raw := commandRequest(t, f.a, CommandRequest{Group: "commit-reviews", Action: "check", CommitReviews: CommitReviewsCommandRequest{CommitID: agents}}, 200)
+	if result.CommitCheck == nil || result.CommitCheck.TrustedThroughCommitID != trusted || len(result.CommitCheck.CommitsWaitingForReview) != 1 || result.CommitCheck.CommitsWaitingForReview[0].ReasonKind != systemsrepository.NotSignedByATrustedKey {
+		t.Fatalf("check of the triage agent's key's commit: %s", raw)
+	}
+}
+
+// With every_commit_on_origin and no triage_agent section, MMX's commit
+// check passes a commit on origin nobody signed and starts no triage agent
+// run.
+func TestEveryCommitOnOriginWithoutTheTriageAgent(t *testing.T) {
+	f := newSettingsFileFixture(t, withoutSection(t, withoutSection(t, everyCommitOnOriginSettingsYAML(), "triage_agent"), "review_agent"))
+	f.start()
+	commitRunMMXInCopy(t, f.a, "")
+	tip := pushUnsignedToOrigin(t, f.a, "roles/x.yml", "# change\n")
+	result, raw := commandRequest(t, f.a, CommandRequest{Group: "commit-reviews", Action: "check", CommitReviews: CommitReviewsCommandRequest{CommitID: tip}}, 200)
+	if result.CommitCheck == nil || result.CommitCheck.TrustedThroughCommitID != tip || len(result.CommitCheck.CommitsWaitingForReview) != 0 {
+		t.Fatalf("check: %s", raw)
+	}
+	if runs := countRows(t, f.a, `SELECT count(*) FROM triage_agent_runs`); runs != 0 || len(f.requests()) != 0 {
+		t.Fatalf("%d triage agent runs, %d sandbox requests", runs, len(f.requests()))
 	}
 }
 

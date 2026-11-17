@@ -69,7 +69,7 @@ The settings file /etc/mmhotline/mmhotline_settings.yml has no problems.
 | Owner and mode | MMHotline refuses a file whose owner is not an allowed owner (`root`), that group or other users can write (any of mode bits `0022`), or that other users can read (mode bit `0004`). The install's choice is owner `root`, group `mmhotline`, mode `0640`, so the `mmhotline` user can read it. Reason: the file decides what MMHotline does, `fleet_view_command` runs as root, and the file holds the team's secrets. `settings check` skips this rule, so a deploy tool can check a copy on a laptop; `settings apply`, `install`, and MMHotline's start apply it. [Installed files](installed-files.md#etcmmhotlinemmhotline_settingsyml) says who sets the owner. |
 | Unknown keys | Refused, so a typo never passes silently. |
 | Required keys | Every top-level key without "optional" below is required. Inside a section that is present, every key is required unless its table says optional. |
-| Defaults | None, except `triage_agent.warn_waits_for_the_agent_minutes`, which is 0 when left out, `triage_agent.trusted_commits`, which is `signed_by_a_trusted_key_or_reviewed` when left out, and an action kind that `action_kinds` leaves out, which needs a person ([rules_for_running_agent_playbooks](#rules_for_running_agent_playbooks)). Reason: the person or agent who writes the file states every setting. The two exceptions keep a file written before the key existed working: `warn_waits_for_the_agent_minutes` left out is the earlier behavior, nothing held, and `trusted_commits` left out is the earlier check of every commit. |
+| Defaults | None, except `triage_agent.warn_waits_for_the_agent_minutes`, which is 0 when left out, and an action kind that `action_kinds` leaves out, which needs a person ([rules_for_running_agent_playbooks](#rules_for_running_agent_playbooks)). Reason: the person or agent who writes the file states every setting. `warn_waits_for_the_agent_minutes` left out keeps a file written before the key existed working: nothing is held, as before. |
 | Optional sections | Leaving out an optional section, such as `status_page`, turns its feature off. `settings apply` then reports the part as `not set up, because the settings file leaves it out.` |
 | First line | When the first line is a comment, the pages and `settings show` print it next to the file's path. Use it to say how the file is changed, such as `# Managed by MMX from mmhotline_settings.yml in the systems repository`. |
 | Secrets | Values marked secret below never appear in a problem, a page, a log, or command output. A YAML syntax error names only its line. |
@@ -129,6 +129,7 @@ A key path shows each list item by its position from 0, such as
 | `people` | Yes | [people](#people) |
 | `on_call_schedule` | Yes | [on_call_schedule](#on_call_schedule) |
 | `alert_sources` | Yes, may be `[]` | [alert_sources](#alert_sources) |
+| `systems_repository_commits` | Optional | [systems_repository_commits](#systems_repository_commits) |
 | `triage_agent` | Optional | [triage_agent](#triage_agent) |
 | `review_agent` | Optional | [review_agent](#review_agent) |
 | `rules_for_running_agent_playbooks` | Yes, may be `{}` | [rules_for_running_agent_playbooks](#rules_for_running_agent_playbooks) |
@@ -142,7 +143,7 @@ the four server and sign-in keys together, `team_name`,
 `fleet_view_command`, `people`, `on_call_schedule`,
 `rules_for_running_agent_playbooks`,
 `services_whose_changes_a_person_must_approve`, `alert_sources`, the
-triage agent's parts, the MMHotline-down alarm's wake times,
+`systems_repository_commits` parts, the triage agent's parts, the MMHotline-down alarm's wake times,
 `review_agent`, each sending service, `mmhotline_down_alarm`, and
 `status_page`. People apply before the schedule that names them. A part
 that has not changed is not applied again. A part that MMHotline refuses
@@ -433,6 +434,64 @@ Set up in [Connect a tool that sends alerts](../how-to/connect-a-tool-that-sends
 [Change a source later](../how-to/connect-a-tool-that-sends-alerts.md#change-a-source-later)
 covers the secret change.
 
+## The systems repository
+
+### systems_repository_commits
+
+Which commits of the systems repository MMHotline trusts: MMX runs only
+past a trusted commit when it asks MMHotline's commit check
+(`sudo mmhotline commit-reviews check`), and the triage agent's runs and
+playbook runs use only trusted commits. The section works with or without
+the triage agent.
+
+Leaving the section out trusts no commit: the commit check refuses, and
+so does every MMX run for the triage agent. A lock-out leaves the section
+out for this reason. Leaving it out keeps the checked-through commit, so
+the check does not read the whole history again when the section returns.
+
+| Key | Required | Type and allowed values |
+| --- | --- | --- |
+| `systems_repository_commits.trusted_commits` | Yes | Which commits on origin pass. `signed_by_a_trusted_key_or_reviewed`: a commit passes when a trusted key signed it, or when a person (or, when allowed, the triage agent) reviewed it. `every_commit_on_origin`: every commit on origin's branch passes with no check, so none waits. Use `every_commit_on_origin` only when origin is on the team's own server, only keys that already hold root on every server can push to it, and the `triage` user on the servers cannot write to it. With origin on a Git host such as GitHub, it would give everyone who can push there root on every server. Switching back does not check the commits that arrived meanwhile. |
+| `systems_repository_commits.trusted_commit_signing_public_keys` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | The public key lines of the team's people and machines, such as each person's desk and util01. A commit no listed key signed waits for a review before any MMX run goes past it. Never the triage agent's own key. May be `[]`. |
+| `systems_repository_commits.commits_without_a_trusted_signature_are_approved_by` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | `a_person`, or `a_person_or_the_triage_agent`: the triage agent then reviews each such commit and approves an ordinary change. `a_person_or_the_triage_agent` needs the `triage_agent` section. |
+| `systems_repository_commits.paths_only_a_person_may_approve` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | Paths in the systems repository, as Git names them, that only a person may approve; an entry ending in `/` is a directory. List the files that set the triage agent's own powers and the trusted keys. May be `[]`. |
+
+The triage agent's own key, `triage_agent.commit_signing_public_key`, stays
+in [triage_agent](#triage_agent): it is required there with
+`signed_by_a_trusted_key_or_reviewed` and refused with
+`every_commit_on_origin`. Without the `triage_agent` section no agent key
+is needed, and only the trusted keys pass a commit.
+
+What `settings check` says when a value is wrong, each after its key path:
+
+| Key | Text |
+| --- | --- |
+| `trusted_commits` | `required`; `must be signed_by_a_trusted_key_or_reviewed or every_commit_on_origin` |
+| `trusted_commit_signing_public_keys`, `commits_without_a_trusted_signature_are_approved_by`, `paths_only_a_person_may_approve`, and `triage_agent.commit_signing_public_key`, with `every_commit_on_origin` | `used only with systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it` |
+| The same three keys of this section, left out with `signed_by_a_trusted_key_or_reviewed` | `required` |
+| `trusted_commit_signing_public_keys[N]` | `must be one OpenSSH public key line: the key type, such as ssh-ed25519, then the key, then an optional comment`; `starts with "X", which is not an SSH key type: ...`; `has a key that is not valid base64: ...`; `must be one OpenSSH public key line, without a line break or a NUL character`; `is the triage agent's key, triage_agent.commit_signing_public_key; list only the keys of the team's people and machines, because the triage agent's commits may change only one_time_playbooks/ and triage_agent_notes/` |
+| `commits_without_a_trusted_signature_are_approved_by` | `must be a_person or a_person_or_the_triage_agent`; without the `triage_agent` section, `a_person_or_the_triage_agent needs the triage_agent section: without it, use a_person` |
+| `paths_only_a_person_may_approve[N]` | `must be a path in the systems repository, such as AGENTS.md, or a directory ending in /, such as roles/every_server/files/`; `"/etc/sudoers" must be relative to the systems repository, ...`; `... must not have an empty, ".", or ".." part, ...`; `AGENTS.md is listed twice` |
+| `triage_agent.trusted_commits`, `triage_agent.trusted_commit_signing_public_keys`, `triage_agent.commits_without_a_trusted_signature_are_approved_by`, `triage_agent.paths_only_a_person_may_approve` | `moved to systems_repository_commits.KEY`, with the key's name in place of KEY |
+
+Notes that `settings check` and `settings apply` print, which never fail
+the check:
+
+- Under `systems_repository_commits.trusted_commits` with
+  `every_commit_on_origin`: `MMHotline trusts every commit on origin: ...`.
+- Under `systems_repository_commits.commits_without_a_trusted_signature_are_approved_by`,
+  what the setting means, such as
+  `A person reviews every commit no trusted key signed before MMX runs past it.`
+  With `a_person_or_the_triage_agent` and an empty
+  `paths_only_a_person_may_approve`, the note adds
+  `The list is empty, so the triage agent may approve a commit that changes its own rules or the trusted keys: list the files that set them.`
+
+The keys apply as these parts: `trusted_commits`; the signing keys,
+together with `triage_agent.commit_signing_public_key`; and the two commit
+approval settings. MMHotline uses only the applied values.
+
+Set up in [Review a commit](../how-to/review-a-commit.md).
+
 ## The agents
 
 ### triage_agent
@@ -443,11 +502,7 @@ triage agent's setup.
 
 | Key | Required | Type and allowed values |
 | --- | --- | --- |
-| `triage_agent.trusted_commits` | Optional; left out means `signed_by_a_trusted_key_or_reviewed` | Which commits on origin MMHotline lets MMX and the triage agent's copy use. `signed_by_a_trusted_key_or_reviewed`: a commit passes when a trusted key signed it, or when a person (or, when allowed, the triage agent) reviewed it. `every_commit_on_origin`: every commit on origin's branch passes with no check, so none waits. Use `every_commit_on_origin` only when origin is on the team's own server, only keys that already hold root on every server can push to it, and the `triage` user on the servers cannot write to it. With origin on a Git host such as GitHub, it would give everyone who can push there root on every server. Switching back does not check the commits that arrived meanwhile. |
-| `triage_agent.commit_signing_public_key` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | The public key line the triage agent signs its commits with, from `/var/lib/mmhotline-triage-agent/.ssh/id_ed25519.pub`. The agent's own commits pass only within `one_time_playbooks/` and `triage_agent_notes/`. |
-| `triage_agent.trusted_commit_signing_public_keys` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | The public key lines of the team's people and machines, such as each person's desk and util01. A commit no listed key signed waits for a review before any MMX run goes past it. Never the triage agent's own key. May be `[]`. |
-| `triage_agent.commits_without_a_trusted_signature_are_approved_by` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | `a_person`, or `a_person_or_the_triage_agent`: the triage agent then reviews each such commit and approves an ordinary change |
-| `triage_agent.paths_only_a_person_may_approve` | Required with `signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin` | Paths in the systems repository, as Git names them, that only a person may approve; an entry ending in `/` is a directory. List the files that set the triage agent's own powers and the trusted keys. May be `[]`. |
+| `triage_agent.commit_signing_public_key` | Required with `systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed`; left out with `every_commit_on_origin`; unused without `systems_repository_commits` | The public key line the triage agent signs its commits with, from `/var/lib/mmhotline-triage-agent/.ssh/id_ed25519.pub`. MMHotline knows the agent's commits by it: they pass only within `one_time_playbooks/` and `triage_agent_notes/`. |
 | `triage_agent.coding_agent` | Yes | `claude_code` or `codex` |
 | `triage_agent.credential_type` | Yes | For `claude_code`: `api_key` or `subscription_token`. For `codex`: `api_key`, `access_token` (a Codex access token from a ChatGPT Business or Enterprise workspace), or `chatgpt_sign_in` (a ChatGPT sign-in made just for MMHotline). `api_key` is the most dependable. |
 | `triage_agent.credential` | Yes, secret | An API key, the token from `claude setup-token`, or a Codex access token: one line, at most 4,096 bytes. For `chatgpt_sign_in`: the whole content of Codex's `auth.json` after `codex login`, at most 64 KiB. |
@@ -490,13 +545,7 @@ What `settings check` says when a value is wrong, each after its key path:
 
 | Key | Text |
 | --- | --- |
-| `trusted_commits` | `must be signed_by_a_trusted_key_or_reviewed or every_commit_on_origin` |
-| `commit_signing_public_key`, `trusted_commit_signing_public_keys`, `commits_without_a_trusted_signature_are_approved_by`, `paths_only_a_person_may_approve`, with `every_commit_on_origin` | `used only with triage_agent.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it` |
-| The same four keys, left out with `signed_by_a_trusted_key_or_reviewed` | `required` |
-| `commit_signing_public_key`, `trusted_commit_signing_public_keys[N]` | `must be one OpenSSH public key line: the key type, such as ssh-ed25519, then the key, then an optional comment`; `starts with "X", which is not an SSH key type: ...`; `has a key that is not valid base64: ...`; `must be one OpenSSH public key line, without a line break or a NUL character` |
-| `trusted_commit_signing_public_keys[N]` | `is the triage agent's key, triage_agent.commit_signing_public_key; list only the keys of the team's people and machines, because the triage agent's commits may change only one_time_playbooks/ and triage_agent_notes/` |
-| `commits_without_a_trusted_signature_are_approved_by` | `must be a_person or a_person_or_the_triage_agent` |
-| `paths_only_a_person_may_approve[N]` | `must be a path in the systems repository, such as AGENTS.md, or a directory ending in /, such as roles/every_server/files/`; `"/etc/sudoers" must be relative to the systems repository, ...`; `... must not have an empty, ".", or ".." part, ...`; `AGENTS.md is listed twice` |
+| `commit_signing_public_key` | `required with systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed, so MMHotline knows the triage agent's commits`; `used only with systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it`; `must be one OpenSSH public key line: the key type, such as ssh-ed25519, then the key, then an optional comment`, and the other key problems of [systems_repository_commits](#systems_repository_commits) |
 | `coding_agent` | `must be claude_code or codex` |
 | `credential_type` | `must be api_key or subscription_token for claude_code`, or `must be api_key or access_token or chatgpt_sign_in for codex` |
 | `credential` | `CREDENTIAL_TYPE requires a credential` (when `credential` is empty, with the credential type you wrote in place of CREDENTIAL_TYPE, such as `api_key requires a credential`); `credential must be at most 4,096 bytes`; `credential must be one line without control characters`; for `chatgpt_sign_in`, `credential must be the whole content of Codex's auth.json after codex login, but it ...` with the reason |
@@ -513,18 +562,13 @@ What `settings check` says when a value is wrong, each after its key path:
 Notes that `settings check` and `settings apply` print, which never fail
 the check:
 
-- Under `triage_agent.commits_without_a_trusted_signature_are_approved_by`,
-  what the setting means, such as
-  `A person reviews every commit no trusted key signed before MMX runs past it.`
-  With `a_person_or_the_triage_agent` and an empty
-  `paths_only_a_person_may_approve`, the note adds
-  `The list is empty, so the triage agent may approve a commit that changes its own rules or the trusted keys: list the files that set them.`
 - Under `triage_agent.software_review_interval_hours`:
   `Scheduled software review: off. The triage agent wakes only for alerts; sudo mmhotline triage-agent run-software-review still runs one review, such as to learn what one costs.`,
   or `Scheduled software review: every 24 hours, with the team's task in ...`.
 
-The keys apply as these parts: the two signing key settings; the two commit
-approval settings; the agent setup (`coding_agent`, `credential_type`,
+The keys apply as these parts: `commit_signing_public_key`, with the
+trusted keys of [systems_repository_commits](#systems_repository_commits);
+the agent setup (`coding_agent`, `credential_type`,
 `credential`, `credential_expires_on`, `model`, `reasoning_effort`); and
 each other key on its own. The agent setup runs one test prompt first and
 is saved only when the test passes. While another triage agent run is
@@ -535,7 +579,7 @@ A playbook listed with `starts_a_server_replacement: true` starts the replacemen
 How one approval can cover a known sequence of playbooks: [Decide what the triage agent may do](../how-to/decide-what-the-triage-agent-may-do.md#set-the-rules).
 
 Set up in [Set up the triage agent](../how-to/set-up-the-triage-agent.md#set-up-the-agent).
-The signing keys and approvals: [Review a commit](../how-to/review-a-commit.md).
+The signing keys and approvals: [systems_repository_commits](#systems_repository_commits).
 The credential: [Keep the agents signed in](../how-to/keep-the-agents-signed-in.md).
 `software_review_interval_hours`:
 [Turn on the scheduled software review](../how-to/turn-on-the-scheduled-software-review.md).

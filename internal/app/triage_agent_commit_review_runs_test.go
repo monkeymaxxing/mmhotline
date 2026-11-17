@@ -221,11 +221,11 @@ func TestCommitsTheTriageAgentMayNotApproveWaitForAPerson(t *testing.T) {
 	r.check(t, ownKey)
 	keptForAPerson := r.pushAndCheck(t, "roles/every_server/files/sudoers_triage", "triage ALL=(ALL) NOPASSWD: ALL\n")
 	var message string
-	if err := r.a.Store.db.QueryRow(`SELECT message FROM alerts WHERE severity='warn' AND title=?`, reviewNeededTitle(keptForAPerson)).Scan(&message); err != nil || !strings.Contains(message, "The triage agent did not review the commit: the commit changes paths only a person may approve (triage_agent.paths_only_a_person_may_approve): roles/every_server/files/sudoers_triage.") {
+	if err := r.a.Store.db.QueryRow(`SELECT message FROM alerts WHERE severity='warn' AND title=?`, reviewNeededTitle(keptForAPerson)).Scan(&message); err != nil || !strings.Contains(message, "The triage agent did not review the commit: the commit changes paths only a person may approve (systems_repository_commits.paths_only_a_person_may_approve): roles/every_server/files/sudoers_triage.") {
 		t.Fatalf("warning %q: %v", message, err)
 	}
 	// The commit's page and commit-reviews show name the path, too.
-	const named = "<code>roles/every_server/files/sudoers_triage</code> is on triage_agent.paths_only_a_person_may_approve, so only a person may approve the commit"
+	const named = "<code>roles/every_server/files/sudoers_triage</code> is on systems_repository_commits.paths_only_a_person_may_approve, so only a person may approve the commit"
 	if page := rigPageText(t, r, "/approvals/commits/"+keptForAPerson); !strings.Contains(page, named) {
 		t.Errorf("the commit's page lacks the person-only path:\n%s", page)
 	}
@@ -247,7 +247,7 @@ func TestCommitsTheTriageAgentMayNotApproveWaitForAPerson(t *testing.T) {
 	}
 	answers := json.NewDecoder(run.connection)
 	for id, test := range map[string]struct{ commit, reason string }{
-		"00000000000000b1": {keptForAPerson, "the commit changes paths only a person may approve (triage_agent.paths_only_a_person_may_approve): roles/every_server/files/sudoers_triage"},
+		"00000000000000b1": {keptForAPerson, "the commit changes paths only a person may approve (systems_repository_commits.paths_only_a_person_may_approve): roles/every_server/files/sudoers_triage"},
 		"00000000000000b2": {ownKey, "the triage agent's own key signed the commit"},
 	} {
 		answer := reviewCommit(t, run, answers, id, test.commit, "approve", "", "Looks fine\n")

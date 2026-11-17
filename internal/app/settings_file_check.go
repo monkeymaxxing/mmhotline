@@ -55,9 +55,9 @@ func checkSettings(s Settings, problems *settingsProblems) {
 			problems.addError(path, err)
 		}
 	}
+	checkSystemsRepositoryCommitsSettings(s, problems)
 	if agent := s.TriageAgent; agent != nil {
 		checkCodingAgentSettings("triage_agent", agent.SettingsCodingAgent, problems)
-		checkCommitSigningSettings(*agent, problems)
 		if agent.InternetAccess != "listed_hosts_only" && agent.InternetAccess != "any_site" {
 			problems.add("triage_agent.internet_access", "must be listed_hosts_only or any_site")
 		}

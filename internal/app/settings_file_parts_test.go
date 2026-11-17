@@ -158,8 +158,9 @@ func TestSettingsFileAppliesTheAgentsThroughTheirSetupTests(t *testing.T) {
 		t.Fatalf("after the run ended: %v", states(view))
 	}
 
-	// A file without the agents' sections removes their setups.
-	f.write(withoutSection(t, withoutSection(t, exampleSettingsYAML, "triage_agent"), "review_agent"))
+	// A file without the agents' sections removes their setups; only a
+	// person then approves a commit no trusted key signed.
+	f.write(replaced(t, withoutSection(t, withoutSection(t, exampleSettingsYAML, "triage_agent"), "review_agent"), "approved_by: a_person_or_the_triage_agent", "approved_by: a_person"))
 	view = f.apply()
 	if states(view)[triageAgentSetupPartName] != "applied" || states(view)["review_agent"] != "applied" || triageSetup() != nil {
 		t.Fatalf("without the agents: %v", states(view))

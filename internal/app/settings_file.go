@@ -40,6 +40,7 @@ type Settings struct {
 	AlertIntakeListenAddress               string                                         `yaml:"alert_intake_listen_address"`
 	CloudflareAccess                       *SettingsCloudflareAccess                      `yaml:"cloudflare_access" settings:"optional"`
 	FleetViewCommand                       []string                                       `yaml:"fleet_view_command" settings:"optional"`
+	SystemsRepositoryCommits               *SettingsSystemsRepositoryCommits              `yaml:"systems_repository_commits" settings:"optional"`
 	TriageAgent                            *SettingsTriageAgent                           `yaml:"triage_agent" settings:"optional"`
 	ReviewAgent                            *SettingsCodingAgent                           `yaml:"review_agent" settings:"optional"`
 	AgentPlaybookRules                     map[string]SettingsInventoryAgentPlaybookRules `yaml:"rules_for_running_agent_playbooks"`
@@ -72,15 +73,15 @@ type SettingsCodingAgent struct {
 	ReasoningEffort     string `yaml:"reasoning_effort"`
 }
 
-// SettingsTriageAgent is the triage agent's section.
-type SettingsTriageAgent struct {
-	SettingsCodingAgent `yaml:",inline"`
+// SettingsSystemsRepositoryCommits is which commits of the systems
+// repository MMX, through MMHotline's commit check, and the triage agent may
+// run: docs/changing-mmhotline/design/triage-agent.md#checking-commits-before-mmx-and-triage-agent-runs.
+// Left out, MMHotline trusts no commit, as during a lock-out.
+type SettingsSystemsRepositoryCommits struct {
 	// TrustedCommits is signed_by_a_trusted_key_or_reviewed or
-	// every_commit_on_origin; left out it is the first, so settings files
-	// written before the key keep working. With every_commit_on_origin the
-	// four keys that follow it are left out: no commit is checked.
-	TrustedCommits         string `yaml:"trusted_commits" settings:"optional"`
-	CommitSigningPublicKey string `yaml:"commit_signing_public_key" settings:"optional"`
+	// every_commit_on_origin. With every_commit_on_origin the three keys
+	// that follow it are left out: no commit is checked.
+	TrustedCommits string `yaml:"trusted_commits"`
 	// TrustedCommitSigningPublicKeys are the keys of the team's people and
 	// machines whose commits pass the check before MMX and triage agent runs.
 	// A nil list is a key left out; [] is an empty list.
@@ -93,9 +94,20 @@ type SettingsTriageAgent struct {
 	// PathsOnlyAPersonMayApprove are repository paths, an entry ending in "/"
 	// a directory, such as the files that set the triage agent's own powers
 	// and the trusted keys.
-	PathsOnlyAPersonMayApprove []string             `yaml:"paths_only_a_person_may_approve" settings:"optional"`
-	InternetAccess             string               `yaml:"internet_access"`
-	ListedHosts                []SettingsListedHost `yaml:"listed_hosts"`
+	PathsOnlyAPersonMayApprove []string `yaml:"paths_only_a_person_may_approve" settings:"optional"`
+}
+
+// SettingsTriageAgent is the triage agent's section.
+type SettingsTriageAgent struct {
+	SettingsCodingAgent `yaml:",inline"`
+	// CommitSigningPublicKey is the triage agent's own key, by which
+	// MMHotline knows the agent's commits: required with
+	// systems_repository_commits.trusted_commits
+	// signed_by_a_trusted_key_or_reviewed, refused with
+	// every_commit_on_origin, and unused without that section.
+	CommitSigningPublicKey string               `yaml:"commit_signing_public_key" settings:"optional"`
+	InternetAccess         string               `yaml:"internet_access"`
+	ListedHosts            []SettingsListedHost `yaml:"listed_hosts"`
 	// SoftwareReviewIntervalHours is off, or 1 to 8760 hours between
 	// scheduled software reviews.
 	SoftwareReviewIntervalHours string `yaml:"software_review_interval_hours"`
@@ -438,6 +450,15 @@ var renamedSettingsKeys = map[string]string{
 	"lifeline":                           "mmhotline_down_alarm",
 }
 
+// movedSettingsKeys names the new key path of each key that moved to
+// another section, by its old key path.
+var movedSettingsKeys = map[string]string{
+	"triage_agent.trusted_commits":                                     "systems_repository_commits.trusted_commits",
+	"triage_agent.trusted_commit_signing_public_keys":                  "systems_repository_commits.trusted_commit_signing_public_keys",
+	"triage_agent.commits_without_a_trusted_signature_are_approved_by": "systems_repository_commits.commits_without_a_trusted_signature_are_approved_by",
+	"triage_agent.paths_only_a_person_may_approve":                     "systems_repository_commits.paths_only_a_person_may_approve",
+}
+
 func joinKeyPath(path, key string) string {
 	if path == "" {
 		return key
@@ -469,6 +490,8 @@ func checkSettingsShape(node *yaml.Node, t reflect.Type, path string, problems *
 			keyPath := joinKeyPath(path, key)
 			fieldIndex := slices.IndexFunc(fields, func(field settingsField) bool { return field.name == key })
 			switch {
+			case fieldIndex < 0 && movedSettingsKeys[keyPath] != "":
+				problems.add(keyPath, "moved to "+movedSettingsKeys[keyPath])
 			case fieldIndex < 0 && renamedSettingsKeys[key] != "":
 				problems.add(keyPath, "unknown key; it was renamed to "+renamedSettingsKeys[key])
 			case fieldIndex < 0:

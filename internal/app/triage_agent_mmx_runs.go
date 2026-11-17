@@ -131,11 +131,11 @@ func (a *App) RunPlaybook(ctx context.Context, request TriageAgentPlaybookRunReq
 	})
 	if err != nil {
 		decision.Message = "MMHotline did not run the playbook: " + err.Error()
-		// Missing keys, or commits that wait with nothing trusted before them,
-		// say why in the check's own words.
+		// Settings that trust no commit, or commits that wait with nothing
+		// trusted before them, say why in the check's own words.
 		switch {
-		case errors.Is(err, errCommitSigningKeysNotSet):
-			decision.Message = a.mmxRefusal(check, errCommitSigningKeysNotSet)
+		case errors.Is(err, errNoCommitIsTrusted):
+			decision.Message = a.mmxRefusal(check, errNoCommitIsTrusted)
 		case len(check.Waiting) > 0:
 			decision.Message = a.mmxRefusal(check, nil)
 		}

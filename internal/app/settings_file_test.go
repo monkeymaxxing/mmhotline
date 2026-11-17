@@ -3,7 +3,6 @@ package app
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -21,11 +20,14 @@ cloudflare_access:
   audience_tag: 0123456789abcdef
 fleet_view_command: [/usr/local/bin/MONITORING_TOOL, fleet, --json]
 
-triage_agent:
-  commit_signing_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGUdoc+44+a4QWDPzegMsM38OwWeeUot9ceymJ5D1H0i the triage agent"
+systems_repository_commits:
+  trusted_commits: signed_by_a_trusted_key_or_reviewed
   trusted_commit_signing_public_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKkV3VQGyLmAYtl/HR7x93Qw22ugM6k9OhTepuWlHFPr Barbara, a person the team trusts"]
   commits_without_a_trusted_signature_are_approved_by: a_person_or_the_triage_agent
   paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md, roles/every_server/files/]
+
+triage_agent:
+  commit_signing_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGUdoc+44+a4QWDPzegMsM38OwWeeUot9ceymJ5D1H0i the triage agent"
   coding_agent: claude_code
   credential_type: subscription_token
   credential: "sk-ant-oat01-example-triage-agent-credential"
@@ -127,17 +129,14 @@ func TestTheExampleSettingsFileHasNoProblems(t *testing.T) {
 	}
 }
 
-// TestEveryCommitOnOriginNeedsNoSigningKeys checks the two good forms of
-// triage_agent.trusted_commits: every_commit_on_origin with the four keys
-// left out, and the first value written out, and that a list written as []
-// still counts as present with the first value.
+// TestEveryCommitOnOriginNeedsNoSigningKeys checks the good forms of
+// systems_repository_commits: every_commit_on_origin with its three keys and
+// the triage agent's key left out, and empty lists with
+// signed_by_a_trusted_key_or_reviewed, which still count as present.
 func TestEveryCommitOnOriginNeedsNoSigningKeys(t *testing.T) {
-	fourKeys := regexp.MustCompile(`(?m)^  (commit_signing_public_key|trusted_commit_signing_public_keys|commits_without_a_trusted_signature_are_approved_by|paths_only_a_person_may_approve):.*\n`)
-	withoutKeys := fourKeys.ReplaceAllString(exampleSettingsYAML, "")
 	for name, yaml := range map[string]string{
-		"every commit on origin":  strings.Replace(withoutKeys, "triage_agent:\n", "triage_agent:\n  trusted_commits: every_commit_on_origin\n", 1),
-		"the default written out": strings.Replace(exampleSettingsYAML, "triage_agent:\n", "triage_agent:\n  trusted_commits: signed_by_a_trusted_key_or_reviewed\n", 1),
-		"empty lists with the default": strings.NewReplacer(
+		"every commit on origin": everyCommitOnOriginSettingsYAML(),
+		"empty lists with signatures": strings.NewReplacer(
 			`trusted_commit_signing_public_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKkV3VQGyLmAYtl/HR7x93Qw22ugM6k9OhTepuWlHFPr Barbara, a person the team trusts"]`, "trusted_commit_signing_public_keys: []",
 			"paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md, roles/every_server/files/]", "paths_only_a_person_may_approve: []").Replace(exampleSettingsYAML),
 	} {
@@ -145,10 +144,26 @@ func TestEveryCommitOnOriginNeedsNoSigningKeys(t *testing.T) {
 			t.Errorf("%s: %q", name, problemTexts(problems))
 		}
 	}
-	// Left out, the key is the first value, and the four keys are required.
-	_, problems := ReadSettingsFile(writeSettingsFile(t, withoutKeys), nil)
-	if got := problemTexts(problems); len(got) != 4 || !strings.HasSuffix(got[0], "triage_agent.commit_signing_public_key: required") {
-		t.Errorf("trusted_commits left out: %q", got)
+}
+
+// The systems_repository_commits section stands on its own: without the
+// triage_agent section, signatures need no triage agent key, and only a
+// person may approve a commit no trusted key signed. Without the section,
+// the triage agent's own key may stay, so a lock-out removes one section.
+func TestSystemsRepositoryCommitsWithoutTheTriageAgent(t *testing.T) {
+	withoutTriageAgent := withoutSection(t, withoutSection(t, exampleSettingsYAML, "triage_agent"), "review_agent")
+	for name, yaml := range map[string]string{
+		"signatures, approved by a person": strings.Replace(withoutTriageAgent, "approved_by: a_person_or_the_triage_agent", "approved_by: a_person", 1),
+		"every commit on origin":           withoutSection(t, withoutSection(t, everyCommitOnOriginSettingsYAML(), "triage_agent"), "review_agent"),
+		"no section, the agent's key kept": withoutSection(t, exampleSettingsYAML, "systems_repository_commits"),
+	} {
+		if _, problems := ReadSettingsFile(writeSettingsFile(t, yaml), nil); len(problems) != 0 {
+			t.Errorf("%s: %q", name, problemTexts(problems))
+		}
+	}
+	_, problems := ReadSettingsFile(writeSettingsFile(t, withoutTriageAgent), nil)
+	if got, want := problemTexts(problems), []string{"systems_repository_commits.commits_without_a_trusted_signature_are_approved_by: a_person_or_the_triage_agent needs the triage_agent section: without it, use a_person"}; !slices.Equal(got, want) {
+		t.Errorf("the triage agent approves without its section: %q, want %q", got, want)
 	}
 }
 
@@ -201,31 +216,38 @@ func TestEachSettingsProblemNamesItsKeyPath(t *testing.T) {
 		{"ChatGPT sign-in that is not auth.json", "  credential_type: api_key\n  credential: \"sk-example-review-agent-credential\"", "  credential_type: chatgpt_sign_in\n  credential: \"sk-example-review-agent-credential\"",
 			[]string{"review_agent.credential: credential must be the whole content of Codex's auth.json after codex login, but it is not one JSON object with the shape of Codex's auth.json"}},
 		{"missing commit signing public key", "  commit_signing_public_key: \"" + testTriageAgentCommitSigningPublicKey + "\"\n", "",
-			[]string{"triage_agent.commit_signing_public_key: required"}},
+			[]string{"triage_agent.commit_signing_public_key: required with systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed, so MMHotline knows the triage agent's commits"}},
 		{"bad commit signing public key", "  commit_signing_public_key: ", "  commit_signing_public_key: invalid # ",
 			[]string{"triage_agent.commit_signing_public_key: must be one OpenSSH public key line: the key type, such as ssh-ed25519, then the key, then an optional comment"}},
 		{"missing trusted commit signing public keys", "  trusted_commit_signing_public_keys: [\"" + testTrustedCommitSigningPublicKey + "\"]\n", "",
-			[]string{"triage_agent.trusted_commit_signing_public_keys: required"}},
+			[]string{"systems_repository_commits.trusted_commit_signing_public_keys: required"}},
 		{"trusted keys with a key cut short and the triage agent's key", "  trusted_commit_signing_public_keys: [", "  trusted_commit_signing_public_keys: [\"ssh-ed25519 AAAA\", \"" + testTriageAgentCommitSigningPublicKey + "\", ",
-			[]string{"triage_agent.trusted_commit_signing_public_keys[0]: has a key that is cut short: copy the whole line of the .pub file",
-				"triage_agent.trusted_commit_signing_public_keys[1]: is the triage agent's key, triage_agent.commit_signing_public_key; list only the keys of the team's people and machines, because the triage agent's commits may change only one_time_playbooks/ and triage_agent_notes/"}},
-		{"trusted commits with another value", "triage_agent:\n", "triage_agent:\n  trusted_commits: every_commit\n",
-			[]string{"triage_agent.trusted_commits: must be signed_by_a_trusted_key_or_reviewed or every_commit_on_origin"}},
-		{"missing approval and paths with the default", "  commits_without_a_trusted_signature_are_approved_by: a_person_or_the_triage_agent\n  paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md, roles/every_server/files/]\n", "  trusted_commits: signed_by_a_trusted_key_or_reviewed\n",
-			[]string{"triage_agent.commits_without_a_trusted_signature_are_approved_by: required", "triage_agent.paths_only_a_person_may_approve: required"}},
-		{"every commit on origin with the four keys", "triage_agent:\n", "triage_agent:\n  trusted_commits: every_commit_on_origin\n",
-			[]string{"triage_agent.commit_signing_public_key: used only with triage_agent.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it",
-				"triage_agent.trusted_commit_signing_public_keys: used only with triage_agent.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it",
-				"triage_agent.commits_without_a_trusted_signature_are_approved_by: used only with triage_agent.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it",
-				"triage_agent.paths_only_a_person_may_approve: used only with triage_agent.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it"}},
+			[]string{"systems_repository_commits.trusted_commit_signing_public_keys[0]: has a key that is cut short: copy the whole line of the .pub file",
+				"systems_repository_commits.trusted_commit_signing_public_keys[1]: is the triage agent's key, triage_agent.commit_signing_public_key; list only the keys of the team's people and machines, because the triage agent's commits may change only one_time_playbooks/ and triage_agent_notes/"}},
+		{"trusted commits with another value", "  trusted_commits: signed_by_a_trusted_key_or_reviewed\n", "  trusted_commits: every_commit\n",
+			[]string{"systems_repository_commits.trusted_commits: must be signed_by_a_trusted_key_or_reviewed or every_commit_on_origin"}},
+		{"trusted commits left out", "  trusted_commits: signed_by_a_trusted_key_or_reviewed\n", "",
+			[]string{"systems_repository_commits.trusted_commits: required"}},
+		{"missing approval and paths with signatures", "  commits_without_a_trusted_signature_are_approved_by: a_person_or_the_triage_agent\n  paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md, roles/every_server/files/]\n", "",
+			[]string{"systems_repository_commits.commits_without_a_trusted_signature_are_approved_by: required", "systems_repository_commits.paths_only_a_person_may_approve: required"}},
+		{"every commit on origin with the four keys", "  trusted_commits: signed_by_a_trusted_key_or_reviewed\n", "  trusted_commits: every_commit_on_origin\n",
+			[]string{"systems_repository_commits.trusted_commit_signing_public_keys: used only with systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it",
+				"systems_repository_commits.commits_without_a_trusted_signature_are_approved_by: used only with systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it",
+				"systems_repository_commits.paths_only_a_person_may_approve: used only with systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it",
+				"triage_agent.commit_signing_public_key: used only with systems_repository_commits.trusted_commits: signed_by_a_trusted_key_or_reviewed; remove it"}},
+		{"keys moved out of triage_agent", "  coding_agent: claude_code\n", "  trusted_commits: every_commit_on_origin\n  trusted_commit_signing_public_keys: []\n  commits_without_a_trusted_signature_are_approved_by: a_person\n  paths_only_a_person_may_approve: []\n  coding_agent: claude_code\n",
+			[]string{"triage_agent.trusted_commits: moved to systems_repository_commits.trusted_commits",
+				"triage_agent.trusted_commit_signing_public_keys: moved to systems_repository_commits.trusted_commit_signing_public_keys",
+				"triage_agent.commits_without_a_trusted_signature_are_approved_by: moved to systems_repository_commits.commits_without_a_trusted_signature_are_approved_by",
+				"triage_agent.paths_only_a_person_may_approve: moved to systems_repository_commits.paths_only_a_person_may_approve"}},
 		{"approval by another", "approved_by: a_person_or_the_triage_agent", "approved_by: the_review_agent",
-			[]string{"triage_agent.commits_without_a_trusted_signature_are_approved_by: must be a_person or a_person_or_the_triage_agent"}},
+			[]string{"systems_repository_commits.commits_without_a_trusted_signature_are_approved_by: must be a_person or a_person_or_the_triage_agent"}},
 		{"missing paths only a person may approve", "  paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md, roles/every_server/files/]\n", "",
-			[]string{"triage_agent.paths_only_a_person_may_approve: required"}},
+			[]string{"systems_repository_commits.paths_only_a_person_may_approve: required"}},
 		{"paths only a person may approve", "may_approve: [mmhotline_settings.yml,", "may_approve: [/etc/sudoers, roles/../AGENTS.md, AGENTS.md, mmhotline_settings.yml,",
-			[]string{"triage_agent.paths_only_a_person_may_approve[0]: \"/etc/sudoers\" must be relative to the systems repository, as Git names the path, such as roles/every_server/files/sudoers_triage",
-				"triage_agent.paths_only_a_person_may_approve[1]: \"roles/../AGENTS.md\" must not have an empty, \".\", or \"..\" part, because Git never names a path so",
-				"triage_agent.paths_only_a_person_may_approve[5]: AGENTS.md is listed twice"}},
+			[]string{"systems_repository_commits.paths_only_a_person_may_approve[0]: \"/etc/sudoers\" must be relative to the systems repository, as Git names the path, such as roles/every_server/files/sudoers_triage",
+				"systems_repository_commits.paths_only_a_person_may_approve[1]: \"roles/../AGENTS.md\" must not have an empty, \".\", or \"..\" part, because Git never names a path so",
+				"systems_repository_commits.paths_only_a_person_may_approve[5]: AGENTS.md is listed twice"}},
 		{"unknown coding agent", "  coding_agent: codex", "  coding_agent: gemini",
 			[]string{"review_agent.coding_agent: must be claude_code or codex"}},
 		{"model with a space (CA6)", "  model: opus", "  model: claude opus",

@@ -92,10 +92,12 @@ func removeTestSigningFiles() {
 	}
 }
 
-// recordCommitSigningKeyForTest applies the tests' keys, as the settings
-// file's triage_agent section would.
+// recordCommitSigningKeyForTest applies the tests' keys and
+// signed_by_a_trusted_key_or_reviewed, as the settings file's
+// systems_repository_commits and triage_agent sections would.
 func recordCommitSigningKeyForTest(t testing.TB, a *App) {
 	t.Helper()
+	setTrustedCommitsForTest(t, a, `"signed_by_a_trusted_key_or_reviewed"`)
 	if err := a.setCommitSigningKeys(context.Background(), systemsrepository.CommitSigningKeys{TriageAgent: testTriageAgentCommitSigningPublicKey, Trusted: []string{testTrustedCommitSigningPublicKey}}); err != nil {
 		t.Fatal(err)
 	}

@@ -177,11 +177,13 @@ func TestServeTriageAgentSocketsAndSetupWorkflow(t *testing.T) {
 	// Serve applies both agents' setups at start, each through its setup
 	// test, with its model and reasoning effort. Any coding agent may
 	// review, the triage agent's own included.
-	settings := strings.Replace(testSettingsYAML("https://mmhotline.example.com", webAddress, "127.0.0.1:0"), "rules_for_running_agent_playbooks: {}", `triage_agent:
-  commit_signing_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPY0ynRIHnG58nyyazSZJWIqQ0zGxWHo5AF4GMnzX3fM example-triage-key"
+	settings := strings.Replace(testSettingsYAML("https://mmhotline.example.com", webAddress, "127.0.0.1:0"), "rules_for_running_agent_playbooks: {}", `systems_repository_commits:
+  trusted_commits: signed_by_a_trusted_key_or_reviewed
   trusted_commit_signing_public_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKkV3VQGyLmAYtl/HR7x93Qw22ugM6k9OhTepuWlHFPr util01"]
   commits_without_a_trusted_signature_are_approved_by: a_person_or_the_triage_agent
   paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md, roles/every_server/files/]
+triage_agent:
+  commit_signing_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPY0ynRIHnG58nyyazSZJWIqQ0zGxWHo5AF4GMnzX3fM example-triage-key"
   coding_agent: codex
   credential_type: api_key
   credential: server-only-key

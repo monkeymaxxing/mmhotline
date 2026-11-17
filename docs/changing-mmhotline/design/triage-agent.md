@@ -837,7 +837,7 @@ person's edit on origin during the run is never overwritten without a
 person.
 
 How MMHotline knows the agent's own commits depends on
-[`triage_agent.trusted_commits`](#checking-commits-before-mmx-and-triage-agent-runs):
+[`systems_repository_commits.trusted_commits`](#checking-commits-before-mmx-and-triage-agent-runs):
 
 - **`signed_by_a_trusted_key_or_reviewed`:** a commit with a good signature
   by `triage_agent.commit_signing_public_key`. Only the agent's key makes
@@ -926,10 +926,21 @@ The three workflows:
   signed it and that a commit nobody on the team made is a possible
   break-in. The page points to the team's break-in procedure.
 
-The optional setting `triage_agent.trusted_commits` chooses the check. Left
-out, it is `signed_by_a_trusted_key_or_reviewed`, the check this section
-describes, so a settings file written before the key keeps working. The other
-value is `every_commit_on_origin`:
+The optional settings section `systems_repository_commits` holds the
+check's settings, with or without the triage agent: MMX asks the same
+check through `commit-reviews check` for a team that runs no triage agent.
+Its required setting `trusted_commits` chooses the check:
+`signed_by_a_trusted_key_or_reviewed`, the check this section describes, or
+`every_commit_on_origin`. A settings file without the section trusts no
+commit: the check, every MMX run, and `trust-through` are refused with
+that cause, and a triage agent run fails before its coding agent starts.
+The Stack leaves the section out during a lock-out and relies on this.
+Under `triage_agent`, each of the section's keys is refused with
+`moved to systems_repository_commits.KEY`, so an older settings file says
+where the key goes. Reason for a section of its own: a team without the
+optional triage agent still needs trusted commits for MMX's commit check.
+
+About `every_commit_on_origin`:
 
 Use `every_commit_on_origin` only when origin is on the team's own server,
 only keys that already hold root on every server can push to it, and the
@@ -944,8 +955,7 @@ reads no signature, no commit waits, and no warning or commit review run
 starts. The checked-through commit moves to origin's tip, and MMHotline's
 checkout moves there through the same one function as before. `commit-reviews
 check` answers the tip and nothing waiting, and `commit-reviews trust-through`
-still works. A settings file without a `triage_agent` section still trusts
-nothing. Commits that waited before a switch to `every_commit_on_origin` no
+still works. Commits that waited before a switch to `every_commit_on_origin` no
 longer stop an MMX run, but stay on Approvals, with their warnings open, until
 a person marks them reviewed. Reason: a switch happens once, and recording the
 settings as a reviewer would change the database format for that one moment.
@@ -964,28 +974,35 @@ token, could put a commit in front of MMX, which would run it as the
 
 With `every_commit_on_origin`, the four settings
 `triage_agent.commit_signing_public_key`,
-`triage_agent.trusted_commit_signing_public_keys`,
-`triage_agent.commits_without_a_trusted_signature_are_approved_by`, and
-`triage_agent.paths_only_a_person_may_approve` must be left out, because
-nothing reads them, and the settings check refuses each one that is present.
-With the default value they stay required. The push filter, not signatures,
+`systems_repository_commits.trusted_commit_signing_public_keys`,
+`systems_repository_commits.commits_without_a_trusted_signature_are_approved_by`,
+and `systems_repository_commits.paths_only_a_person_may_approve` must be
+left out, because nothing reads them, and the settings check refuses each
+one that is present. With `signed_by_a_trusted_key_or_reviewed` they are
+required, the agent's key only when the `triage_agent` section is present. The push filter, not signatures,
 limits the triage agent's own commits: a commit of the agent that changes
 anything outside `one_time_playbooks/` and `triage_agent_notes/`, such as
 `AGENTS.md`, or a one-time playbook someone else changed last, is not
 pushed and stays under MMHotline's private ref for a person, with either
 value.
 
-With the default value, the required setting `triage_agent.commit_signing_public_key` is one OpenSSH
-public key line, the public half of the SSH key the triage agent uses to sign
-commits. The required setting
-`triage_agent.trusted_commit_signing_public_keys` is a list of such lines,
+With `signed_by_a_trusted_key_or_reviewed`, the setting
+`triage_agent.commit_signing_public_key` is one OpenSSH public key line, the
+public half of the SSH key the triage agent uses to sign commits. It stays
+in `triage_agent` because it is the agent's own key: MMHotline knows the
+agent's commits by it, for their signatures and for the hold on changes to
+one-time playbooks. Without the `triage_agent` section there are no agent
+commits, no agent key is needed, and only the trusted keys pass a commit.
+Without the `systems_repository_commits` section the agent's key is
+allowed and unused, so a lock-out removes one section only. The setting
+`systems_repository_commits.trusted_commit_signing_public_keys` is a list of such lines,
 one for each person's or machine's signing key. As in OpenSSH, everything
 after the key is the key's comment, which is optional and may hold any text,
 spaces included. The settings check requires a known key type, base64 that
 decodes to a whole key, and a decoded key whose own type string matches the
 first field. A key cut short would match no signature, so the commits it
 signed would wait unexplained. The check names the key path of each problem,
-such as `triage_agent.trusted_commit_signing_public_keys[1]`. The triage
+such as `systems_repository_commits.trusted_commit_signing_public_keys[1]`. The triage
 agent's key in the trusted list is a problem: a trusted key's commits pass
 whatever they change, so the agent's commits would leave its two folders
 unchecked. No private key belongs in the settings. A team that renders the
@@ -1023,16 +1040,18 @@ MMX runs need the trusted commit to be the judged commit. Triage agent runs
 start from the trusted commit (see [the run's base](#one-runs-commits-step-by-step)).
 
 SQLite keeps the applied keys and the checkpoint in
-`triage_agent_commit_check_state`. The checkpoint advances to the trusted
+`triage_agent_commit_check_state`. The applied `trusted_commits` value
+alone says whether anything is trusted: before the section first applies,
+and while it is left out, nothing is, whatever the table holds. The checkpoint advances to the trusted
 commit, and never moves back for a check of an older commit. A changed key
 leaves the checkpoint as it is: every commit through the checkpoint passed
 with the keys of its time. Checking the whole history again with new keys
 would make every commit of a person who left, or of an earlier triage agent
 key, wait for review. A removed key's later commits wait. Leaving out
-`triage_agent` removes the keys and keeps the checkpoint: the commits through
+`systems_repository_commits` removes the keys and keeps the checkpoint: the commits through
 it were checked, so the check need not read the whole history again when the
-section returns. Missing keys or a failed
-check refuse the MMX run before MMX starts, and fail a triage agent run
+section returns. Settings without the section, or a failed
+check, refuse the MMX run before MMX starts, and fail a triage agent run
 before the coding agent starts.
 
 The check needs a trusted history from its first run: with no checkpoint,
@@ -1147,13 +1166,17 @@ like nobody on the team made it. The agent judges the whole repository:
 playbooks, roles, the inventory, and the rest. Limiting it to files that
 never reach a server would leave it nothing worth approving.
 
-Two required settings under `triage_agent` control it:
+Two settings under `systems_repository_commits` control it, both required
+with `signed_by_a_trusted_key_or_reviewed`:
 
 - `commits_without_a_trusted_signature_are_approved_by`: `a_person`, or
   `a_person_or_the_triage_agent`. The Stack's template sets
   `a_person_or_the_triage_agent`; a team that wants only people sets
-  `a_person`. Before the settings file applies the key, and without a
-  `triage_agent` section, only a person approves.
+  `a_person`. `a_person_or_the_triage_agent` without the `triage_agent`
+  section is refused: "a_person_or_the_triage_agent needs the triage_agent
+  section: without it, use a_person". Before the settings file applies the
+  key, and without the `systems_repository_commits` section, only a person
+  approves.
 - `paths_only_a_person_may_approve`: a list of repository paths, as Git
   names them; an entry ending in `/` is a directory. A commit that changes
   any of them waits for a person as a whole. MMHotline names no file of its
@@ -1164,7 +1187,7 @@ Two required settings under `triage_agent` control it:
   `roles/util_server/files/sudoers_triage_mmwatchdog_fleet_readings`.
 
 The settings check names the key path of each problem, such as
-`triage_agent.paths_only_a_person_may_approve[2]`: a value other than the
+`systems_repository_commits.paths_only_a_person_may_approve[2]`: a value other than the
 two, an empty path, a path that starts with `/`, a path with an empty, `.`,
 or `..` part, and a path listed twice. Its note says what the setting means,
 and warns when the triage agent may approve with an empty list. MMHotline

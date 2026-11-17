@@ -6,8 +6,9 @@ import (
 	"testing"
 )
 
-// A team without the triage agent has no MMX runs or commit checks, so the
-// commit signing keys part shows no note about them.
+// A team without the systems_repository_commits section and without the
+// triage agent runs no commit check of its own, so the commit signing keys
+// part shows no note about them.
 func TestCommitSigningKeysPartHasNoNoteWithoutTheTriageAgent(t *testing.T) {
 	dir := t.TempDir()
 	if err := Setup(context.Background(), dir, "Fixture team"); err != nil {
