@@ -148,52 +148,6 @@ agent runs could rewrite the key line without `restrict`.
 [Set up the triage agent](set-up-the-triage-agent.md#prepare-the-servers-and-the-systems-repository),
 step 2, has the details.
 
-## Move the commit settings to systems_repository_commits
-
-Do this once if the team's settings file has `trusted_commits`,
-`trusted_commit_signing_public_keys`,
-`commits_without_a_trusted_signature_are_approved_by`, or
-`paths_only_a_person_may_approve` under `triage_agent`.
-
-**UNTIL THE MOVED SETTINGS APPLY, MMHOTLINE TRUSTS NO COMMIT: EVERY MMX RUN
-AND EVERY `commit-reviews check` IS REFUSED.**
-
-1. **Move the four keys** into a new top-level section,
-   `systems_repository_commits`, in the settings file or in your deploy
-   tool's template. Keep `commit_signing_public_key` under `triage_agent`.
-   Add `trusted_commits: signed_by_a_trusted_key_or_reviewed` if the file
-   did not have it; inside the new section the key is required.
-
-   ```yaml
-   systems_repository_commits:
-     trusted_commits: signed_by_a_trusted_key_or_reviewed
-     trusted_commit_signing_public_keys: ["ssh-ed25519 AAAA... Barbara's desk"]
-     commits_without_a_trusted_signature_are_approved_by: a_person_or_the_triage_agent
-     paths_only_a_person_may_approve: [mmhotline_settings.yml, triage_agent_rules.md, AGENTS.md]
-
-   triage_agent:
-     commit_signing_public_key: "ssh-ed25519 AAAA... MMHotline triage agent"
-     # ...the rest of the section, without the four keys
-   ```
-
-2. **Check and apply the file:**
-
-   ```sh
-   sudo mmhotline settings check --settings-file /etc/mmhotline/mmhotline_settings.yml
-   sudo mmhotline settings apply
-   ```
-
-   **Check:** `settings check` finds no problems, and `settings apply`
-   prints `systems_repository_commits.trusted_commits: applied.` A key left
-   under `triage_agent` is refused with a line such as
-   `triage_agent.trusted_commits: moved to systems_repository_commits.trusted_commits`.
-
-Reason: the commit settings no longer depend on the optional triage
-agent, so a team without it can let MMX run trusted commits. The upgrade
-does not carry the old applied values over: the file applies them again
-in their new place. The checked-through commit stays, so the check does
-not read the whole history again.
-
 ## If something is different
 
 - **The program at `/usr/local/bin/mmhotline` was already replaced,** such
