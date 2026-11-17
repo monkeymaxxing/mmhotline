@@ -1,0 +1,40 @@
+package app
+
+// triageAgentAtWorkPanel is the dashboard's panel for the triage agent. It
+// shows the latest step only, cut short, and no Stop: every step and Stop are
+// on the session's page.
+templ triageAgentAtWorkPanel(frame pageFrame, agent TriageAgentAtWork) {
+	<section id="triage-agent-at-work" data-live class="panel" aria-labelledby="triage-agent-heading">
+		<div class="panel-head">
+			<h2 id="triage-agent-heading">Triage agent</h2>
+			if agent.Session != nil {
+				<span class="tag work">{ agent.Phase }</span>
+			} else {
+				<span class="tag">Idle</span>
+			}
+		</div>
+		<div class="panel-body">
+			if session := agent.Session; session != nil {
+				<p>Working on <a href={ "/triage-sessions/" + session.SessionID }>{ session.About }</a></p>
+				<p class="faint small">
+					if session.Phase != "working" {
+						Since { frame.Clock(agent.SessionStartedAt) }. { session.PhaseText }
+					} else {
+						Since { frame.Clock(agent.SessionStartedAt) }.
+					}
+				</p>
+				if step := agent.LatestStep; step != nil {
+					<p class="faint small">{ countText(agent.Steps, "step", "steps") } so far. The latest, at { frame.Clock(step.OccurredAt) }, a { step.Kind }:</p>
+					<pre class="step">{ step.Text }</pre>
+				} else {
+					<p class="faint small">No steps yet.</p>
+				}
+			} else {
+				<p>Not working on any alert now.</p>
+				if agent.LastSessionID != "" {
+					<p class="faint small"><a href={ "/triage-sessions/" + agent.LastSessionID }>The last triage session</a> ended at { frame.Clock(agent.LastSessionEndedAt) }.</p>
+				}
+			}
+		</div>
+	</section>
+}

@@ -126,7 +126,11 @@ func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	view.CSRF, view.System, view.settingsFileNoticeView = a.CSRFToken(w, r), a.readSystemPanels(r.Context()), a.settingsFileNoticeView()
-	RenderPage(w, 200, "Dashboard", dashboardBody, view)
+	frame, ok := readFrameForPage(w)
+	if !ok {
+		return
+	}
+	renderPage(w, 200, "Dashboard", frame, dashboardHeading(frame, view), dashboardBody(frame, view))
 }
 
 // dashboardView is the dashboard as one member sees it
@@ -431,41 +435,6 @@ func readOnCall(ctx context.Context, tx *sql.Tx, viewerID string, now time.Time)
 	}
 	return view, nil
 }
-
-// dashboardBody opens with what needs a person, or with All clear; then who
-// is on call, the triage agent, and the MMHotline-down alarm; then the system's parts.
-// The heading holds a folded form to raise an SOS by hand.
-var dashboardBody = `{{define "heading"}}<div class="head flush"><div><h1>Dashboard</h1><p id="dashboard-updated" data-live class="meta">Updated {{clock .Now}}. This page updates by itself.</p></div>` +
-	`{{with .Data}}<details class="raise"><summary class="btn">Raise an SOS by hand</summary><form method="post" action="/incidents/new" class="panel panel-body"><input type="hidden" name="csrf" value="{{.CSRF}}"><p class="small muted">Raise an SOS for a problem no tool sent an alert about. The manually raised SOS wakes the person on call like any other SOS.</p><label class="field">Title<input name="title" required maxlength="256"></label><label class="field">Message<textarea name="message" maxlength="16384"></textarea></label><p><button class="btn primary">Raise the SOS</button></p></form></details>{{end}}</div>{{end}}` +
-	`{{with .SettingsFailures}}<section id="settings-failures" class="decide list warn" role="alert" aria-labelledby="settings-failures-heading"><div class="panel-head"><h2 id="settings-failures-heading">Parts of the settings file did not apply</h2><span class="tag warn">For administrators</span></div><div class="panel-body"><p>MMHotline keeps the earlier setting of each part below until the file is fixed.</p><ul class="bullets">{{range .}}<li><code>{{.Part}}</code>: {{.FailureReason}}</li>{{end}}</ul>` +
-	`{{with $}}<details class="fold"><summary>Where to change the settings</summary><p class="small">In <code>{{.SettingsFile}}</code>.{{if .SettingsFileFirstLine}} The file's first line says: {{.SettingsFileFirstLine}}{{else}} An administrator edits the settings file with sudoedit, then runs <code>sudo mmhotline settings apply</code>.{{end}} <code>sudo mmhotline settings show</code> on the server lists every part.</p></details>{{end}}</div></section>{{end}}` +
-	`<div id="incident-list" data-live class="stack">` +
-	`{{if .NeedsAPerson}}<section id="needs-a-person" class="decide list{{if not .Waiting}} warn{{end}}" aria-labelledby="needs-a-person-heading"><div class="panel-head"><h2 id="needs-a-person-heading">Needs a person</h2><span class="tag {{if .Waiting}}sos{{else}}warn{{end}}">{{.NeedsAPerson}} waiting</span></div><ul class="items">` +
-	`{{range .Waiting}}<li><div class="what"><div class="row"><span class="tag sos">SOS</span><span class="faint small">Opened {{clock .CreatedAt}}, {{relativeTime .CreatedAt}}{{if .HeldForTriageAgent}}. The triage agent looks into the incident first, so nobody is woken yet.{{else}}{{with .Waking}}. MMHotline is waking {{.}}.{{end}}{{end}}</span></div>` +
-	`<a href="/incidents/{{.ID}}" class="title">{{.Title}}</a>` +
-	`<div class="countdown"><div class="row spread small"><span>{{.Countdown.Sentence}}</span>{{with .Countdown.TimeLeft}}<span class="faint num">{{.}}</span>{{end}}</div>{{if .Countdown.StepSeconds}}<progress class="bar" value="{{.Countdown.ElapsedSeconds}}" max="{{.Countdown.StepSeconds}}" aria-hidden="true"></progress>{{end}}</div></div>` +
-	`<div class="do"><form method="post" action="/incidents/{{.ID}}/claim"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="revision" value="{{.Revision}}"><button class="btn primary">Claim the incident</button></form><a href="/incidents/{{.ID}}" class="btn">Open</a></div></li>{{end}}` +
-	`{{range .Approvals}}<li><div class="what"><div class="row">{{if .Warned}}<span class="tag warn">Runs by itself</span><span class="faint small">{{if .Stoppable}}Runs at {{clock .RunsAt}}, {{relativeTime .RunsAt}}, unless someone presses Stop.{{else}}Runs now.{{end}}</span>{{else}}<span class="tag warn">{{.Label}}</span><span class="faint small">{{.AskedBy}} at {{clock .AskedAt}}. {{.Needs}}</span>{{end}}</div>` +
-	`<a href="{{.ReviewURL}}" class="title">{{.Question}}</a><span class="small muted">{{.Where}}</span></div>` +
-	`<div class="do">{{if .Warned}}{{if .Stoppable}}<form method="post" action="/approvals/{{.ID}}/stop"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn">Stop</button></form>{{end}}<a href="{{.ReviewURL}}" class="btn">Open</a>{{else}}<a href="{{.ReviewURL}}" class="btn">Review</a>{{end}}</div></li>{{end}}` +
-	`</ul>{{if .Waiting}}<p class="panel-foot">Claiming an incident tells the team you are handling the incident and stops MMHotline waking anyone else.</p>{{end}}</section>{{end}}` +
-	`{{with .Handled}}<section id="being-handled" class="panel" aria-labelledby="being-handled-heading"><div class="panel-head"><h2 id="being-handled-heading">Being handled</h2><span class="tag work">{{len .}} claimed</span></div><ul class="items handled">` +
-	`{{range .}}<li><div class="what"><div class="row"><span class="tag work">Claimed</span><span class="faint small">{{.ClaimedBy}} claimed the incident at {{clock .ClaimedAt}}. Opened {{clock .CreatedAt}}.</span></div><a href="/incidents/{{.ID}}" class="title">{{.Title}}</a></div></li>{{end}}</ul></section>{{end}}` +
-	`{{with .HeldWarns}}<section id="held-warnings" class="panel" aria-labelledby="held-warnings-heading"><div class="panel-head"><h2 id="held-warnings-heading">Warnings held for the triage agent</h2><span class="tag work">{{len .}} held</span></div><ul class="items handled">` +
-	`{{range .}}<li><div class="what"><div class="row"><span class="tag warn">Warning</span><span class="faint small">Received {{clock .Received}}. Held until {{clock .HeldUntil}}.</span></div><a href="/alerts/{{.AlertID}}" class="title">{{breakAfterSeparators .Title}}</a><p class="small muted">{{if .SOSTitle}}{{.JoinedSentence (clock .HeldUntil)}}{{else}}{{.Sentence}}{{end}}</p></div></li>{{end}}</ul></section>{{end}}` +
-	`{{with .CommitsTheTriageAgentReviews}}<section id="commits-the-triage-agent-reviews" class="panel" aria-labelledby="commits-the-triage-agent-reviews-heading"><div class="panel-head"><h2 id="commits-the-triage-agent-reviews-heading">The triage agent reviews</h2><span class="tag work">{{len .}} {{if eq (len .) 1}}commit{{else}}commits{{end}}</span></div><ul class="items handled">` +
-	`{{range .}}<li><div class="what"><div class="row"><span class="tag work">Commit review</span><span class="faint small">MMHotline found the commit at {{clock .FoundAt}}. MMX runs wait until the triage agent decides; if it hands the commit to a person, or cannot review it, MMHotline sends an alert.</span></div><a href="{{.URL}}" class="title">Commit {{.ShortID}}, {{.Reason}}</a></div></li>{{end}}</ul></section>{{end}}` +
-	`{{if not (or .NeedsAPerson .Handled)}}<section id="all-clear" class="panel all-clear-box" aria-labelledby="all-clear-heading"><h2 id="all-clear-heading"><span class="tag ok">All clear</span></h2><p class="say">Nothing needs a person.</p>` +
-	`{{with .LastSOS}}<p class="faint small">The last SOS was resolved at {{clock .ResolvedAt}} by {{.ResolvedBy}}: <a href="/incidents/{{.ID}}">{{.Title}}</a></p>{{end}}</section>{{end}}` +
-	`</div>` +
-	`<div class="grid3">` +
-	`<section id="coverage-summary" data-live class="panel" aria-labelledby="on-call-heading"><div class="panel-head"><h2 id="on-call-heading">On call</h2><a href="/on-call" class="small">Schedule</a></div><div class="panel-body">{{with .OnCall}}` +
-	`<div class="row">{{with .Initial}}<span class="avatar" aria-hidden="true">{{.}}</span>{{end}}<div><strong class="who">{{.Who}}</strong>{{with .People}}<br><span class="faint small">{{.}}</span>{{end}}{{if not .Until.IsZero}}<br><span class="faint small">Until {{clock .Until}}, then {{.Then}}</span>{{end}}</div></div>` +
-	`{{with .Reason}}<p class="faint small">{{.}}</p>{{end}}` +
-	`{{with .Backup}}<p class="small">If nobody claims an SOS within {{$.OnCall.EscalateIfUnclaimedAfter}}, MMHotline also wakes {{.}}.</p>{{end}}` +
-	`{{if not .MutedUntil.IsZero}}<p class="line-warn small">The whole team is muted until {{clock .MutedUntil}}: no Pushover notification or automated voice call goes out, even for an SOS.</p>{{end}}` +
-	`{{end}}</div></section>` +
-	triageAgentAtWorkSection + downAlarmCard + `</div>` + systemPanelsBody
 
 // alertView adds the incident's name and the alert's effect for the history
 // and detail pages. Stored alerts and the incident remain the source of truth.
