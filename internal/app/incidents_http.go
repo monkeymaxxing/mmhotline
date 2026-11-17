@@ -74,7 +74,11 @@ func (a *App) manualSOSHTTP(w http.ResponseWriter, r *http.Request) {
 	title, message := r.PostForm.Get("title"), r.PostForm.Get("message")
 	e, err := a.ManualSOS(r.Context(), p, title, message)
 	if err != nil {
-		RenderPage(w, errorStatus(err), "Raise an SOS by hand", `<section class="panel"><div class="panel-body"><p class="form-error" role="alert">{{.Error}}</p><form class="stack manual-sos-form" method="post" action="/incidents/new"><input type="hidden" name="csrf" value="{{.CSRF}}"><label class="field">Title<input name="title" value="{{.Title}}" maxlength="256" required></label><label class="field">Message<textarea name="message">{{.Message}}</textarea></label><div class="row"><button class="btn primary">Raise the SOS</button><a href="/dashboard">Back to the dashboard</a></div></form></div></section>`, struct{ Error, CSRF, Title, Message string }{publicError(err), a.CSRFToken(w, r), title, message})
+		frame, ok := readFrameForPage(w)
+		if !ok {
+			return
+		}
+		renderPage(w, errorStatus(err), "Raise an SOS by hand", frame, nil, manualSOSErrorBody(publicError(err), a.CSRFToken(w, r), title, message))
 		return
 	}
 	http.Redirect(w, r, "/incidents/"+e.IncidentID, http.StatusSeeOther)
