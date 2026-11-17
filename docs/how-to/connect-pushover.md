@@ -67,7 +67,7 @@ test that an emergency alert wakes them, also in silent mode.
 
    ```text
    sending_services.pushover: applied.
-     sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends an emergency test alert.
+     sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.
    ```
 
    MMHotline checked the token with Pushover, and saved the application's
@@ -108,7 +108,14 @@ test that an emergency alert wakes them, also in silent mode.
 
    ```text
    Contact method saved. A test message for the contact method is queued. Inspect the last test result to check delivery.
+
+   THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
    ```
+
+   The last line stays true until step 5: the test saved here is a quiet
+   notification, and only a test SOS proves the phone wakes the person.
+   `sudo mmhotline contact-methods list` keeps saying `Emergency test: not
+   yet acknowledged.` for the contact method until then.
 
    The new contact method gets SOS, Warning, and Info alerts at once,
    because Pushover is often a person's only contact method. A person can
@@ -119,9 +126,9 @@ test that an emergency alert wakes them, also in silent mode.
    MMHotline, where Cloudflare Access signs the person in with their
    sign-in email address from `people`.
 
-4. **Check that the test arrived.** The person's phone shows
-   **MMHotline test message** at emergency priority, repeating until they
-   acknowledge it in Pushover. Acknowledging a test claims no incident.
+4. **Check that the test arrived.** The person's phone shows a quiet
+   notification titled **MMHotline can reach this phone**, at normal
+   priority. It needs no acknowledgement.
 
    **Check:** the card's **Last test** on the Contact methods page says
    **Accepted by Pushover**, and `sudo mmhotline contact-methods list`
@@ -132,7 +139,7 @@ test that an emergency alert wakes them, also in silent mode.
    ```
 
    Accepted means Pushover took the message. It does not prove the phone
-   sounded; step 5 does.
+   wakes the person; step 5 does.
 
 5. **Make an emergency alert wake the person.** A notification that
    arrives silently does not wake anyone. Without Critical Alerts, an
@@ -149,39 +156,48 @@ test that an emergency alert wakes them, also in silent mode.
    2. In the app's sound settings, choose an alarming sound and raise its
       volume. Pushover plays Critical Alerts at the app's volume, not the
       phone's.
-   3. Turn on **Silent Mode**. On MMHotline's **Contact methods**, press
-      **Send test** on the Pushover card, and acknowledge the alert when
-      it sounds.
-   4. Turn Silent Mode off and **Do Not Disturb** on, and press
-      **Send test** again.
+   3. Turn on **Silent Mode**. On the server, send the person a test SOS
+      (see below), and acknowledge the alert when it sounds.
+   4. Turn Silent Mode off and **Do Not Disturb** on, and send a test SOS
+      again.
 
    On Android, follow Pushover's
    [Overriding Do Not Disturb on Android](https://support.pushover.net/i258-overriding-do-not-disturb-on-android),
    which differs by phone maker, choose an alarming sound, and run the same
    two tests: muted, then with Do Not Disturb on.
 
-   An administrator can send a test from the server too:
-   `sudo mmhotline contact-methods send-test --contact-method-id ID`, with
-   the ID that `contact-methods list` prints. Wait at least a minute
-   between tests, also after the automatic test when the contact method
-   was saved. **Send test** sends at emergency priority, like an SOS, and
-   acknowledging it claims no incident.
+   Send the test SOS from the server:
+
+   ```sh
+   sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
+   ```
+
+   It wakes that one person, whether or not they are on call, and nobody
+   else. It sends an emergency like a real SOS; acknowledging it claims
+   only the test, which MMHotline closes itself. Run it once for each of
+   the two phone settings above. **Send test** on the Pushover card, and
+   `sudo mmhotline contact-methods send-test --contact-method-id ID`, send
+   only the quiet notification again. They do not prove the wake.
 
    **Check:** in both tests, the phone sounds loudly enough to wake the
-   person. A test that arrives silently, or too quietly, fails.
+   person. A test that arrives silently, or too quietly, fails. After the
+   first acknowledged test SOS,
+   `sudo mmhotline contact-methods list` says
+   `Emergency test: acknowledged at 2026-11-15T05:20:01Z.` for the
+   contact method.
 
 ## What MMHotline sends through Pushover
 
 | Message | Pushover priority | Repeats |
 | --- | --- | --- |
 | SOS | Emergency | Every 30 seconds, for up to 25 minutes per message |
-| Test | Emergency | Every 30 seconds, for up to 10 minutes |
+| Test of the contact method | Normal, no acknowledgement needed | None |
 | Warning | Normal, which respects Pushover's quiet hours | None |
 | Info and resolved alerts | Low, without sound or vibration | None |
 
-The 30-second repeat is Pushover's shortest. A test ends after 10 minutes,
-so a test nobody acknowledges stops by itself. Each person chooses the
-sound in Pushover.
+The 30-second repeat is Pushover's shortest. Each person chooses the
+sound in Pushover. A test SOS (`incidents send-test-sos`) is an SOS in
+this table.
 
 - **Acknowledging an SOS in Pushover claims the incident** for the
   contact method's owner, the same as **Claim** on the incident's page. It
@@ -234,12 +250,11 @@ Pushover: anyone who still has it can send through the old application.
 
 If the apply says
 `sending_services.pushover: did not apply: wait for MMHotline to close the open Pushover emergency messages before replacing or removing the application.`,
-an emergency is still repeating on someone's phone, a test or an SOS, and
-MMHotline needs the old token to stop it. The rest of the file applied,
-and the old token keeps sending meanwhile. Apply again once each one is
-acknowledged, cancelled, or expired: a test expires within 10 minutes, an
-SOS within 25. So replace the token at least 10 minutes after the last
-**Send test**.
+an emergency is still repeating on someone's phone, an SOS or a test of
+the MMHotline-down alarm, and MMHotline needs the old token to stop it.
+The rest of the file applied, and the old token keeps sending meanwhile.
+Apply again once each one is acknowledged, cancelled, or expired: a
+down-alarm test expires within 10 minutes, an SOS within 25.
 
 **Remove Pushover:** remove every Pushover contact method first, then
 delete the `pushover` section and apply. While contact methods still use

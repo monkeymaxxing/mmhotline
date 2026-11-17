@@ -39,6 +39,18 @@ type CommandContactMethod struct {
 	// came from another Pushover user, so it did not claim an incident. It says
 	// the problem and the fix.
 	PushoverAcknowledgementProblem string `json:"pushover_acknowledgement_problem,omitempty"`
+	// PushoverEmergencyTest is set on an owner's Pushover notification: whether
+	// an emergency from it has proved that it wakes the owner.
+	PushoverEmergencyTest *CommandPushoverEmergencyTest `json:"pushover_emergency_test,omitempty"`
+}
+
+// CommandPushoverEmergencyTest says whether a Pushover contact method has
+// proved it wakes its owner (pushoverEmergencyTestAcknowledgedAt), in the
+// line the text output prints.
+type CommandPushoverEmergencyTest struct {
+	Acknowledged   bool      `json:"acknowledged"`
+	AcknowledgedAt time.Time `json:"acknowledged_at,omitzero"`
+	Explanation    string    `json:"explanation"`
 }
 
 func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action string, request ContactMethodsCommandRequest, result *CommandResult) error {
@@ -113,6 +125,11 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 		if selected.TestNotSentReason != "" {
 			result.Message = "Contact method saved. " + selected.TestNotSentReason
 		}
+		selected.OwnerSignInEmailAddress = signInEmailAddresses[selected.MemberID]
+		if selected.ContactMethodType == "pushover_notification" && selected.MemberID != "" && selected.EmergencyTestAcknowledgedAt.IsZero() {
+			result.PushoverPhoneNotProvedWarning = pushoverPhoneNotProvedWarning(selected.EmergencyTestCommand())
+			result.Message += "\n\n" + result.PushoverPhoneNotProvedWarning + "\n"
+		}
 		if selected.PushoverGroupKey && selected.MemberID != "" {
 			result.PushoverGroupKeyWarning = pushoverGroupKeyWarning(names[selected.MemberID])
 			result.Message += "\n\n" + result.PushoverGroupKeyWarning + "\n"
@@ -173,6 +190,9 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 		if c.LastTest != nil {
 			out.LastTestMessage = &CommandLastTestMessage{DeliveryState: c.LastTest.State, DeliveryStateExplanation: c.LastTest.Reason, QueuedAt: c.LastTest.CreatedAt}
 		}
+		if line := c.emergencyTestLine(); line != "" {
+			out.PushoverEmergencyTest = &CommandPushoverEmergencyTest{Acknowledged: !c.EmergencyTestAcknowledgedAt.IsZero(), AcknowledgedAt: c.EmergencyTestAcknowledgedAt, Explanation: line}
+		}
 		if acknowledgedByAnotherUser[c.ID] {
 			out.PushoverAcknowledgementProblem = pushoverAcknowledgementProblemText(personNameOrThePerson(names, c.MemberID))
 		}
@@ -204,6 +224,68 @@ func (a *App) contactMethodsAcknowledgedByAnotherPushoverUser(ctx context.Contex
 		return rows.Err()
 	})
 	return found, err
+}
+
+// pushoverEmergencyTestAcknowledgedAt is when the Pushover contact method
+// last proved that an emergency wakes its owner, or the zero time when it has
+// not. It reads only what MMHotline already stores. Proof is either:
+//   - the contact method's own Pushover user key acknowledged an emergency for
+//     a test SOS incident (alert source mmhotline_test_sos), and that
+//     acknowledgement claimed the incident for the owner (the incident's
+//     "claimed" history entry says so); the time is the claim's; or
+//   - the own key acknowledged an emergency contact method test, which
+//     MMHotline sent before contact method tests became ordinary
+//     notifications; the stored data has no acknowledgement time, so the time
+//     is when that test was sent.
+//
+// An acknowledgement from another Pushover user (a group key) never counts: it
+// cannot claim, so it does not prove the owner's phone woke. Those deliveries
+// carry pushoverAcknowledgementFromAnotherUserReason.
+func pushoverEmergencyTestAcknowledgedAt(ctx context.Context, tx *sql.Tx, contactMethodID string) (time.Time, error) {
+	var at int64
+	err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(t),0) FROM (
+SELECT a.occurred_at AS t FROM deliveries d
+ JOIN pushover_receipts r ON r.delivery_id=d.id
+ JOIN pushover_receipt_incidents ri ON ri.delivery_id=d.id
+ JOIN incidents i ON i.id=ri.incident_id
+ JOIN incident_actions a ON a.incident_id=i.id AND a.kind='claimed' AND a.actor='member:'||d.member_id AND a.message LIKE '%, who acknowledged the alert in Pushover'
+ WHERE d.contact_method_id=? AND d.severity='sos' AND r.state='acknowledged' AND d.reason!=? AND i.source_id=?
+UNION ALL
+SELECT d.created_at FROM deliveries d JOIN pushover_receipts r ON r.delivery_id=d.id
+ WHERE d.contact_method_id=? AND d.purpose='contact_method_test' AND r.state='acknowledged' AND d.reason!=?)`,
+		contactMethodID, pushoverAcknowledgementFromAnotherUserReason, testAlertSourceID, contactMethodID, pushoverAcknowledgementFromAnotherUserReason).Scan(&at)
+	return deadlineTime(at), err
+}
+
+// The Emergency test lines of a Pushover contact method, on the Contact
+// methods page and in `contact-methods list`. The command's line wraps the
+// command in backticks; the page puts it in <code>.
+const (
+	emergencyTestNotAcknowledgedBefore = "Emergency test: not yet acknowledged. Run "
+	emergencyTestNotAcknowledgedAfter  = " to check that an SOS wakes this phone."
+)
+
+// EmergencyTestCommand is the command that proves the owner's phone wakes.
+func (c ContactMethod) EmergencyTestCommand() string {
+	return "sudo mmhotline incidents send-test-sos --sign-in-email-address " + c.OwnerSignInEmailAddress
+}
+
+// emergencyTestLine is the plain line about the emergency test, or "" for a
+// contact method that is not an owner's Pushover notification.
+func (c ContactMethod) emergencyTestLine() string {
+	switch {
+	case c.ContactMethodType != "pushover_notification" || c.MemberID == "":
+		return ""
+	case c.EmergencyTestAcknowledgedAt.IsZero():
+		return emergencyTestNotAcknowledgedBefore + "`" + c.EmergencyTestCommand() + "`" + emergencyTestNotAcknowledgedAfter
+	}
+	return "Emergency test: acknowledged at " + c.EmergencyTestAcknowledgedAt.UTC().Format(time.RFC3339) + "."
+}
+
+// pushoverPhoneNotProvedWarning stands out after `contact-methods add`: the
+// new phone has only had a quiet test.
+func pushoverPhoneNotProvedWarning(command string) string {
+	return "THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: " + command
 }
 
 // pushoverAcknowledgementProblemText names the problem and the fix.

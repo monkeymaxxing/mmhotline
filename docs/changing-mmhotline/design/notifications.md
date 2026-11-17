@@ -166,7 +166,7 @@ contact-methods remove --contact-method-id ID, first", so configuration
 changes cannot silently drop alerts. When a service is newly set up,
 `settings apply` prints the newly configured sending service's next step
 under the part, such as "Next step:
-Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends an emergency test alert."
+Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification."
 
 Setup changes rebuild the running contact method type instances from the database without
 a restart. The delivery outbox, pages, Telegram poller, and Slack Socket Mode connection
@@ -213,7 +213,7 @@ team account may use the method, each type declares:
   calls do not, except calls reserved before `mmhotline serve` restarts
   ([restart recovery](#sos-phone-calls)).
   Pushover may retry an unknown Info or Warning outcome, but
-  never an unknown emergency send, including its test.
+  never an unknown emergency send (an SOS).
 - **Accepted label:** the delivery list's words for an accepted request, such
   as “Accepted by the mail server”.
 - **Wakes sleeping people** (Pushover with iOS Critical Alerts, or phone call):
@@ -310,10 +310,27 @@ Pushover, and Info at low priority, which is silent. A person can turn each
 off.
 Team mute always stops Pushover, including emergencies already repeating.
 
+**A quiet test, and the proof that a phone wakes its owner.** A Pushover
+contact method's test, sent when it is saved and by Send test, is an
+ordinary notification: Pushover accepting it means only that MMHotline can
+reach the phone, so `Last test message: accepted` keeps that meaning. Only an
+emergency proves a phone sounds in silent mode, and a person should
+acknowledge one emergency during setup, not two. The proof is the test SOS
+(`incidents send-test-sos --sign-in-email-address`, [the test SOS](incidents.md#the-test-sos)). MMHotline derives "emergency test
+acknowledged" from stored data and keeps no new state: a Pushover receipt
+that is `acknowledged` on a delivery to the contact method, for an incident
+of the reserved test alert source whose history says the owner claimed it by
+acknowledging in Pushover, or for an emergency contact test sent before tests
+became quiet. An acknowledgement from another Pushover user (a group key)
+never counts, because it cannot claim. Until proved, `contact-methods add`
+prints a capitals line, and `contact-methods list` and the Contact methods
+page say `Emergency test: not yet acknowledged`, so a dropped alert is not
+hidden behind a quiet test.
+
 | Message | Pushover priority | Emergency retry and expiry |
 | --- | --- | --- |
 | SOS | Emergency (`2`) | Retry every 30 seconds; expire after 1,500 seconds |
-| Test | Emergency (`2`) | Retry every 30 seconds; expire after 600 seconds |
+| Test of a contact method (title “MMHotline can reach this phone”) | Normal (`0`) | None; needs no acknowledgement |
 | Warning | Normal (`0`) | None |
 | Resolved message of an SOS that waited for a server replacement | Normal (`0`) | None |
 | Info and other resolved messages | Low (`-1`), without sound or vibration | None |

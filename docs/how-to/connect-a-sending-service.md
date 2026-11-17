@@ -67,7 +67,7 @@ who can be on call needs Pushover or a phone call for an SOS.
 
    ```text
    sending_services.pushover: applied.
-     sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends an emergency test alert.
+     sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.
    ```
 
    Before it saves a new or changed setup, MMHotline checks it with the

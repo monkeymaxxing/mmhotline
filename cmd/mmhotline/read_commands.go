@@ -13,6 +13,7 @@ import (
 
 func incidentsFlags(flags *flag.FlagSet, action string, in *app.IncidentsCommandRequest, waitForClaimMinutes *int) func() error {
 	if action == "send-test-sos" {
+		flags.StringVar(&in.SignInEmailAddress, "sign-in-email-address", "", "send the test SOS only to this person, now, whether or not they are on call; MMHotline contacts nobody else. Without it the test goes to the person on call, then escalates as an SOS does")
 		flags.IntVar(waitForClaimMinutes, "wait-for-claim-minutes", defaultWaitForClaimMinutes, "how many minutes to wait for someone to acknowledge the test SOS; at least 1")
 		return func() error {
 			if *waitForClaimMinutes < 1 {

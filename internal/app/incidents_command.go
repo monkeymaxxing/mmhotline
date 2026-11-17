@@ -17,6 +17,8 @@ type IncidentsCommandRequest struct {
 	IncidentID   string    `json:"incident_id,omitempty"`
 	OpenedSince  time.Time `json:"opened_since,omitzero"`
 	OpenedBefore time.Time `json:"opened_before,omitzero"`
+	// SignInEmailAddress is send-test-sos's one person to test.
+	SignInEmailAddress string `json:"sign_in_email_address,omitempty"`
 }
 
 // CommandIncident is an SOS incident as the command prints it, with the
@@ -70,7 +72,7 @@ const maximumIncidentAlertsShown = 100
 
 func (a *App) incidentsCommand(ctx context.Context, p Principal, action string, request IncidentsCommandRequest, result *CommandResult) error {
 	if action == "send-test-sos" {
-		return a.sendTestSOSCommand(ctx, p, result)
+		return a.sendTestSOSCommand(ctx, p, request.SignInEmailAddress, result)
 	}
 	if action != "list" && action != "show" {
 		return ErrNotFound
@@ -250,6 +252,11 @@ const (
 type CommandTestSOS struct {
 	IncidentID      string `json:"incident_id"`
 	IncidentPageURL string `json:"incident_page_url"`
+	// SentOnlyToName and SentOnlyToSignInEmailAddress are set when the test
+	// went to one chosen person (--sign-in-email-address) instead of the
+	// person on call.
+	SentOnlyToName               string `json:"sent_only_to_name,omitempty"`
+	SentOnlyToSignInEmailAddress string `json:"sent_only_to_sign_in_email_address,omitempty"`
 	// WaitedForClaimMinutes is the time limit the command waited with.
 	WaitedForClaimMinutes int `json:"waited_for_claim_minutes,omitempty"`
 	// Claimed is true when a person claimed the test before the time limit.
@@ -266,12 +273,15 @@ type CommandTestSOS struct {
 
 // sendTestSOSCommand opens the test SOS and returns at once; the command
 // waits for the claim, as `triage-agent check-sign-in` waits for its check.
-func (a *App) sendTestSOSCommand(ctx context.Context, p Principal, result *CommandResult) error {
-	incident, err := a.SendTestSOS(ctx, p)
+func (a *App) sendTestSOSCommand(ctx context.Context, p Principal, signInEmailAddress string, result *CommandResult) error {
+	incident, person, err := a.SendTestSOS(ctx, p, signInEmailAddress)
 	if err != nil {
 		return err
 	}
 	result.TestSOS = &CommandTestSOS{IncidentID: incident.ID, IncidentPageURL: a.WebURL + "/incidents/" + incident.ID}
+	if person.ID != "" {
+		result.TestSOS.SentOnlyToName, result.TestSOS.SentOnlyToSignInEmailAddress = person.Name, person.SignInEmailAddress
+	}
 	return nil
 }
 
@@ -281,11 +291,39 @@ func (a *App) sendTestSOSCommand(ctx context.Context, p Principal, result *Comma
 // A test SOS that nobody claimed is closed first, so a second test never
 // leaves two tests ringing a phone. Claiming the test resolves it
 // (claimIncidentTx).
-func (a *App) SendTestSOS(ctx context.Context, p Principal) (Incident, error) {
+//
+// With a sign-in email address, the test goes to that one person now, whether
+// or not they are on call, and to nobody else: no backup step and no
+// escalation. The person is the second result.
+func (a *App) SendTestSOS(ctx context.Context, p Principal, signInEmailAddress string) (Incident, Member, error) {
 	var opened Incident
+	var person Member
 	err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 		if _, err := RequireMember(ctx, tx, p, true); err != nil {
 			return err
+		}
+		var recipients []string
+		if signInEmailAddress != "" {
+			normalized, err := normalizeSignInEmailAddress(signInEmailAddress)
+			if err != nil {
+				return err
+			}
+			if person, err = personBySignInEmailAddress(ctx, tx, normalized); err != nil {
+				return err
+			}
+			if eligible, reason, err := MemberEligible(ctx, tx, person.ID, a.Now().UTC()); err != nil || !eligible {
+				if err == nil {
+					err = fmt.Errorf("%w: %s cannot receive the test SOS now: %s", ErrInvalid, person.Name, reason)
+				}
+				return err
+			}
+			if wakeable, _, err := wakeableMembers(ctx, tx, []string{person.ID}); err != nil || len(wakeable) == 0 {
+				if err == nil {
+					err = fmt.Errorf("%w: %s has no contact method that wakes people for SOS alerts; add a Pushover notification or a phone number for them first", ErrInvalid, person.Name)
+				}
+				return err
+			}
+			recipients = []string{person.ID}
 		}
 		at := a.Now().UTC()
 		rows, err := tx.QueryContext(ctx, `SELECT id FROM incidents WHERE source_id=? AND status!='resolved'`, testAlertSourceID)
@@ -313,14 +351,14 @@ func (a *App) SendTestSOS(ctx context.Context, p Principal) (Incident, error) {
 				return err
 			}
 		}
-		alert, err := admitAlert(ctx, tx, testAlertSourceID, "system", "local:"+NewID(), "", GenericAlert{Severity: "sos", Title: testSOSTitle, Message: testSOSMessage}, nil, at)
+		alert, err := admitAlert(ctx, tx, testAlertSourceID, "system", "local:"+NewID(), "", GenericAlert{Severity: "sos", Title: testSOSTitle, Message: testSOSMessage}, recipients, at)
 		if err != nil {
 			return err
 		}
 		opened, err = readIncident(ctx, tx, alert.IncidentID)
 		return err
 	})
-	return opened, err
+	return opened, person, err
 }
 
 // Update fills the claim facts from the test incident as `incidents show`

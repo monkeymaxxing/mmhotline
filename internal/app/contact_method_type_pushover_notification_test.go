@@ -79,14 +79,9 @@ func (r *pushoverRig) add(t *testing.T, key string) ContactMethod {
 	r.dispatch(t)
 	messages := r.fake.PushoverMessages()
 	test := messages[len(messages)-1]
-	if test.Priority != 2 || test.Retry != 30 || test.Expire != 600 {
+	if test.Priority != 0 || test.Title != "MMHotline can reach this phone" || test.Receipt != "" {
 		t.Fatalf("test message: %+v", test)
 	}
-	if err = r.fake.PushoverAcknowledge(test.Receipt); err != nil {
-		t.Fatal(err)
-	}
-	r.advance(5 * time.Second)
-	r.poll(t)
 	return c
 }
 func (r *pushoverRig) sos(t *testing.T, title string) string {
@@ -178,7 +173,7 @@ func TestPushoverContactCommandsUseExplicitJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	sent := fake.PushoverMessages()
-	if len(sent) != 1 || sent[0].Priority != 2 || sent[0].Expire != 600 {
+	if len(sent) != 1 || sent[0].Priority != 0 || sent[0].Receipt != "" || sent[0].Title != "MMHotline can reach this phone" {
 		t.Fatalf("test: %+v", sent)
 	}
 	commandRequest(t, a, CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: ContactMethodsCommandRequest{SharedWithTeam: true, ContactMethodType: "pushover_notification", PushoverUserKey: fakesendingservices.PushoverThirdUserKey}}, 400)
@@ -526,7 +521,7 @@ func TestPushoverMuteCancelsEmergencyAndDoesNotSendNewSOS(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.poll(t)
-	if !r.fake.PushoverReceipts()[1].Cancelled {
+	if !r.fake.PushoverReceipts()[0].Cancelled {
 		t.Fatal("team mute left an emergency ringing")
 	}
 	before := len(r.fake.PushoverMessages())
@@ -605,6 +600,8 @@ func TestPushoverFractionalClockNeverPollsEarly(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.dispatch(t)
+	r.sos(t, "Database down")
+	r.dispatch(t)
 	r.advance(4 * time.Second)
 	r.poll(t)
 	if len(r.fake.PushoverReceipts()[0].Polls) != 0 {
@@ -626,12 +623,19 @@ func TestPushoverClosedReceiptsMakeNoIdleRequestsOrWrites(t *testing.T) {
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	ctx := context.Background()
+	r.sos(t, "Database down")
+	r.dispatch(t)
+	if err := r.fake.PushoverAcknowledge(r.fake.PushoverReceipts()[0].Receipt); err != nil {
+		t.Fatal(err)
+	}
+	r.advance(5 * time.Second)
+	r.poll(t)
 	r.a.backgroundRound(ctx, func(err error) { t.Error(err) })
 	var before, after int
 	if err := r.a.Store.db.QueryRow(`SELECT total_changes()`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	polls := len(r.fake.PushoverReceipts()[0].Polls)
+	polls, messages := len(r.fake.PushoverReceipts()[0].Polls), len(r.fake.PushoverMessages())
 	for range 600 {
 		r.advance(time.Second)
 		r.a.backgroundRound(ctx, func(err error) { t.Error(err) })
@@ -639,7 +643,7 @@ func TestPushoverClosedReceiptsMakeNoIdleRequestsOrWrites(t *testing.T) {
 	if err := r.a.Store.db.QueryRow(`SELECT total_changes()`).Scan(&after); err != nil {
 		t.Fatal(err)
 	}
-	if before != after || len(r.fake.PushoverReceipts()[0].Polls) != polls || len(r.fake.PushoverMessages()) != 1 {
+	if before != after || len(r.fake.PushoverReceipts()[0].Polls) != polls || len(r.fake.PushoverMessages()) != messages {
 		t.Fatalf("closed receipt kept working: writes %d -> %d, receipts %+v", before, after, r.fake.PushoverReceipts())
 	}
 }
@@ -687,7 +691,7 @@ func TestPushoverFailedCancellationWaitsForPersistedRetryDeadline(t *testing.T) 
 	fail = false
 	r.advance(time.Second)
 	r.poll(t)
-	if calls != 2 || !r.fake.PushoverReceipts()[1].Cancelled {
+	if calls != 2 || !r.fake.PushoverReceipts()[0].Cancelled {
 		t.Fatal("cancel was not retried at five seconds")
 	}
 }
@@ -765,9 +769,9 @@ func TestPushoverRestartNeverResendsAnUnfinishedEmergency(t *testing.T) {
 }
 
 // A Pushover send whose worker is gone, after a restart or when its
-// reservation runs out, has an unknown outcome. An emergency (an SOS or a
-// contact method test) may already be ringing, so it is never sent again.
-// Any other Pushover message is sent again.
+// reservation runs out, has an unknown outcome. An SOS emergency may already
+// be ringing, so it is never sent again. Any other Pushover message, a
+// contact method test among them, is sent again.
 func TestPushoverUnfinishedSendIsResentOnlyWhenItIsNoEmergency(t *testing.T) {
 	for _, restart := range []bool{true, false} {
 		for _, message := range []string{"sos", "contact_method_test", "warn", "info"} {
@@ -814,7 +818,7 @@ func TestPushoverUnfinishedSendIsResentOnlyWhenItIsNoEmergency(t *testing.T) {
 					t.Fatal(err)
 				}
 				sent := len(r.fake.PushoverMessages()) - before
-				if message == "sos" || message == "contact_method_test" {
+				if message == "sos" {
 					if sent != 0 || recorded.State != "uncertain" || !recorded.NextAttempt.IsZero() {
 						t.Fatalf("emergency sent again %d times: %+v", sent, recorded)
 					}
@@ -887,7 +891,7 @@ func TestPushoverEmergencyStopsWhenTheContactMethodNoLongerWantsIt(t *testing.T)
 				t.Fatal(err)
 			}
 			r.poll(t)
-			if receipts := r.fake.PushoverReceipts(); len(receipts) < 2 || !receipts[1].Cancelled {
+			if receipts := r.fake.PushoverReceipts(); len(receipts) < 1 || !receipts[0].Cancelled {
 				t.Fatalf("emergency still rings: %+v", receipts)
 			}
 		})
@@ -927,7 +931,7 @@ func TestPushoverSetupAndContactThroughTheBrowserOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	messages := fake.PushoverMessages()
-	if len(messages) != 1 || messages[0].Priority != 2 || messages[0].Expire != 600 {
+	if len(messages) != 1 || messages[0].Priority != 0 || messages[0].Receipt != "" {
 		t.Fatalf("browser save test: %+v", messages)
 	}
 	page = browser.get("/contact-methods", 200)
@@ -1021,7 +1025,7 @@ func TestPushoverApplicationTokenReplacementKeepsContactMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.dispatch(t)
-	if sent = r.fake.PushoverMessages(); len(sent) != before+1 || sent[before].Priority != 2 {
+	if sent = r.fake.PushoverMessages(); len(sent) != before+1 || sent[before].Priority != 0 {
 		t.Fatalf("test after deleting the old application: %+v", sent[before:])
 	}
 }

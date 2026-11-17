@@ -32,14 +32,10 @@ CREATE INDEX pushover_receipt_incidents_incident ON pushover_receipt_incidents(i
 `
 
 func (*PushoverNotificationContactMethodType) prepareDelivery(ctx context.Context, tx *sql.Tx, d Delivery, combined []CombinedAlert, now time.Time) error {
-	if !pushoverEmergency(d.Purpose, d.Severity) {
+	if !pushoverEmergency(d.Severity) {
 		return nil
 	}
-	expire := pushoverEmergencyExpirySeconds
-	if d.Purpose == "contact_method_test" {
-		expire = pushoverTestExpirySeconds
-	}
-	inserted, err := tx.ExecContext(ctx, `INSERT INTO pushover_receipts(delivery_id,state,expires_at) VALUES(?,'sending',?) ON CONFLICT DO NOTHING`, d.ID, now.Add(time.Duration(expire)*time.Second).Unix())
+	inserted, err := tx.ExecContext(ctx, `INSERT INTO pushover_receipts(delivery_id,state,expires_at) VALUES(?,'sending',?) ON CONFLICT DO NOTHING`, d.ID, now.Add(time.Duration(pushoverEmergencyExpirySeconds)*time.Second).Unix())
 	if err != nil {
 		return err
 	}
@@ -64,7 +60,7 @@ func (*PushoverNotificationContactMethodType) prepareDelivery(ctx context.Contex
 	return nil
 }
 func (*PushoverNotificationContactMethodType) recordDeliveryOutcome(ctx context.Context, tx *sql.Tx, d Delivery, _ string, outcome deliveryOutcome, now time.Time) error {
-	if !pushoverEmergency(d.Purpose, d.Severity) {
+	if !pushoverEmergency(d.Severity) {
 		return nil
 	}
 	state := outcome.AttemptState
@@ -77,11 +73,7 @@ func (*PushoverNotificationContactMethodType) recordDeliveryOutcome(ctx context.
 		state = "open"
 		next = pushoverNextRequestAt(now)
 	}
-	expire := pushoverEmergencyExpirySeconds
-	if d.Purpose == "contact_method_test" {
-		expire = pushoverTestExpirySeconds
-	}
-	_, err := tx.ExecContext(ctx, `UPDATE pushover_receipts SET receipt=?,state=?,next_poll_at=?,expires_at=? WHERE delivery_id=?`, receipt, state, next, now.Add(time.Duration(expire)*time.Second).Unix(), d.ID)
+	_, err := tx.ExecContext(ctx, `UPDATE pushover_receipts SET receipt=?,state=?,next_poll_at=?,expires_at=? WHERE delivery_id=?`, receipt, state, next, now.Add(time.Duration(pushoverEmergencyExpirySeconds)*time.Second).Unix(), d.ID)
 	return err
 }
 func pushoverCountedIncidentIDs(ctx context.Context, tx *sql.Tx, deliveryID string) ([]string, error) {
@@ -104,7 +96,7 @@ func pushoverCountedIncidentIDs(ctx context.Context, tx *sql.Tx, deliveryID stri
 // resendsAfterUnknownOutcome: an emergency may already ring, so only an
 // ordinary message is sent again.
 func (*PushoverNotificationContactMethodType) resendsAfterUnknownOutcome(d Delivery) bool {
-	return !pushoverEmergency(d.Purpose, d.Severity)
+	return !pushoverEmergency(d.Severity)
 }
 
 // escalationRoundStillRinging reports whether an emergency about the

@@ -788,12 +788,6 @@ func newTriageHoldRig(t *testing.T) *triageHoldRig {
 			t.Fatal(err)
 		}
 		r.dispatch(t)
-		messages := r.fake.PushoverMessages()
-		if err = r.fake.PushoverAcknowledge(messages[len(messages)-1].Receipt); err != nil {
-			t.Fatal(err)
-		}
-		r.advance(5 * time.Second)
-		backgroundRounds(t, r.a)
 	}
 	r.addPhone(t, r.s.Principal, onCallNumber)
 	week := []string{responder.ID, responder.ID, responder.ID, responder.ID, responder.ID, responder.ID, responder.ID}

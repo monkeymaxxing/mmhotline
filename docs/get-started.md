@@ -250,7 +250,7 @@ in your own.
 
    ```text
    sending_services.pushover: applied.
-     sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends an emergency test alert.
+     sending_services.pushover: Next step: Add your own Pushover user key under Contact methods. Saving the Pushover contact method sends a quiet test notification.
    ```
 
    and it ends with `Every part of the settings file is applied.`
@@ -278,9 +278,14 @@ in your own.
    A group key still wakes phones, but acknowledging on a phone does not
    claim the incident for you. MMHotline warns you when you add one.
 
-   **Check:** your phone gets an emergency test alert that sounds until you
-   acknowledge it in Pushover, and `sudo mmhotline contact-methods list`
-   then says `Last test message: accepted`.
+   **Check:** your phone shows a quiet Pushover notification titled
+   **MMHotline can reach this phone**. There is nothing to acknowledge.
+   `sudo mmhotline contact-methods list` then says
+   `Last test message: accepted`, which means Pushover took the message.
+
+   THIS PHONE HAS NOT PROVED IT WAKES YOU YET. The command prints that
+   line in capitals too, and `contact-methods list` keeps saying
+   `Emergency test: not yet acknowledged.` until step 9 proves it.
 
    Before you rely on it at night, follow
    [Make an emergency alert wake you](how-to/connect-pushover.md)
@@ -299,11 +304,13 @@ in your own.
    **Check:** you opened `https://ops.example.com` on your phone, signed
    in at Cloudflare, and MMHotline's dashboard opened.
 
-9. **Send a test SOS.** MMHotline sends itself an SOS, wakes the person on
-   call, and waits for you to acknowledge it on your phone:
+9. **Send a test SOS.** This is the one test that proves your phone wakes
+   you. MMHotline sends itself an SOS, wakes you (with
+   `--sign-in-email-address`, you are woken whether or not you are on
+   call), and waits for you to acknowledge it on your phone:
 
    ```sh
-   sudo mmhotline incidents send-test-sos
+   sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
    ```
 
    **Check:** your phone sounds with a Pushover notification titled
@@ -312,13 +319,15 @@ in your own.
    exits 0:
 
    ```text
-   MMHotline sent a test SOS to the person on call. Waiting up to 10 minutes for someone to acknowledge it on the phone.
+   MMHotline sent a test SOS only to Barbara Example (barbara@example.com), whether or not they are on call. Waiting up to 10 minutes for someone to acknowledge it on the phone.
    Incident: https://ops.example.com/incidents/acc896d49ce5b2ef40cd2c944da4f08f
    Barbara Example claimed the test by acknowledging the alert in Pushover, at 2026-11-15T04:41:20Z.
    MMHotline resolved the test after the claim, at 2026-11-15T04:41:20Z.
    The test SOS worked: a person acknowledged it on the phone.
    ```
 
+   `sudo mmhotline contact-methods list` now says
+   `Emergency test: acknowledged at 2026-11-15T04:41:20Z.` for your phone.
    MMHotline closes the test itself, so there is nothing more to claim or
    resolve. `sudo mmhotline incidents list` prints
    `Listed 0 SOS incidents not resolved, newest first.`

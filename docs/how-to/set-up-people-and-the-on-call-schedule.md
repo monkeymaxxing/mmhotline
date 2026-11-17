@@ -66,6 +66,12 @@ schedule in the settings file, preview the schedule, and apply both.
    then change the schedule: the preview in step 4 knows only people
    already applied.
 
+   A new person adds their phone as a contact method
+   ([Add contact methods](add-contact-methods.md)). Then run
+   `sudo mmhotline incidents send-test-sos --sign-in-email-address EMAIL`
+   with their sign-in email address, whether or not they are on call: it
+   wakes only them, and proves their phone wakes them.
+
    Cloudflare Access decides who may reach MMHotline at all; this list
    decides who is on the team. Nobody needs an invitation or a password.
 
