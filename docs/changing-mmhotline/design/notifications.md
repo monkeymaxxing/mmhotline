@@ -1136,7 +1136,11 @@ When any contact method has 3 consecutive failed or uncertain attempts
 bounces at the sending service), administrators are told once per failing streak with
 a Warning from MMHotline: “MMHotline cannot deliver alerts to {destination}”,
 for example “MMHotline cannot deliver alerts to Slack channel #ops-alerts in
-the Acme workspace”. For a webhook the destination is the host name.
+the Acme workspace”. For a webhook the destination is the host name. A
+member's own contact method is named by its owner, such as “Alice's Pushover
+notification”, never by its phone number, email address, or Pushover user
+key: every member reads the alert history, and a Pushover user key would let
+anyone with a Pushover application send that member notifications.
 
 ## Monitoring tools
 

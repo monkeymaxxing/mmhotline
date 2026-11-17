@@ -1084,3 +1084,37 @@ func TestPushoverSingleAlertDoesNotRepeatTitle(t *testing.T) {
 		}
 	}
 }
+
+// Every member reads the alert history, so the notice to administrators about
+// a member's failing contact method names it by its owner. A Pushover user key
+// would let anyone with a Pushover application send that member notifications.
+func TestFailingPersonalContactMethodNoticeNamesTheOwnerNotTheDestination(t *testing.T) {
+	r := newPushoverRig(t)
+	c := r.add(t, fakesendingservices.PushoverUserKey)
+	ctx := context.Background()
+	var owner string
+	if err := r.a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+		for range failuresBeforeKeepingOnlyNewest {
+			if err := recordContactMethodOutcome(ctx, tx, Delivery{ContactMethodID: c.ID, ContactMethodRevision: c.Revision}, false, r.a.Now()); err != nil {
+				return err
+			}
+		}
+		var err error
+		owner, err = incidentMemberName(ctx, tx, c.MemberID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var title, message string
+	if err := r.a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+		return tx.QueryRow(`SELECT title,message FROM alerts WHERE source_id='system' AND title LIKE 'MMHotline cannot deliver alerts to %'`).Scan(&title, &message)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(title+message, fakesendingservices.PushoverUserKey) {
+		t.Fatalf("the notice shows the member's Pushover user key: %q %q", title, message)
+	}
+	if want := "MMHotline cannot deliver alerts to " + owner + "'s Pushover notification"; title != want {
+		t.Fatalf("title %q, want %q", title, want)
+	}
+}

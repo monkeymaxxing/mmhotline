@@ -1174,9 +1174,12 @@ func recordContactMethodOutcome(ctx context.Context, tx *sql.Tx, d Delivery, acc
 	if u, err := url.Parse(sentTo); err == nil && u.Host != "" {
 		where = u.Host
 	}
-	// Every member reads the alert history, so a member's phone number is
-	// named by its owner, never shown.
-	if ownerID != "" && facts.ValueFixed {
+	// Every member reads the alert history, so a member's own contact method
+	// is named by its owner, never shown: a phone number, an email address,
+	// or a Pushover user key, which would let anyone send the member
+	// notifications. A contact method shared with the team shows where it
+	// sends.
+	if ownerID != "" {
 		owner, err := incidentMemberName(ctx, tx, ownerID)
 		if err != nil {
 			return err
