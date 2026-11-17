@@ -347,6 +347,8 @@ the receipt expires, MMHotline's next eligible minute repeat of the SOS
 escalation sends a new emergency
 ([repeat timer](incidents.md#initial-notification-and-repeats)).
 MMHotline cancels the receipt earlier when the incident is claimed or resolved.
+An SOS that joins a claimed incident and goes to the person who claimed it
+keeps ringing until that person acknowledges it or the incident is resolved.
 The ten-minute test expiry bounds the test if the person never acknowledges.
 Acknowledging a test claims nothing and sends no claim result.
 
@@ -391,7 +393,8 @@ the key must be personal, not a delivery-group key.
 
 A claim or resolution through any contact method type can make a receipt due
 for cancellation. Cancellation is due when no incident counted by the receipt
-still waits for the contact method's owner.
+still waits for the contact method's owner. A new SOS sent to the person who
+claimed its incident still waits for that person.
 MMHotline uses `POST /1/receipts/RECEIPT/cancel.json` with the application token.
 Removed contact methods, changed destinations, removed members, personal
 unavailability, and escalation away from the person also stop the old emergency.

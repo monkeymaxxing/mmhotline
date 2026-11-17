@@ -519,6 +519,14 @@ func (a *App) ListAlerts(ctx context.Context, p Principal, f AlertFilter) ([]Ale
 			args = append(args, f.Severity)
 		}
 		if f.IncidentID != "" {
+			// A mistyped ID would list no alerts, which reads as a quiet incident.
+			var known bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM incidents WHERE id=?)`, f.IncidentID).Scan(&known); err != nil {
+				return err
+			}
+			if !known {
+				return fmt.Errorf("%w: no SOS incident has ID %s", ErrNotFound, f.IncidentID)
+			}
 			where = append(where, "incident_id=?")
 			args = append(args, f.IncidentID)
 		}

@@ -112,7 +112,8 @@ func realSandboxFixture(t *testing.T, a *App, programs string) {
 // next.json it refreshes after a second, writing next.json to auth.json as
 // Codex does, by truncating it and writing again; with half.json it then
 // writes half.json, as a Codex killed halfway through a write leaves it,
-// and hangs; otherwise it answers.
+// and hangs; with fail it then fails, as for a model the service refuses;
+// otherwise it answers.
 func fakeRefreshingCodex(t *testing.T, results string) string {
 	t.Helper()
 	answer, err := json.Marshal(map[string]any{"type": "item.completed", "item": map[string]any{"type": "agent_message", "text": triageAgentTestSentence}})
@@ -135,6 +136,11 @@ if [ -f "$results/half.json" ]; then
   /bin/cat "$results/half.json" > "$CODEX_HOME/auth.json"
   /bin/mv "$results/half.json" "$results/used-half.json"
   count=0; while [ "$count" -lt 6000 ]; do /bin/sleep 0.01; count=$((count+1)); done
+fi
+if [ -f "$results/fail" ]; then
+  /bin/rm "$results/fail"
+  echo 'The model gpt-typo does not exist.' >&2
+  exit 1
 fi
 printf '%s\n' '` + string(answer) + `' '{"type":"turn.completed","usage":{}}'
 `
@@ -248,6 +254,21 @@ func TestChatGPTSignInKeepsTheNewestCopyAcrossRuns(t *testing.T) {
 	}
 	if result := checkSignIn(); result.Event != "finished" || lent() != signInCopy(t, 3) {
 		t.Fatalf("the run after the kill: %+v", result)
+	}
+
+	// A model typo fails the setup test after Codex refreshed the newest
+	// copy it was lent. The refresh used up the lent copy, so the refreshed
+	// copy is kept although the setup test failed.
+	writeResult(t, results, "next.json", signInCopy(t, 5))
+	writeResult(t, results, "fail", "")
+	if result := setUp("gpt-typo"); result.Event == "finished" {
+		t.Fatalf("the setup test with a model typo passed: %+v", result)
+	}
+	if lent() != signInCopy(t, 3) {
+		t.Fatal("the model typo's setup test did not get the newest copy")
+	}
+	if _, current := storedSignIn(t, a, triageAgentRole); current != signInCopy(t, 5) {
+		t.Fatal("the failed setup test lost the copy Codex refreshed")
 	}
 }
 

@@ -84,7 +84,7 @@ const (
 	// alerts, has not finished a round in 2 minutes. A round normally ends
 	// every second; even a visit whose every sending service call waits for
 	// its time limit (at most 30 seconds for an email) ends well within 2
-	// minutes. It is well below the shortest wake time, 5 minutes: with a
+	// minutes. It is below the shortest wake time, 3 minutes: with a
 	// check-in every minute, the MMHotline-down alarm wakes the person on call at most
 	// 3 minutes plus the wake time after the loop stops.
 	downAlarmBackgroundStaleAfter = 2 * time.Minute
@@ -294,14 +294,15 @@ func (a *App) downAlarmHeldMessages(ctx context.Context, tx *sql.Tx, now time.Ti
 		// Nobody is available: an SOS contacts every member, and so does the MMHotline-down alarm.
 		primary = coverage.AllMemberIDs
 	}
-	// named is false for people reached only as everyone available, who
-	// raise no notice when they cannot be woken, as with an SOS.
+	// named is false for people reached only as everyone available, or as
+	// every member, who raise no notice when they cannot be woken, as with an
+	// SOS.
 	steps := []struct {
 		name, role string
 		ids        []string
 		delay      time.Duration
 		named      bool
-	}{{"primary", "on call", primary, time.Duration(wake.WakeThePersonOnCallAfterMinutes) * time.Minute, true}}
+	}{{"primary", "on call", primary, time.Duration(wake.WakeThePersonOnCallAfterMinutes) * time.Minute, !coverage.PrimaryIsEveryoneAvailable}}
 	if !coverage.PrimaryIsEveryoneAvailable {
 		// The backup step escalates as an unclaimed SOS does: to the named
 		// backup, or to everyone else available.
@@ -318,6 +319,9 @@ func (a *App) downAlarmHeldMessages(ctx context.Context, tx *sql.Tx, now time.Ti
 		muted = coverage.TeamMute.Until.Sub(now).Truncate(time.Minute) + time.Minute
 	}
 	text := downAlarmText{TeamName: team, WebURL: a.WebURL}
+	// When no held message would wake anyone, the notice names everyone the
+	// MMHotline-down alarm should wake.
+	var unreachedUnnamed []string
 	for _, step := range steps {
 		for _, memberID := range step.ids {
 			var name string
@@ -360,14 +364,22 @@ func (a *App) downAlarmHeldMessages(ctx context.Context, tx *sql.Tx, now time.Ti
 					contactMethodID: method.ID, personName: name, contactMethodType: facts.CardTitle, sentTo: method.SentTo, delay: delay,
 				})
 			}
-			if len(held) == heldBefore && step.named {
+			if len(held) == heldBefore {
 				reason := "no Pushover notification or automated voice call subscribed to SOS"
 				if len(unbuilt) > 0 {
 					reason = strings.Join(unbuilt, "; ")
 				}
-				unreached = append(unreached, fmt.Sprintf("- %s, %s: %s", name, step.role, reason))
+				line := fmt.Sprintf("- %s, %s: %s", name, step.role, reason)
+				if step.named {
+					unreached = append(unreached, line)
+				} else {
+					unreachedUnnamed = append(unreachedUnnamed, line)
+				}
 			}
 		}
+	}
+	if len(held) == 0 {
+		unreached = append(unreached, unreachedUnnamed...)
 	}
 	return held, unreached, nil
 }

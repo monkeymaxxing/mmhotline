@@ -69,6 +69,28 @@ func listedServers(t *testing.T, a *App) (map[string]string, TriageAgentView) {
 	return servers, view
 }
 
+// A commit review run lists the servers and vendor pages' hosts too, so the
+// page and show describe its listing when it is the latest.
+func TestTheLatestCommitReviewRunsListingIsShown(t *testing.T) {
+	a := foundationApp(t)
+	for _, run := range []struct {
+		id, purpose, notListedBecause string
+		startedAt                     int64
+	}{
+		{"00000000000000000000000000000001", "triage_session", "", 100},
+		{"00000000000000000000000000000002", "commit_review", "the file is not valid YAML", 200},
+		{"00000000000000000000000000000003", "setup_test", "", 300},
+	} {
+		if _, err := a.Store.db.Exec(`INSERT INTO triage_agent_runs(id,purpose,coding_agent,credential_type,state,started_at,started_by,vendor_page_hosts_not_listed_because) VALUES(?,?,'codex','api_key','finished',?,'MMHotline',?)`, run.id, run.purpose, run.startedAt, run.notListedBecause); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, view := listedServers(t, a)
+	if view.HostsFromTheSystemsRepositoryListedAt == nil || view.HostsFromTheSystemsRepositoryListedAt.Unix() != 200 || view.VendorPageHostsNotListedBecause != "the file is not valid YAML" {
+		t.Fatalf("listed at %v, not listed because %q; want the commit review run's", view.HostsFromTheSystemsRepositoryListedAt, view.VendorPageHostsNotListedBecause)
+	}
+}
+
 func runRecord(t *testing.T, a *App, runID string) (state, notListedBecause string) {
 	t.Helper()
 	if err := a.Store.db.QueryRow(`SELECT state,inventory_servers_not_listed_because FROM triage_agent_runs WHERE id=?`, runID).Scan(&state, &notListedBecause); err != nil {

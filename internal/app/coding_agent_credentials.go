@@ -99,7 +99,7 @@ var triageAgentRole = agentRole{
 	name: "triage agent", commandGroup: "triage-agent", settingsKey: "triage_agent", setupTable: "triage_agent_setup",
 	runPurposes:      []string{"setup_test", "sign_in_check", "triage_session", "software_review"},
 	setupTestPurpose: "setup_test", signInCheckPurpose: "sign_in_check", setupTestPrompt: triageAgentSetupTestPrompt,
-	whileSignInFails: "While the sign-in check fails, the triage agent cannot look into alerts or review the servers' software. An SOS wakes the person on call without waiting for the triage agent.",
+	whileSignInFails: "While the sign-in check fails, the triage agent cannot look into alerts or review the servers' software. An SOS wakes the person on call as soon as the triage agent's run fails.",
 }
 
 var reviewAgentRole = agentRole{

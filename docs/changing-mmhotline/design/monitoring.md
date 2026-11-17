@@ -263,8 +263,11 @@ When check-ins resume:
   who claimed the SOS incident resolves the incident.
 
 If the problem returns while the incident is still open, the new alert joins
-that incident and contacts nobody again, and no Warning goes out
-([identity](ingestion.md#identity-replay-and-resolution)).
+that incident, and no Warning goes out
+([identity](ingestion.md#identity-replay-and-resolution)). After check-ins
+resumed, only a claimed incident is still open, so the new SOS goes to the
+person who claimed it, through their SOS contact methods, waking ones
+included.
 
 Each time a person resolves an SOS incident while check-ins are still
 missing, MMHotline waits for the SOS time to pass since the resolution.

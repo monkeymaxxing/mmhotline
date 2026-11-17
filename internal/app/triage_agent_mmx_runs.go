@@ -51,8 +51,8 @@ func (a *App) RunPlaybook(ctx context.Context, request TriageAgentPlaybookRunReq
 	// The MMX run is the triage run's current step: a triage run that ends or
 	// is stopped must not end it halfway.
 	ctx = context.WithoutCancel(ctx)
-	a.triageAgent.mmxRunsOneAtATime.Lock()
-	defer a.triageAgent.mmxRunsOneAtATime.Unlock()
+	// The copy's lock, taken inside the time limit, makes MMX runs wait one
+	// for another, also within this process, and records the wait.
 	limit := a.triageAgent.mmxRunTimeLimit
 	runContext, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
@@ -140,7 +140,11 @@ func (a *App) RunPlaybook(ctx context.Context, request TriageAgentPlaybookRunReq
 			decision.Message = a.mmxRefusal(check, nil)
 		}
 	}
-	if newer != "" {
+	if newer != "" && len(check.Waiting) > 0 {
+		// A commit that waits on origin's branch stops MMX without judging
+		// the request again at the newer commit.
+		decision.Message = a.mmxRefusal(check, nil)
+	} else if newer != "" {
 		decision.CopyMovedToCommitID = newer
 		decision.Message = fmt.Sprintf("MMHotline did not run the playbook: the copy moved past the judged commit %s to %s.", commitID, newer)
 	}

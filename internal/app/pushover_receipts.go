@@ -174,6 +174,11 @@ func pushoverReceiptNeedsCancellation(ctx context.Context, tx *sql.Tx, item push
 		if i.Status == "open" && containsMember(i.TargetMemberIDs, d.MemberID) {
 			return false, nil
 		}
+		// An SOS that joined a claimed incident wakes the person who claimed
+		// it until they acknowledge it, as any SOS does.
+		if i.Status == "claimed" && i.OwnerMemberID == d.MemberID && strings.HasPrefix(d.NotificationKey, "related_alert_sent_to_claimer:") {
+			return false, nil
+		}
 	}
 	return true, nil
 }
