@@ -23,8 +23,27 @@ key and its values.
 
 - **You change the file on the server by hand:** follow
   [Change the settings by hand](#change-the-settings-by-hand).
+- **You change a secret on the server:** follow
+  [Change a secret](#change-a-secret).
 - **A deploy tool writes the file from your repository:** follow
   [Change the settings with a deploy tool](#change-the-settings-with-a-deploy-tool).
+
+## Change a secret
+
+A secret is a token, a password, or a signing secret. Do not paste it into
+the file in an editor. This command saves it for you, checks it first, and
+never prints it:
+
+```sh
+sudo mmhotline settings set-secret sending_services.pushover.application_token --apply
+```
+
+The command waits for the secret: paste it, then press Enter. Nothing
+shows as you paste. A coding agent pipes the secret in instead, from where
+the person put it. [The `mmhotline` command reference](../reference/mmhotline-command.md#mmhotline-settings-set-secret)
+lists the secret keys.
+
+A TEAM WHOSE DEPLOY TOOL, SUCH AS MMX, WRITES THE FILE FROM A VAULT DOES NOT USE THIS COMMAND. THE NEXT DEPLOY OVERWRITES THE FILE AND LOSES THE CHANGE. SET THE SECRET IN THE VAULT INSTEAD.
 
 ## Change the settings by hand
 

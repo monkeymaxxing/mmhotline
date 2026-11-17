@@ -48,20 +48,21 @@ test that an emergency alert wakes them, also in silent mode.
 
    **Check:** the token is 30 letters and digits.
 
-2. **Connect it to MMHotline.** Add the token to the settings file, under
-   `sending_services`:
-
-   ```yaml
-   sending_services:
-     pushover:
-       application_token: YOUR_30_CHARACTER_APPLICATION_TOKEN
-   ```
-
-   Then apply the file:
+2. **Connect it to MMHotline.** Save the token in the settings file and
+   apply the file:
 
    ```sh
-   sudo mmhotline settings apply
+   sudo mmhotline settings set-secret sending_services.pushover.application_token --apply
    ```
+
+   Each command waits for the value: paste it, then press Enter. Nothing
+   shows as you paste. A coding agent pipes the value in instead, from
+   where the person put it. Reason: a secret typed on the command line
+   would stay in the shell history and show in the list of running
+   processes.
+
+   The command checks the token's form before it saves anything, and
+   never prints the token.
 
    **Check:** among the lines it prints are:
 
@@ -230,10 +231,11 @@ contact method stays.
 
 1. [Create a new application](https://pushover.net/apps/build) named
    **MMHotline**, and copy its token.
-2. Put the new token in `sending_services.pushover.application_token`, and
-   apply the file. A coding agent that has the token in a file puts it in
-   without showing it, as step 3 of [Get started](../get-started.md) does
-   for a secret.
+2. Save the new token and apply the file:
+
+   ```sh
+   sudo mmhotline settings set-secret sending_services.pushover.application_token --apply
+   ```
 
    **Check:** the line says `sending_services.pushover: applied.`
 3. Send yourself a test with **Send test**, or

@@ -24,3 +24,10 @@ func turnOffTerminalEcho(file *os.File) (restore func(), isTerminal bool) {
 	}
 	return func() { _ = unix.IoctlSetTermios(descriptor, terminalSetRequest, original) }, true
 }
+
+// fileIsTerminal reports whether file is a terminal, such as a person's
+// screen, and not a pipe or a file.
+func fileIsTerminal(file *os.File) bool {
+	_, err := unix.IoctlGetTermios(int(file.Fd()), terminalGetRequest)
+	return err == nil
+}

@@ -528,6 +528,97 @@ send an alert again until MMHotline answers it
 | `1` | The file has problems, a part did not apply, or the restart failed |
 | `4` | The command socket does not answer, or the arguments are wrong |
 
+## mmhotline settings set-secret
+
+Saves one secret in the settings file, so nobody opens the file to paste
+it. It runs as root, on the MMHotline server.
+
+```sh
+sudo mmhotline settings set-secret sending_services.pushover.application_token
+sudo mmhotline settings set-secret 'alert_sources[monitoring].signing_secrets' --make-new --write-to-file /root/monitoring-signing-secret
+```
+
+`KEY_PATH` is the key's path, written as in the settings check's
+problems. In `alert_sources[ID].signing_secrets`, `ID` is the alert
+source's ID, such as `monitoring`; keep the quotes around it in the shell.
+Only the secret keys are accepted:
+
+- `triage_agent.credential`
+- `review_agent.credential`
+- `alert_sources[ID].signing_secrets`
+- `sending_services.pushover.application_token`
+- `sending_services.twilio.api_key_secret`
+- `sending_services.telegram.bot_token`
+- `sending_services.slack.bot_token`
+- `sending_services.slack.app_level_token`
+- `sending_services.mail_server.smtp_password`
+- `mmhotline_down_alarm.cloudflare_api_token`
+- `status_page.r2_access_key_id`
+- `status_page.r2_secret_access_key`
+
+Any other key is refused, with this list. A test compares the list with
+the secret keys in the [settings file reference](settings-file.md).
+
+Without `--make-new`, the command reads the value. On a terminal it shows
+`Paste the value, then press Enter. Nothing shows as you paste:` and hides
+what you paste. From a pipe, it reads to the end. It checks the value with
+the key's own rule from the settings file reference, before it writes
+anything. If the value has a problem, it prints the problem and changes
+nothing.
+
+It then edits the settings file in place. Comments and key order stay, and
+a missing section is made. The file keeps its owner and mode. The command
+writes a temporary file next to the settings file and renames it over the
+settings file. It never prints the value, and its errors never contain it.
+
+For `alert_sources[ID].signing_secrets`, the new secret goes after the
+source's latest valid earlier secret, so the sender keeps working until it
+uses the new one. A placeholder or other value that is not 64 hexadecimal
+characters is dropped. A source holds at most two signing secrets, so a
+third drops the oldest.
+
+Last, it checks the file and prints:
+
+```text
+Saved sending_services.pushover.application_token in /etc/mmhotline/mmhotline_settings.yml.
+The settings file /etc/mmhotline/mmhotline_settings.yml has no problems.
+Run: sudo mmhotline settings apply
+```
+
+If the file still has problems, such as a key that the section needs and
+does not have yet, the command lists them and does not say to apply.
+
+| Flag | Meaning |
+| --- | --- |
+| `--settings-file FILE` | The settings file to change. Default `/etc/mmhotline/mmhotline_settings.yml` |
+| `--make-new` | Only for `alert_sources[ID].signing_secrets`: MMHotline makes 32 random bytes and saves them as 64 lowercase hexadecimal characters, the form that MMWatchdog requires |
+| `--write-to-file PATH` | With `--make-new`: write the new value and a line break to the new file `PATH`, owner root, mode 0600. If `PATH` exists, the command stops and changes nothing; remove the file first |
+| `--apply` | Run [`settings apply`](#mmhotline-settings-apply) after saving, when the file has no problems |
+
+With `--write-to-file`, the command names the file and says the monitoring
+tool reads the secret there, for example MMWatchdog's
+`mmhotline_signing_secret_file`. It never prints the value.
+
+With `--make-new` and no `--write-to-file`, the command shows the value
+once, on a line of its own, after this line:
+
+```text
+Copy this new signing secret into the monitoring tool's setting now. MMHotline will not show it again:
+```
+
+IT SHOWS THE VALUE ONLY ON A PERSON'S TERMINAL. WITH ANY OTHER OUTPUT, IT REFUSES BEFORE IT MAKES OR WRITES ANYTHING.
+
+The refusal says: `MMHotline shows a new signing secret only on a person's terminal, so it never passes through a coding agent's chat. Run this command yourself, or use --write-to-file PATH.` Reason: a lasting secret must not pass through a coding agent's chat.
+
+A team whose deploy tool renders the settings file from a vault, such as
+MMX, sets secrets in that vault instead. The next deploy overwrites the file.
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The secret is saved |
+| `1` | The secret is saved, but with `--apply` the file has problems or a part did not apply |
+| `4` | A refusal: not a secret key, an unknown alert source, an invalid or empty value, a wrong flag, or an existing `--write-to-file` file. Nothing changed |
+
 ## mmhotline settings show
 
 Shows the settings file's path, its first comment line, when it last

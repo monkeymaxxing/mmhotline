@@ -41,18 +41,21 @@ who can be on call needs Pushover or a phone call for an SOS.
 1. **Create what the service needs,** such as an application at Pushover
    or an API key at Twilio, as the service's page says.
 
-2. **Add the service's section under `sending_services`** in the settings
-   file, as [Change the settings](change-the-settings.md) says. For
-   example:
+2. **Save the service's secrets in the settings file,** with
+   `set-secret` and the key from the service's page. For example:
 
-   ```yaml
-   sending_services:
-     pushover:
-       application_token: YOUR_30_CHARACTER_APPLICATION_TOKEN
+   ```sh
+   sudo mmhotline settings set-secret sending_services.pushover.application_token
    ```
 
-   A team whose deploy tool writes the settings file adds the section in
-   its repository, with the secrets in its vault. Each service's page
+   The command waits for the secret: paste it, then press Enter. Nothing
+   shows as you paste. Keys that are not secret, such as Twilio's
+   `account_sid`, go in the file as [Change the settings](change-the-settings.md)
+   says.
+
+   A team whose deploy tool writes the settings file does not use
+   `set-secret`. It adds the section in its repository, with the secrets in
+   its vault, because the next deploy overwrites the file. Each service's page
    under **Sending services** in MMHotline also shows these steps, with
    the settings file key for each value.
 
