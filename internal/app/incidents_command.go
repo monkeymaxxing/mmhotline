@@ -301,13 +301,22 @@ func (a *App) sendTestSOSCommand(ctx context.Context, p Principal, signInEmailAd
 //
 // With a sign-in email address, the test goes to that one person now, whether
 // or not they are on call, and to nobody else: no backup step and no
-// escalation. The person is the second result.
+// escalation. The person is the second result. Without one, a team of one
+// person tests that person's phone the same way, so a first test needs no
+// flag; a larger team's test goes to the person on call.
 func (a *App) SendTestSOS(ctx context.Context, p Principal, signInEmailAddress string) (Incident, Member, error) {
 	var opened Incident
 	var person Member
 	err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 		if _, err := RequireMember(ctx, tx, p, true); err != nil {
 			return err
+		}
+		if signInEmailAddress == "" {
+			var only string
+			if err := tx.QueryRowContext(ctx, `SELECT CASE WHEN count(*)=1 THEN max(sign_in_email_address) ELSE '' END FROM members WHERE removed_at IS NULL`).Scan(&only); err != nil {
+				return err
+			}
+			signInEmailAddress = only
 		}
 		var recipients []string
 		if signInEmailAddress != "" {

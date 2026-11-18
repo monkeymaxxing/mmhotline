@@ -505,6 +505,12 @@ nobody and times out). The command refuses a person who is not on the team,
 is unavailable, or has no contact method that wakes people for SOS alerts.
 This is how a new team member proves their phone without being on call.
 
+Without `--sign-in-email-address`, a team with exactly one person tests that
+person as if the address were given. Reason: a first install has one
+person, and the person typed the whole flag for a test that could only go
+to them. A larger team keeps the on-call test, because naming one person
+there is a choice.
+
 The test does not pass through MMWatchdog or any alert source. MMWatchdog's
 signed check-ins prove that path every minute, and MMHotline warns when they
 stop.

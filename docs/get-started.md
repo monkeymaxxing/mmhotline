@@ -5,8 +5,8 @@ MMHotline, with `sudo`. You do the parts in Cloudflare and in the Pushover
 app yourself; a coding agent tells you what to create there.
 
 **What this page does:** you install MMHotline, put your phone on call, and
-have MMHotline send a test SOS that wakes you. You acknowledge it on your
-phone, and MMHotline closes it. It takes about an hour, most of it in
+have MMHotline send a test SOS, its urgent alert, that wakes you. You
+acknowledge it on your phone, and MMHotline closes it. It takes about an hour, most of it in
 Cloudflare.
 
 **Terms:** an **SOS** is the urgent alert that wakes the person on call,
@@ -14,6 +14,22 @@ even at night. An SOS opens an **incident**, MMHotline's record of the
 problem. You **claim** an incident to tell the team you are handling it,
 and you **resolve** it when the problem is over. An **alert source** is a
 tool that sends alerts to MMHotline, such as your monitoring tool.
+
+## For a coding agent
+
+When you set up MMHotline for a person, follow these rules:
+
+- Speak in the person's words: "the loud alarm on your phone", "the
+  address your monitoring tool sends alerts to", "acknowledge it on your
+  phone". Use a settings or command name only inside a command or file the
+  person types or opens, or after one plain line that says what it is.
+- Never put a secret in the chat, and never compose your own shell line for
+  one. Give the person the command to run in their own terminal (step 6).
+- Run the test in step 8 yourself. It needs no secret.
+- After the install, say what works and the one thing the person does
+  next, and offer the rest: "Say 'details' for more." Do not list
+  checksums, the team name, backups, or secret file paths that the person
+  did not ask about and cannot act on yet.
 
 ## Before you start
 
@@ -348,17 +364,27 @@ in your own.
    in at Cloudflare, and MMHotline's dashboard opened.
 
 8. **Send a test SOS.** This is the one test that proves your phone wakes
-   you. MMHotline sends itself an SOS, wakes you (with
-   `--sign-in-email-address`, you are woken whether or not you are on
-   call), and waits for you to acknowledge it on your phone.
+   you. MMHotline sends itself an SOS, sounds the loud alarm on your phone,
+   and waits for you to acknowledge it there. In a team of one person, the
+   test goes to you:
 
-   **IF YOUR CODING AGENT RUNS THIS COMMAND, IT TELLS YOU FIRST: "YOUR
-   PHONE IS ABOUT TO SOUND. ACKNOWLEDGE IT."** Its chat waits until
-   you do, so you can't ask it then.
+   ```sh
+   sudo mmhotline incidents send-test-sos
+   ```
+
+   In a team of more people, name whose phone to test. That person is
+   woken whether or not they are on call, and nobody else is:
 
    ```sh
    sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
    ```
+
+   A CODING AGENT RUNS THIS TEST ITSELF, AND FIRST TELLS THE PERSON: "YOUR PHONE IS ABOUT TO RING LOUDLY. PRESS ACKNOWLEDGE ON IT."
+
+   The test needs no secret, so the person never types the command. The
+   command waits up to 10 minutes for the acknowledgement, so the agent
+   runs it in the background, stays free to answer, and then reports the
+   result.
 
    **Check:** your phone sounds with a Pushover notification titled
    **Test of the alerts. Nothing is wrong: acknowledge this.** Acknowledge
@@ -393,7 +419,8 @@ in your own.
    `On call now: Barbara Example (barbara@example.com). Backup now: nobody else is available.`
 
    The test SOS starts inside MMHotline. It does not pass through your
-   monitoring tool or MMWatchdog. The signed check-ins of MMWatchdog prove
+   monitoring tool or MMWatchdog, the Monkeymaxxing tool that watches
+   servers. The signed check-ins of MMWatchdog prove
    that path every minute, and MMHotline warns when they stop.
 
 You now know that MMHotline wakes you and that your phone's
@@ -402,8 +429,10 @@ read [Handle an incident](how-to/handle-an-incident.md).
 
 ## What to do next
 
-- **Connect your monitoring tool:** give it the address, the alert source
-  ID, and the secret, and turn on its check-ins, as
+- **Connect your monitoring tool:** give it the address where MMHotline
+  takes alerts, the alert source ID (`monitoring`, the tool's name in the
+  settings file), and the signing secret from step 3, and turn on its
+  check-ins, as
   [Connect a tool that sends alerts](how-to/connect-a-tool-that-sends-alerts.md)
   says.
 - **Add your team and its schedule** to the settings file, as

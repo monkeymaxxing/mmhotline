@@ -194,6 +194,28 @@ func TestTestSOSForOnePersonWakesOnlyThatPerson(t *testing.T) {
 	}
 }
 
+// A team of one person needs no --sign-in-email-address: the test goes to
+// that person only, as with the flag, and the result names them.
+func TestTestSOSWithoutAnAddressGoesToTheOnlyPersonOfATeamOfOne(t *testing.T) {
+	r := newPushoverRig(t)
+	r.add(t, fakesendingservices.PushoverUserKey)
+	result, _ := commandRequest(t, r.a, CommandRequest{Group: "incidents", Action: "send-test-sos"}, 200)
+	if result.TestSOS == nil || result.TestSOS.SentOnlyToName != "Responder" || result.TestSOS.SentOnlyToSignInEmailAddress != "pushover@example.test" {
+		t.Fatalf("the result does not name the team's one person: %+v", result.TestSOS)
+	}
+	actions, err := r.a.IncidentAudit(context.Background(), r.principal, result.TestSOS.IncidentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, action := range actions {
+		lines = append(lines, action.Message)
+	}
+	if h := strings.Join(lines, "\n"); !strings.Contains(h, "Contacting Responder only") {
+		t.Fatalf("the test did not go to the one person only: %q", h)
+	}
+}
+
 func TestTestSOSForOnePersonRefusesAPersonItCannotWake(t *testing.T) {
 	r := newTriageHoldRig(t)
 	for email, refusal := range map[string]struct {

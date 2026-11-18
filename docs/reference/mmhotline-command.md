@@ -2402,7 +2402,9 @@ of this group that opens an incident.
 sudo mmhotline incidents send-test-sos
 ```
 
-To test one person's phone, whether or not they are on call, name them:
+In a team of one person, this tests that person's phone, as if you named
+them. In a larger team, it wakes the person on call. To test one person's
+phone, whether or not they are on call, name them:
 
 ```sh
 sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
@@ -2429,8 +2431,10 @@ What the test does:
 - It opens an SOS incident titled `Test of the alerts. Nothing is wrong:
   acknowledge this.` Its alert source ID is `mmhotline_test_sos`, which
   marks it as a test. Only a test resolves itself.
-- Without `--sign-in-email-address`, it pages whoever is on call exactly as
-  a real SOS does: the same contact methods, repeats, and backup timing.
+- Without `--sign-in-email-address`, in a team of one person, it pages
+  that person as if you named them. In a larger team, it pages whoever is
+  on call exactly as a real SOS does: the same contact methods, repeats,
+  and backup timing.
 - With `--sign-in-email-address`, it pages that one person's contact
   methods now, whether or not they are on call, and repeats to them until
   they claim it. There is no backup step and no escalation: nobody else is
@@ -2455,7 +2459,7 @@ What the test does:
 
 | Flag | Meaning |
 | --- | --- |
-| `--sign-in-email-address ADDRESS` | Optional. Send the test only to this person, now, whether or not they are on call. The JSON result then also has `test_sos.sent_only_to_name` and `test_sos.sent_only_to_sign_in_email_address` |
+| `--sign-in-email-address ADDRESS` | Optional. Send the test only to this person, now, whether or not they are on call. A team of one person needs no flag: the test goes to that person this way. The JSON result then also has `test_sos.sent_only_to_name` and `test_sos.sent_only_to_sign_in_email_address` |
 | `--wait-for-claim-minutes N` | Optional. How long to wait for a claim. A whole number from 1 up. Default 10 |
 | Common flags | As above |
 

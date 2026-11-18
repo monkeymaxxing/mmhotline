@@ -556,8 +556,11 @@ check before moving on.
 | 2 | MMHotline is installed and runs. | `sudo ./mmhotline install` prints the web URL, and `mmhotline version` prints a version. |
 | 3 | The person's phone gets notifications. | The person ran `sudo mmhotline connect-pushover` in their own terminal and saw the quiet **MMHotline can reach this phone** notification that MMHotline sent when the contact method was added. `contact-methods list` still says `Emergency test: not yet acknowledged.` |
 | 4 | The person can open MMHotline. | The person opened the web URL and signed in through Cloudflare Access. |
-| 5 | An SOS wakes the person. | You ran `sudo mmhotline incidents send-test-sos --sign-in-email-address EMAIL`, the person's phone sounded, and the person acknowledged it. `contact-methods list` then says `Emergency test: acknowledged at TIME.`, and `sudo mmhotline incidents list` lists no incident. |
+| 5 | An SOS wakes the person. | You told the person their phone was about to ring and ran `sudo mmhotline incidents send-test-sos` yourself (with `--sign-in-email-address EMAIL` in a team of more than one person), the person's phone sounded, and the person acknowledged it. `contact-methods list` then says `Emergency test: acknowledged at TIME.`, and `sudo mmhotline incidents list` lists no incident. |
 
+- Follow the rules in [For a coding agent](docs/get-started.md#for-a-coding-agent):
+  speak in the person's words, and after the install say only what works
+  and the one next step.
 - The person does the steps in Cloudflare and in the Pushover app. Say
   exactly what to create and where the value goes.
 - Never put a secret's value in the chat, a command line, or a repository.
