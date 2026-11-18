@@ -13,7 +13,8 @@ import (
 // Adding a Pushover contact method sends a quiet notification that needs no
 // acknowledgement, and says the phone has not proved yet that it wakes its
 // owner: the add output stands out, and list repeats it until a test SOS
-// proves it.
+// proves it. The team's only person is told the command without a flag; in a
+// larger team the command names the owner.
 func TestAddingAPushoverPhoneSendsAQuietTestAndSaysTheWakeIsNotProvedYet(t *testing.T) {
 	r := newPushoverRig(t)
 	result, raw := commandRequest(t, r.a, CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: ContactMethodsCommandRequest{SignInEmailAddress: "pushover@example.test", ContactMethodType: "pushover_notification", PushoverUserKey: fakesendingservices.PushoverUserKey}}, 200)
@@ -26,7 +27,7 @@ func TestAddingAPushoverPhoneSendsAQuietTestAndSaysTheWakeIsNotProvedYet(t *test
 	if err := r.a.Store.db.QueryRow(`SELECT count(*) FROM pushover_receipts`).Scan(&receipts); err != nil || receipts != 0 {
 		t.Fatalf("a test notification waits for an acknowledgement: %d receipts, %v", receipts, err)
 	}
-	command := "sudo mmhotline incidents send-test-sos --sign-in-email-address pushover@example.test"
+	command := "sudo mmhotline incidents send-test-sos"
 	warning := "THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: " + command
 	if result.PushoverPhoneNotProvedWarning != warning || !strings.Contains(result.Text(), "\n\n"+warning+"\n") {
 		t.Fatalf("the add output lacks the stand-out line: %q", result.Text())
@@ -41,6 +42,13 @@ func TestAddingAPushoverPhoneSendsAQuietTestAndSaysTheWakeIsNotProvedYet(t *test
 	page := r.a.viewContactMethod(context.Background(), r.principal, listedMethod(t, r), Member{})
 	if !page.EmergencyTestAcknowledgedAt.IsZero() || page.EmergencyTestCommand() != command {
 		t.Fatalf("page view: %+v", page)
+	}
+	// With a second person, the command names the owner.
+	addPerson(t, r.a, "second@example.test", "Second", RoleMember)
+	listed, _ = commandRequest(t, r.a, CommandRequest{Group: "contact-methods", Action: "list"}, 200)
+	line = "Emergency test: not yet acknowledged. Run `" + command + " --sign-in-email-address pushover@example.test` to check that an SOS wakes this phone."
+	if !strings.Contains(listed.Text(), line) {
+		t.Fatalf("list in a team of two lacks the flag:\n%s", listed.Text())
 	}
 }
 

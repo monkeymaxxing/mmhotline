@@ -530,7 +530,8 @@ On the server:
 4. Put MMHotline behind Cloudflare Access, so that people can open it.
    [Put MMHotline behind Cloudflare Access](docs/how-to/put-mmhotline-behind-cloudflare-access.md)
    has the steps.
-5. Send a test SOS, and claim and resolve the incident on your phone.
+5. Send a test SOS and acknowledge it on your phone. The acknowledgement
+   claims the test, and MMHotline then closes it by itself.
    [Get started with MMHotline](docs/get-started.md) has
    the steps.
 

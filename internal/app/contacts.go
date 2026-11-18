@@ -29,9 +29,12 @@ type ContactMethod struct {
 	// method whose key Pushover says is a delivery-group key.
 	PushoverGroupKey bool
 	// OwnerSignInEmailAddress is the owner's, empty for a shared contact method.
+	// OwnerIsTheOnlyPerson says the owner is the team's one person, so the
+	// test SOS needs no --sign-in-email-address (EmergencyTestCommand).
 	// EmergencyTestAcknowledgedAt is set on a Pushover contact method that has
 	// proved it wakes its owner (pushoverEmergencyTestAcknowledgedAt).
 	OwnerSignInEmailAddress     string
+	OwnerIsTheOnlyPerson        bool
 	EmergencyTestAcknowledgedAt time.Time
 }
 
@@ -123,7 +126,12 @@ func (a *App) ContactMethods(ctx context.Context, p Principal) ([]ContactMethod,
 		if err != nil {
 			return err
 		}
+		var people int
+		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM members WHERE removed_at IS NULL`).Scan(&people); err != nil {
+			return err
+		}
 		for i := range out {
+			out[i].OwnerIsTheOnlyPerson = out[i].MemberID != "" && people == 1
 			last, testErr := scanDelivery(tx.QueryRowContext(ctx, `SELECT `+deliveryColumns+` FROM deliveries WHERE contact_method_id=? AND purpose='contact_method_test' ORDER BY created_at DESC,rowid DESC LIMIT 1`, out[i].ID))
 			if testErr == nil {
 				out[i].LastTest = &last

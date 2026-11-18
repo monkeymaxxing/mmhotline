@@ -125,6 +125,9 @@ test that an emergency alert wakes them, also in silent mode.
    THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
    ```
 
+   In a team of one person, the last line ends at `send-test-sos`: the
+   test goes to that person without the flag.
+
    The last line stays true until step 5: the test saved here is a quiet
    notification, and only a test SOS proves the phone wakes the person.
    `sudo mmhotline contact-methods list` keeps saying `Emergency test: not
@@ -202,8 +205,9 @@ test that an emergency alert wakes them, also in silent mode.
    sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
    ```
 
-   It wakes that one person, whether or not they are on call, and nobody
-   else. It sends an emergency like a real SOS; acknowledging it claims
+   In a team of one person, `sudo mmhotline incidents send-test-sos` does
+   the same without the flag. It wakes that one person, whether or not
+   they are on call, and nobody else. It sends an emergency like a real SOS; acknowledging it claims
    only the test, which MMHotline closes itself. Run it once for each of
    the two phone settings above. **Send test** on the Pushover card, and
    `sudo mmhotline contact-methods send-test --contact-method-id ID`, send

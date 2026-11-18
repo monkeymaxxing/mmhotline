@@ -55,7 +55,8 @@ On **Contact methods**, each of your contact methods has a card:
   wakes you. A Pushover card also says **Emergency test: not yet
   acknowledged** until you run
   `sudo mmhotline incidents send-test-sos --sign-in-email-address EMAIL`
-  with your sign-in email address and acknowledge the alert. That works
+  with your sign-in email address (in a team of one person, without the
+  flag) and acknowledge the alert. That works
   for a new team member too, whether or not they are on call.
 - **Last test** shows how the latest test went; choose it to read the
   delivery outcome. **Remove** removes the contact method.

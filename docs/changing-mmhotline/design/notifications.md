@@ -327,7 +327,7 @@ ordinary notification: Pushover accepting it means only that MMHotline can
 reach the phone, so `Last test message: accepted` keeps that meaning. Only an
 emergency proves a phone sounds in silent mode, and a person should
 acknowledge one emergency during setup, not two. The proof is the test SOS
-(`incidents send-test-sos --sign-in-email-address`, [the test SOS](incidents.md#the-test-sos)). MMHotline derives "emergency test
+(`incidents send-test-sos --sign-in-email-address`, [the test SOS](incidents.md#the-test-sos)); the suggested command leaves out the flag in a team of one person, where the test goes to that person anyway. MMHotline derives "emergency test
 acknowledged" from stored data and keeps no new state: a Pushover receipt
 that is `acknowledged` on a delivery to the contact method, for an incident
 of the reserved test alert source whose history says the owner claimed it by

@@ -130,6 +130,7 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 			result.Message = "Contact method saved. " + selected.TestNotSentReason
 		}
 		selected.OwnerSignInEmailAddress = signInEmailAddresses[selected.MemberID]
+		selected.OwnerIsTheOnlyPerson = selected.MemberID != "" && len(members) == 1
 		if selected.ContactMethodType == "pushover_notification" && selected.MemberID != "" && selected.EmergencyTestAcknowledgedAt.IsZero() {
 			result.PushoverPhoneNotProvedWarning = pushoverPhoneNotProvedWarning(selected.EmergencyTestCommand())
 			result.Message += "\n\n" + result.PushoverPhoneNotProvedWarning + "\n"
@@ -270,7 +271,11 @@ const (
 )
 
 // EmergencyTestCommand is the command that proves the owner's phone wakes.
+// The team's only person needs no flag: the test goes to them anyway.
 func (c ContactMethod) EmergencyTestCommand() string {
+	if c.OwnerIsTheOnlyPerson {
+		return "sudo mmhotline incidents send-test-sos"
+	}
 	return "sudo mmhotline incidents send-test-sos --sign-in-email-address " + c.OwnerSignInEmailAddress
 }
 

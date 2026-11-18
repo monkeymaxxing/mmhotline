@@ -333,7 +333,7 @@ in your own.
    ```text
    Contact method saved. A test message for the contact method is queued. Inspect the last test result to check delivery.
 
-   THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
+   THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: sudo mmhotline incidents send-test-sos
    ```
 
    Your phone shows a quiet Pushover notification titled
