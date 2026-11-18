@@ -7,6 +7,9 @@ send their alerts to MMHotline. MMHotline works out who is on call and
 contacts that person on their phone. If the person does not answer,
 MMHotline contacts the backup, and then everyone else who is available.
 
+> [!NOTE]
+> **This is an alpha version.** MMHotline has woken us for real test alarms many times. Before you rely on it to wake you, run its test alarm and see it reach your phone. Settings may still change between versions. If anything confuses you or breaks, please tell us: [how to report it](CONTRIBUTING.md). Thanks!
+
 Your coding agent, such as [Claude Code](https://claude.com/claude-code) or [Codex](https://openai.com/codex/), can write the settings
 file and run the commands, or you can do both yourself. You don't need to
 have used on-call software before.
