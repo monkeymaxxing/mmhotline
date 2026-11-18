@@ -440,12 +440,12 @@ whose DNS Cloudflare manages.
 
 On the server, paste this block. It picks the archive for the server's
 processor, downloads it with its checksum file, checks it, and unpacks it
-into `~/mmhotline-0.4.0`. It does not install anything yet.
+into `~/mmhotline-0.5.0`. It does not install anything yet.
 
 ```sh
 (
 set -eu
-version=0.4.0
+version=0.5.0
 case "$(uname -sm)" in
   "Linux x86_64")  arch=amd64 ;;
   "Linux aarch64") arch=arm64 ;;
@@ -462,21 +462,21 @@ echo "Run the next steps from there: cd ~/mmhotline-$version/mmhotline-$version-
 )
 ```
 
-It prints `mmhotline-0.4.0-linux-amd64.tar.gz: OK` (`arm64` on an ARM
+It prints `mmhotline-0.5.0-linux-amd64.tar.gz: OK` (`arm64` on an ARM
 server) and where it unpacked. The block cannot move your shell, so go to
 the unpacked folder yourself:
 
 ```sh
-cd ~/mmhotline-0.4.0/mmhotline-0.4.0-linux-*/
+cd ~/mmhotline-0.5.0/mmhotline-0.5.0-linux-*/
 ```
 
-IF THE CHECK PRINTS `FAILED`, DELETE THE FOLDER `~/mmhotline-0.4.0` AND DO NOT RUN THE PROGRAM.
+IF THE CHECK PRINTS `FAILED`, DELETE THE FOLDER `~/mmhotline-0.5.0` AND DO NOT RUN THE PROGRAM.
 
 Optionally, prove that GitHub built the archive from this repository, with
 the GitHub command line tool (`gh`):
 
 ```sh
-gh attestation verify ~/mmhotline-0.4.0/mmhotline-0.4.0-linux-*.tar.gz --repo monkeymaxxing/mmhotline
+gh attestation verify ~/mmhotline-0.5.0/mmhotline-0.5.0-linux-*.tar.gz --repo monkeymaxxing/mmhotline
 ```
 
 **By hand.** `uname -sm` prints `Linux x86_64` for the `amd64` archive or
@@ -516,9 +516,9 @@ On the server:
    sudo ./mmhotline install
    ```
 
-   RUN BOTH FROM THE UNPACKED FOLDER, `~/mmhotline-0.4.0/mmhotline-0.4.0-linux-*/`.
+   RUN BOTH FROM THE UNPACKED FOLDER, `~/mmhotline-0.5.0/mmhotline-0.5.0-linux-*/`.
 
-   After the install, you can delete the `~/mmhotline-0.4.0` folder.
+   After the install, you can delete the `~/mmhotline-0.5.0` folder.
 
    **Upgrade.** Paste the download block again with the new version, and
    run `sudo ./mmhotline install` from the new folder. An upgrade keeps the
