@@ -133,7 +133,7 @@ notification service with an app for the phone. The alert reads:
 [SOS] myapp does not answer on app01
 The health page of myapp has not answered for 1 minute.
 
-Acknowledging the alert also claims the incident for you: you become responsible for the incident, and MMHotline stops contacting additional people.
+Acknowledge this to tell MMHotline you are handling it. MMHotline then stops contacting other people.
 ```
 
 Carlos does not answer. After one minute, MMHotline sends the same alert to

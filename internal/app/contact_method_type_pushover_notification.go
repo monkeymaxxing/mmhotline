@@ -318,9 +318,9 @@ func (c *PushoverNotificationContactMethodType) Send(ctx context.Context, m Cont
 		if len(m.CombinedAlerts) > 1 {
 			subject = fmt.Sprintf("[SOS] %d incidents need you", len(m.CombinedAlerts))
 		}
-		instruction := "Acknowledging the alert also claims the incident for you: you become responsible for the incident, and MMHotline stops contacting additional people."
+		instruction := "Acknowledge this to tell MMHotline you are handling it. MMHotline then stops contacting other people."
 		if len(m.CombinedAlerts) > 1 {
-			instruction = fmt.Sprintf("Acknowledging the alert also claims all %d incidents for you: you become responsible for the incidents, and MMHotline stops contacting additional people.", len(m.CombinedAlerts))
+			instruction = fmt.Sprintf("Acknowledge this to tell MMHotline you are handling all %d. MMHotline then stops contacting other people.", len(m.CombinedAlerts))
 		}
 		text = m.AlertMessage
 		if len(m.CombinedAlerts) > 1 {

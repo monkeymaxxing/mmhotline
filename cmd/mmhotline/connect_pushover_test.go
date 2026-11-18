@@ -169,11 +169,15 @@ func TestConnectPushoverWithSeveralPeopleAndDevices(t *testing.T) {
 			`Nobody in the settings file's people has the sign-in email address "nobody@example.com". The sign-in email addresses are: ana@example.com, bob@example.com.`,
 			"Your Pushover account has these devices: phone, tablet.",
 			`Pushover lists no device named "laptop". Type one of: phone, tablet, or press Enter for all devices.`,
-			"Contact method saved.",
+			"Your phone is added. A quiet test notification is on its way to it now.",
 		} {
 			if !strings.Contains(run.stdout.String(), want) {
 				t.Fatalf("missing %q in:\n%s", want, run.stdout.String())
 			}
+		}
+		// The person reads plain words, not the contact method's fields.
+		if strings.Contains(run.stdout.String(), "Contact method type:") || strings.Contains(run.stdout.String(), "queued") {
+			t.Fatalf("connect-pushover printed the contact method's fields:\n%s", run.stdout.String())
 		}
 		methods := serve.pushoverContactMethods(t, "bob@example.com")
 		if len(methods) != 1 || !strings.HasSuffix(methods[0].SendsTo, "ending in y001 on device tablet") {

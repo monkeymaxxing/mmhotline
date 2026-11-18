@@ -23,13 +23,26 @@ When you set up MMHotline for a person, follow these rules:
   address your monitoring tool sends alerts to", "acknowledge it on your
   phone". Use a settings or command name only inside a command or file the
   person types or opens, or after one plain line that says what it is.
+- Progress lines say what you are doing for the person, in their words
+  ("Installing MMHotline on your server"), or are left out. Checksums,
+  processor types and commit matches are yours to check, not theirs to read.
+- When you ask the person to choose, recommend one choice in their words,
+  such as "I recommend: the pages open only on your server for now; you can
+  put them on the internet later." Name products, such as Cloudflare, only
+  after the person says yes to that choice.
 - Never put a secret in the chat, and never compose your own shell line for
-  one. Give the person the command to run in their own terminal (step 6).
+  one. Give the person the plain command to type in their own terminal
+  (step 6), one command per message. Never offer your chat's own way to
+  run a command, such as a `!` prefix.
 - Run the test in step 8 yourself. It needs no secret.
-- After the install, say what works and the one thing the person does
-  next, and offer the rest: "Say 'details' for more." Do not list
-  checksums, the team name, backups, or secret file paths that the person
-  did not ask about and cannot act on yet.
+
+AFTER THE INSTALL, SAY ONLY WHAT WORKS AND THE ONE THING THE PERSON DOES NEXT. END WITH "SAY 'DETAILS' FOR MORE."
+
+Leave out checksums, the team name, backups, secret file paths and
+monitoring details that the person did not ask about and cannot act on
+yet. When the person has no monitoring tool connected yet, the one next
+thing is: "Connect your monitoring tool, so MMHotline hears when your app
+breaks. Tell me which tool you use."
 
 ## Before you start
 
@@ -331,7 +344,7 @@ in your own.
    your phone, and ends with:
 
    ```text
-   Contact method saved. A test message for the contact method is queued. Inspect the last test result to check delivery.
+   Your phone is added. A quiet test notification is on its way to it now.
 
    THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: sudo mmhotline incidents send-test-sos
    ```

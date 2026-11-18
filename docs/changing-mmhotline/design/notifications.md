@@ -400,8 +400,8 @@ A combined message lists whole alert titles while the titles fit, then
 as a combined email does.
 The supplementary `url` is the incident page and `url_title` is “Open in
 MMHotline”; the URL is never shortened. Pushover limits the URL to 512
-characters. An SOS ends “Acknowledging the alert also claims the incident for you: you become responsible for the incident, and MMHotline stops contacting additional people.”, or, for a
-combined message, “Acknowledging the alert also claims all {N} incidents for you: you become responsible for the incidents, and MMHotline stops contacting additional people.”
+characters. An SOS ends “Acknowledge this to tell MMHotline you are handling it. MMHotline then stops contacting other people.”, or, for a
+combined message, “Acknowledge this to tell MMHotline you are handling all {N}. MMHotline then stops contacting other people.”
 
 Each open receipt has a persisted next-poll time. The shared team scheduler
 calls `GET /1/receipts/RECEIPT.json?token=TOKEN` no faster than every five

@@ -116,7 +116,16 @@ func connectPushover(args []string, terminals setSecretTerminals) error {
 	if err != nil {
 		return commandError{fmt.Errorf("MMHotline did not add the phone: %w. %s", err, connectPushoverTokenIsSaved)}
 	}
-	writeText(out, added.Text())
+	// The person reads this, so it says what happened in plain words; the
+	// contact method's own fields (its ID, type, queue state) are for
+	// contact-methods add and list.
+	first, rest, _ := strings.Cut(added.Message, "\n\n")
+	if reason, ok := strings.CutPrefix(first, "Contact method saved. "); ok && reason != "A test message for the contact method is queued. Inspect the last test result to check delivery." {
+		first = "Your phone is added, but the quiet test notification was not sent: " + reason
+	} else {
+		first = "Your phone is added. A quiet test notification is on its way to it now."
+	}
+	writeText(out, strings.TrimSpace(first+"\n\n"+rest))
 	return nil
 }
 

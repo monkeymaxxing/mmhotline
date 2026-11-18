@@ -222,7 +222,7 @@ func TestPushoverSOSCombinesAndAcknowledgementClaimsExactlyCountedIncidents(t *t
 		t.Fatalf("SOS was not combined: %+v", sent)
 	}
 	emergency := sent[1]
-	if emergency.Priority != 2 || emergency.Retry != 30 || emergency.Expire != 1500 || !strings.HasSuffix(emergency.Message, "Acknowledging the alert also claims all 2 incidents for you: you become responsible for the incidents, and MMHotline stops contacting additional people.") || emergency.URLTitle != "Open in MMHotline" || !strings.Contains(emergency.URL, "/incidents/") {
+	if emergency.Priority != 2 || emergency.Retry != 30 || emergency.Expire != 1500 || !strings.HasSuffix(emergency.Message, "Acknowledge this to tell MMHotline you are handling all 2. MMHotline then stops contacting other people.") || emergency.URLTitle != "Open in MMHotline" || !strings.Contains(emergency.URL, "/incidents/") {
 		t.Fatalf("SOS: %+v", emergency)
 	}
 	r.advance(time.Minute)
@@ -429,7 +429,7 @@ func TestPushoverWarningInfoResolvedPrioritiesAndMessageLimits(t *testing.T) {
 		if last.Sound != "" || last.Priority != priority || utf8.RuneCountInString(last.Title) > 250 || utf8.RuneCountInString(last.Message) > 1024 || last.URL != r.a.WebURL+"/incidents/"+m.IncidentID {
 			t.Fatalf("%s: %+v", severity, last)
 		}
-		if severity == "sos" && !strings.HasSuffix(last.Message, "Acknowledging the alert also claims the incident for you: you become responsible for the incident, and MMHotline stops contacting additional people.") {
+		if severity == "sos" && !strings.HasSuffix(last.Message, "Acknowledge this to tell MMHotline you are handling it. MMHotline then stops contacting other people.") {
 			t.Fatal("shortening lost the claim instruction")
 		}
 	}

@@ -1519,11 +1519,7 @@ Copy your user key from the top of pushover.net after you sign in, labelled "You
 Your Pushover user key (nothing shows as you paste):
 Your Pushover account has these devices: phone, tablet.
 Send alerts to which device? Press Enter for all devices: phone
-Contact method 0c9da9f6cb2ce7944afba4eef75950be belongs to barbara@example.com.
-Contact method type: pushover_notification. Sends to: the Pushover user key ending in ABCD on device phone. Alert severities: info,sos,warn.
-Send while unavailable or muted: false. Last test message: queued (queued at 2026-11-18T05:35:53Z).
-Emergency test: not yet acknowledged. Run `sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com` to check that an SOS wakes this phone.
-Contact method saved. A test message for the contact method is queued. Inspect the last test result to check delivery.
+Your phone is added. A quiet test notification is on its way to it now.
 
 THIS PHONE HAS NOT PROVED IT WAKES YOU YET. RUN: sudo mmhotline incidents send-test-sos --sign-in-email-address barbara@example.com
 ```

@@ -82,7 +82,7 @@ func TestTriageReportNotificationsKeepEvidenceOnPages(t *testing.T) {
 			last := sent[len(sent)-1]
 			want := reportNotificationSummary
 			if severity == "sos" {
-				want += "\n\nAcknowledging the alert also claims the incident for you: you become responsible for the incident, and MMHotline stops contacting additional people."
+				want += "\n\nAcknowledge this to tell MMHotline you are handling it. MMHotline then stops contacting other people."
 			} else {
 				want += "\nAt: " + alert.ReceivedAt.UTC().Format(time.RFC3339)
 			}
