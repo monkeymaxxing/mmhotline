@@ -144,7 +144,7 @@ a call rings through Do Not Disturb.
 
 4. **Answer the test call.** It names who asked for the test and when,
    then says
-   **This is a test call from M M Hotline. Open M M Hotline to check the
+   **This is a test call from Hotline. Open Hotline to check the
    call result.** twice, then ends. A test opens and claims no incident.
 
    **Check:** the card's **Last test** on the Contact methods page says

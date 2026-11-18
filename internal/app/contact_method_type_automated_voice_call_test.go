@@ -18,7 +18,7 @@ func (r *phoneRig) lastCallTo(t *testing.T, number string) fakesendingservices.P
 	return calls[len(calls)-1]
 }
 
-const oneIncidentScript = "Hello. This is M M Hotline. An SOS incident needs someone now. Team: Fixture team. Database down. Open M M Hotline and claim it. Claiming makes you responsible and stops the calls."
+const oneIncidentScript = "Hello. This is Hotline. An SOS incident needs someone now. Team: Fixture team. Database down. Open Hotline and claim it. Claiming makes you responsible and stops the calls."
 
 func TestSOSCallSaysTheMessageTwiceAndEnds(t *testing.T) {
 	for _, pushover := range []bool{false, true} {
@@ -34,7 +34,7 @@ func TestSOSCallSaysTheMessageTwiceAndEnds(t *testing.T) {
 		call := r.lastCallTo(t, barbaraNumber)
 		want := oneIncidentScript
 		if pushover {
-			want = strings.Replace(want, "Open M M Hotline and claim it.", "Open M M Hotline and claim it, or acknowledge the alert in Pushover, which also claims it.", 1)
+			want = strings.Replace(want, "Open Hotline and claim it.", "Open Hotline and claim it, or acknowledge the alert in Pushover, which also claims it.", 1)
 		}
 		if len(call.Said) != 2 || call.Said[0] != want || call.Said[1] != want || strings.Contains(call.Markup, "Gather") || !strings.HasSuffix(call.Markup, "<Hangup/></Response>") {
 			t.Fatalf("call: %+v", call)
@@ -70,7 +70,7 @@ func TestOneCallAboutEveryWaitingIncident(t *testing.T) {
 	r.minuteLater(t, time.Minute)
 	r.dispatch(t)
 	second := r.lastCallTo(t, barbaraNumber)
-	want := "Hello. This is M M Hotline. 2 SOS incidents need someone now. Team: Fixture team. First: Disk full on web-1. Second: Database down. Open M M Hotline and claim them. Claiming makes you responsible and stops the calls."
+	want := "Hello. This is Hotline. 2 SOS incidents need someone now. Team: Fixture team. First: Disk full on web-1. Second: Database down. Open Hotline and claim them. Claiming makes you responsible and stops the calls."
 	if len(r.callsTo(barbaraNumber)) != 2 || second.Said[0] != want {
 		t.Fatalf("second call: %+v", second)
 	}
@@ -382,4 +382,18 @@ func TestClaimingTheIncidentAWaitingCallWasForKeepsTheOthersWaiting(t *testing.T
 		t.Fatalf("call after B was claimed: %q", next.Said)
 	}
 
+}
+
+// A voice mangles "MMWatchdog" and "MMHotline", so every call says
+// "Watchdog" and "Hotline", in built-in sentences and in an alert's own text
+// alike. Written text keeps the full names.
+func TestCallsSpeakProductNamesWithoutTheLeadingMM(t *testing.T) {
+	markup := callMarkup("This is MMHotline. MMWatchdog: disk full on web01 (mmwatchdog check). The MMHotline-down alarm. MMX run failed. HAMMHotline stays.")
+	want := "This is Hotline. Watchdog: disk full on web01 (Watchdog check). The Hotline-down alarm. MMX run failed. HAMMHotline stays."
+	if !strings.Contains(markup, "<Say>"+want+"</Say>") {
+		t.Fatalf("the spoken text is not %q:\n%s", want, markup)
+	}
+	if !strings.Contains(sosCallMessage("Ops", []string{"MMWatchdog: web01 is down"}, false), "MMWatchdog: web01 is down") {
+		t.Fatal("the message text itself changed; only the spoken markup drops the MM")
+	}
 }

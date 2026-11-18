@@ -187,7 +187,7 @@ func TestDownAlarmSetUpUploadsTheWorkerAndChecksInWithTheHeldMessages(t *testing
 	}
 	call := held["primary-contact-method-"+r.barbaraCall]
 	callFields, _ := url.ParseQuery(call.Request.Body)
-	if call.DelaySeconds != 300 || call.Request.URL != "https://api.twilio.com/2010-04-01/Accounts/"+fakesendingservices.TwilioAccountSID+"/Calls.json" || !strings.HasPrefix(call.Request.Headers["Authorization"], "Basic ") || callFields.Get("To") != "+12025550123" || callFields.Get("From") != fakesendingservices.TwilioPhoneNumberToCallFrom || !strings.Contains(callFields.Get("Twiml"), "stopped checking in with the MMHotline-down alarm") {
+	if call.DelaySeconds != 300 || call.Request.URL != "https://api.twilio.com/2010-04-01/Accounts/"+fakesendingservices.TwilioAccountSID+"/Calls.json" || !strings.HasPrefix(call.Request.Headers["Authorization"], "Basic ") || callFields.Get("To") != "+12025550123" || callFields.Get("From") != fakesendingservices.TwilioPhoneNumberToCallFrom || !strings.Contains(callFields.Get("Twiml"), "This is Hotline for ") || !strings.Contains(callFields.Get("Twiml"), "stopped checking in with the Hotline-down alarm") {
 		t.Fatalf("Barbara's call %+v", call)
 	}
 	if bob := held["backup-contact-method-"+r.bobPhone]; bob.DelaySeconds != 600 {

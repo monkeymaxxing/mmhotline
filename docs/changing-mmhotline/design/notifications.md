@@ -599,19 +599,24 @@ Email uses the installation's SMTP server, set in the settings file's
 
 What the call says about one incident:
 
-> Hello. This is M M Hotline. An SOS incident needs someone now. Team:
-> {team}. {title}. Open M M Hotline and claim it, or acknowledge the alert in
+Calls say "Hotline" and "Watchdog", without the leading MM, in the built-in
+sentences and in an alert's own text alike, because a text-to-speech voice
+mangles "MMHotline" and "MMWatchdog". Written text (push messages, pages,
+email, SMS) keeps the full names. MMX stays as it is.
+
+> Hello. This is Hotline. An SOS incident needs someone now. Team:
+> {team}. {title}. Open Hotline and claim it, or acknowledge the alert in
 > Pushover, which also claims it. Claiming makes you responsible and stops the
 > calls.
 
 About several incidents:
 
-> Hello. This is M M Hotline. {N} SOS incidents need someone now. Team:
+> Hello. This is Hotline. {N} SOS incidents need someone now. Team:
 > {team}. First: {title}. Second: {title}. Third: {title}. And {M} more.
-> Open M M Hotline and claim them, or acknowledge the alert in Pushover, which
+> Open Hotline and claim them, or acknowledge the alert in Pushover, which
 > also claims them. Claiming makes you responsible and stops the calls.
 
-Without Pushover setup, the ending is “Open M M Hotline and claim it.
+Without Pushover setup, the ending is “Open Hotline and claim it.
 Claiming makes you responsible and stops the calls.”, or the same with
 “them”. The whole message is spoken twice, then
 Twilio hangs up. People claim on the signed-in incident page, or acknowledge
@@ -1417,7 +1422,7 @@ The separation keeps the signed-in person's controls ahead of contact methods th
 Every contact method type has Send test.
 
 For automated voice calls, the test call names who saved or requested the
-call and when, then says “This is a test call from M M Hotline. Open M M
+call and when, then says “This is a test call from Hotline. Open M M
 Hotline to check the call result.” The full message is said twice and the
 call hangs up. A test never creates or claims an incident.
 

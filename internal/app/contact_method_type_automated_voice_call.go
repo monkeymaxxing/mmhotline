@@ -30,7 +30,7 @@ const (
 	callAfterAnswered            = 5 * time.Minute
 	callingPeriodEndsAfterGap    = 10 * time.Minute
 	callWaitingForAnotherCall    = "Waiting: another call to this number is still going"
-	callWaitingForSendingService = "Waiting for the phone sending service (M M Hotline calls no faster than the sending service allows)"
+	callWaitingForSendingService = "Waiting for the phone sending service (MMHotline calls no faster than the sending service allows)"
 	callSpokenTitleMaximumRune   = 100
 )
 
@@ -259,22 +259,22 @@ func setCallResult(ctx context.Context, tx *sql.Tx, deliveryID, attemptID string
 
 // What the calls say. English only at launch, in the sending service's default
 // voice, with short sentences.
-const testCallMessage = "This is a test call from M M Hotline. Open M M Hotline to check the call result."
+const testCallMessage = "This is a test call from Hotline. Open Hotline to check the call result."
 
 // sosCallMessage is what a call about one or several SOS incidents says.
 func sosCallMessage(team string, titles []string, pushoverSetUp bool) string {
 	howToClaim := func(it string) string {
 		if pushoverSetUp {
-			return fmt.Sprintf(" Open M M Hotline and claim %s, or acknowledge the alert in Pushover, which also claims %s. Claiming makes you responsible and stops the calls.", it, it)
+			return fmt.Sprintf(" Open Hotline and claim %s, or acknowledge the alert in Pushover, which also claims %s. Claiming makes you responsible and stops the calls.", it, it)
 		}
-		return fmt.Sprintf(" Open M M Hotline and claim %s. Claiming makes you responsible and stops the calls.", it)
+		return fmt.Sprintf(" Open Hotline and claim %s. Claiming makes you responsible and stops the calls.", it)
 	}
 	team = spokenText(team, 60)
 	if len(titles) == 1 {
-		return fmt.Sprintf("Hello. This is M M Hotline. An SOS incident needs someone now. Team: %s. %s.", team, spokenText(titles[0], callSpokenTitleMaximumRune)) + howToClaim("it")
+		return fmt.Sprintf("Hello. This is Hotline. An SOS incident needs someone now. Team: %s. %s.", team, spokenText(titles[0], callSpokenTitleMaximumRune)) + howToClaim("it")
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Hello. This is M M Hotline. %d SOS incidents need someone now. Team: %s.", len(titles), team)
+	fmt.Fprintf(&b, "Hello. This is Hotline. %d SOS incidents need someone now. Team: %s.", len(titles), team)
 	for i, ordinal := range []string{"First", "Second", "Third"} {
 		if i < len(titles) {
 			fmt.Fprintf(&b, " %s: %s.", ordinal, spokenText(titles[i], callSpokenTitleMaximumRune))
@@ -344,9 +344,25 @@ func speakableText(s string) string {
 	}, s)
 }
 
-// callMarkup repeats the escaped message twice, then ends the call.
+// spokenProductNamePattern finds the lab's product names as whole words, in
+// any letter case.
+var spokenProductNamePattern = regexp.MustCompile(`(?i)\bMM(Hotline|Watchdog)\b`)
+
+// spokenProductNames drops the leading "MM" of MMHotline and MMWatchdog, so
+// a text-to-speech voice says "Hotline" and "Watchdog" instead of mangling
+// the run of capitals. It applies to every spoken word, built in or from an
+// alert's own text; written text (push messages, pages, email, SMS) keeps
+// the full names. MMX stays as it is: voices read it letter by letter.
+func spokenProductNames(s string) string {
+	return spokenProductNamePattern.ReplaceAllStringFunc(s, func(name string) string {
+		return strings.ToUpper(name[2:3]) + strings.ToLower(name[3:])
+	})
+}
+
+// callMarkup repeats the escaped message twice, then ends the call. Every
+// call goes through it, so the spoken product names apply to all of them.
 func callMarkup(message string) string {
-	say := "<Say>" + xmlText.Replace(speakableText(message)) + "</Say>"
+	say := "<Say>" + xmlText.Replace(spokenProductNames(speakableText(message))) + "</Say>"
 	return `<?xml version="1.0" encoding="UTF-8"?><Response>` + say + say + `<Hangup/></Response>`
 }
 
