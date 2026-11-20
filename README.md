@@ -10,7 +10,7 @@ MMHotline contacts the backup, and then everyone else who is available.
 > [!NOTE]
 > **This is an alpha version.** MMHotline has woken us for real test alarms many times. Before you rely on it to wake you, run its test alarm and see it reach your phone. Settings may still change between versions. If anything confuses you or breaks, please tell us: [how to report it](CONTRIBUTING.md). Thanks!
 
-Your coding agent, such as [Claude Code](https://claude.com/claude-code) or [Codex](https://openai.com/codex/), can write the settings
+Your coding agent, such as [Claude](https://claude.com/claude-code) or [Codex](https://openai.com/codex/), can write the settings
 file and run the commands, or you can do both yourself. You don't need to
 have used on-call software before.
 
@@ -45,7 +45,8 @@ simple server systems.
 | [MMX](https://github.com/monkeymaxxing/mmx) | Sets up your servers, and makes every later change to them |
 | [MMWatchdog](https://github.com/monkeymaxxing/mmwatchdog) | Watches your servers, restarts what fails, and alerts you |
 | **MMHotline** (this tool) | Gets each urgent alert to the person on call, and can let your coding agent investigate first |
-| [Monkeymaxxing Stack](https://github.com/monkeymaxxing/monkeymaxxing-stack) | Instructions for your coding agent that build and run a whole production system with the three tools above |
+| [doubleshell](https://github.com/monkeymaxxing/doubleshell) | Carries SSH over WireGuard so you can close port 22 to the internet without a laptop VPN |
+| [Monkeymaxxing Stack](https://github.com/monkeymaxxing/monkeymaxxing-stack) | Instructions for your coding agent that build and run a whole production system with the tools above |
 
 You need none of the other tools to use MMHotline. Any tool that can send a
 signed HTTP request can send alerts to MMHotline. MMWatchdog has MMHotline
@@ -183,7 +184,7 @@ MMHotline differs in these ways:
   you choose, such as Pushover for emergency alerts or [Twilio](https://www.twilio.com/) for phone
   calls.
 - **Your coding agent can answer first.** MMHotline can give each `warn`
-  and `sos` alert to your own Claude Code or Codex before it wakes a person.
+  and `sos` alert to your own Claude or Codex before it wakes a person.
 - **One team for each installation.** MMHotline has no routing of alerts
   between several teams. A company with several teams runs one MMHotline
   for each team.
@@ -225,7 +226,7 @@ person checks the result. These parts of MMHotline are made for that:
 ### Your coding agent answers first
 
 MMHotline can give each `warn` and `sos` alert to a **triage agent** before
-it wakes a person. The triage agent is your own Claude Code or Codex. It
+it wakes a person. The triage agent is your own Claude or Codex. It
 looks into the alert, reports what it found, and proposes a fix or runs one.
 Rules in the settings file say which fixes the triage agent may run without
 a person, and which fixes a person must approve.
