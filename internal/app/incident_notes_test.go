@@ -61,6 +61,7 @@ func (r *incidentNoteRig) show(t *testing.T, incidentID string) (CommandResult, 
 // The history keeps it with that entry, and the incident page and incidents
 // show give it after the entry's own text; an action without one shows none.
 func TestClaimAndResolveKeepANote(t *testing.T) {
+	t.Parallel()
 	r := newIncidentNoteRig(t)
 	disk, backup := r.sos(t, "Disk of app002 is 97% full"), r.sos(t, "Nightly backup of db001 failed")
 
@@ -114,6 +115,7 @@ func TestClaimAndResolveKeepANote(t *testing.T) {
 // character, is refused with the reason, and the incident stays as it was. A
 // note of 500 characters is kept, though it takes more bytes.
 func TestALongNoteOrAControlCharacterIsRefused(t *testing.T) {
+	t.Parallel()
 	r := newIncidentNoteRig(t)
 	incidentID := r.sos(t, "app003 stopped answering")
 	before, _ := r.show(t, incidentID)

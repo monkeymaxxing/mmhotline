@@ -10,6 +10,7 @@ import (
 // triage agent runs no commit check of its own, so the commit signing keys
 // part shows no note about them.
 func TestCommitSigningKeysPartHasNoNoteWithoutTheTriageAgent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := Setup(context.Background(), dir, "Fixture team"); err != nil {
 		t.Fatal(err)

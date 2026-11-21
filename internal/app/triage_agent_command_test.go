@@ -10,6 +10,7 @@ import (
 )
 
 func TestTriageAgentCommandsShareOperations(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	runs := triageRunFixture(t, a)
 	command := func(action string, status int) CommandResult {

@@ -18,6 +18,7 @@ import (
 // program each kill the process. Run it on the Linux test servers for every Go upgrade: the Go
 // runtime's own system calls can change.
 func TestCustomScheduleLockdownKillsForbiddenSystemCalls(t *testing.T) {
+	parallelStartingProcesses(t)
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

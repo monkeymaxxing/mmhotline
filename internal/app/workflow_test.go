@@ -224,6 +224,7 @@ func (h *workflowRig) intake(source, secret string, body map[string]string) work
 }
 
 func TestPublicWorkflowEmailSOSClaimResolutionAndRestart(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	ctx := context.Background()
 	owner := h.browser()

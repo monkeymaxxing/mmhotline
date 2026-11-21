@@ -13,6 +13,7 @@ import (
 // Settings pages distinguish the saved setup from a later failed check.
 // Times match the team's footer, and settings paths appear only in a fold.
 func TestSettingsPagesShowSavedSetupsAndFailedChecks(t *testing.T) {
+	t.Parallel()
 	smtp := newSMTPFixture(t, "250 accepted", "", false, nil)
 	f := newSettingsFileFixture(t, fiveSendingServices(t, smtp.server.Addr().String()))
 	f.a.Now = func() time.Time { return time.Date(2026, 10, 30, 17, 45, 0, 0, time.UTC) }
@@ -64,6 +65,7 @@ func TestSettingsPagesShowSavedSetupsAndFailedChecks(t *testing.T) {
 }
 
 func TestSendingServiceGuidesExplainMissingSetupAndFailedFirstCheck(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	admin := h.browser()
 	admin.addPerson("admin@example.test", "Administrator")

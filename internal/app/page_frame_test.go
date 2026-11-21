@@ -57,6 +57,7 @@ func menuLinkText(page, href string) string {
 // in the team's time zone; the dashboard and the incident's own page show
 // it themselves. Once the SOS is claimed or resolved, the bar is gone.
 func TestTheRedBarShowsWhileAnSOSWaitsForAClaim(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	ctx := context.Background()
 	admin := h.browser()
@@ -139,6 +140,7 @@ func TestTheRedBarShowsWhileAnSOSWaitsForAClaim(t *testing.T) {
 // The menu shows every member the pages for members and the person's own
 // name, and shows Sending services and Triage agent only to administrators.
 func TestTheMenuFollowsTheRole(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	admin := h.browser()
 	admin.addPerson("admin@example.test", "Daniel Reyes")
@@ -175,6 +177,7 @@ func TestTheMenuFollowsTheRole(t *testing.T) {
 // Pages load the one stylesheet, and the Content Security Policy allows no
 // other style.
 func TestPagesLoadTheStylesheetUnderAStrictStylePolicy(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	admin := h.browser()
 	admin.addPerson("admin@example.test", "Daniel Reyes")
@@ -212,6 +215,7 @@ func TestPagesLoadTheStylesheetUnderAStrictStylePolicy(t *testing.T) {
 // and its alert, a warning, and the pages a person who is not signed in, or
 // not a member, sees.
 func TestNoPageHasAnInlineStyle(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()
@@ -261,6 +265,7 @@ func TestNoPageHasAnInlineStyle(t *testing.T) {
 // A page may print its own heading in place of the frame's h1; every other
 // page keeps the frame's h1 with its title.
 func TestAPageMayPrintItsOwnHeading(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		heading      templ.Component
 		want, absent string

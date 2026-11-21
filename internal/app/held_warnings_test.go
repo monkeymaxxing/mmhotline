@@ -121,6 +121,7 @@ const loadWarning = "Load on app002 is high"
 // then act within the wait. MMHotline's own warning about the run is the one
 // warning that reaches people; the original warn is never delivered.
 func TestHeldWarnTakenOverByAPlaybookRunRequest(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newHeldWarnRig(t, 3)
 	prepareWarnedRun(t, r.a, "", 10)
 	alert := r.warnArrives(t, loadWarning, "app002-load")
@@ -163,6 +164,7 @@ func TestHeldWarnTakenOverByAPlaybookRunRequest(t *testing.T) {
 // info report. No warn notification is ever delivered, and the info report
 // goes at Pushover's low priority.
 func TestHeldWarnTheAgentFixesSendsOnlyTheInfoReport(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newHeldWarnRig(t, 3)
 	records := t.TempDir()
 	prepareApprovals(t, r.a, fakeRunMMX(records, "echo 'PLAY RECAP app002 ok=1 changed=1'\n"))
@@ -191,6 +193,7 @@ func TestHeldWarnTheAgentFixesSendsOnlyTheInfoReport(t *testing.T) {
 
 // A warn the agent cannot handle itself.
 func TestHeldWarnTheAgentCannotHandle(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("the agent reports at warn: only the report sounds", func(t *testing.T) {
 		r := newHeldWarnRig(t, 3)
 		alert := r.warnArrives(t, loadWarning, "app002-load")
@@ -292,6 +295,7 @@ func TestHeldWarnTheAgentCannotHandle(t *testing.T) {
 // A warn that joins a session already running is delivered at once, and the
 // warn that started the session stays held.
 func TestHeldWarnJoiningARunningSessionIsDeliveredAtOnce(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newHeldWarnRig(t, 3)
 	first := r.warnArrives(t, loadWarning, "app002-load")
 	r.runStarted(t)
@@ -316,6 +320,7 @@ func TestHeldWarnJoiningARunningSessionIsDeliveredAtOnce(t *testing.T) {
 // Only a warn is held: an info alert goes at once, and with the setting at 0
 // a warn goes at once as before.
 func TestHeldWarnOnlyAWarnWithTheSettingAbove0IsHeld(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("the setting is 0", func(t *testing.T) {
 		r := newHeldWarnRig(t, 0)
 		alert := r.warnArrives(t, loadWarning, "app002-load")
@@ -345,6 +350,7 @@ func TestHeldWarnOnlyAWarnWithTheSettingAbove0IsHeld(t *testing.T) {
 
 // A hold keeps its deadline across a restart, and ends exactly once.
 func TestHeldWarnSurvivesARestart(t *testing.T) {
+	parallelStartingProcesses(t)
 	restart := func(t *testing.T, r *heldWarnRig, at time.Duration) {
 		t.Helper()
 		run := r.runStarted(t)

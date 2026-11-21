@@ -124,6 +124,7 @@ func problemTexts(problems []SettingsProblem) []string {
 }
 
 func TestTheExampleSettingsFileHasNoProblems(t *testing.T) {
+	t.Parallel()
 	file, problems := ReadSettingsFile(writeSettingsFile(t, exampleSettingsYAML), nil)
 	if len(problems) != 0 {
 		t.Fatalf("problems in the example: %q", problemTexts(problems))
@@ -140,6 +141,7 @@ func TestTheExampleSettingsFileHasNoProblems(t *testing.T) {
 // The status_page section's website_url, support_url, and components are
 // optional, and a component's description is optional inside the list.
 func TestSettingsStatusPageLinksAndComponentsAreOptional(t *testing.T) {
+	t.Parallel()
 	file, problems := ReadSettingsFile(writeSettingsFile(t, exampleSettingsYAML), nil)
 	if len(problems) != 0 {
 		t.Fatalf("problems in the example: %q", problemTexts(problems))
@@ -171,6 +173,7 @@ func TestSettingsStatusPageLinksAndComponentsAreOptional(t *testing.T) {
 // the triage agent's key left out, and empty lists with
 // signed_by_a_trusted_key_or_reviewed, which still count as present.
 func TestEveryCommitOnOriginNeedsNoSigningKeys(t *testing.T) {
+	t.Parallel()
 	for name, yaml := range map[string]string{
 		"every commit on origin": everyCommitOnOriginSettingsYAML(),
 		"empty lists with signatures": strings.NewReplacer(
@@ -188,6 +191,7 @@ func TestEveryCommitOnOriginNeedsNoSigningKeys(t *testing.T) {
 // person may approve a commit no trusted key signed. Without the section,
 // the triage agent's own key may stay, so a lock-out removes one section.
 func TestSystemsRepositoryCommitsWithoutTheTriageAgent(t *testing.T) {
+	t.Parallel()
 	withoutTriageAgent := withoutSection(t, withoutSection(t, exampleSettingsYAML, "triage_agent"), "review_agent")
 	for name, yaml := range map[string]string{
 		"signatures, approved by a person": strings.Replace(withoutTriageAgent, "approved_by: a_person_or_the_triage_agent", "approved_by: a_person", 1),
@@ -207,6 +211,7 @@ func TestSystemsRepositoryCommitsWithoutTheTriageAgent(t *testing.T) {
 // TestEachSettingsProblemNamesItsKeyPath changes the example in one place
 // and checks the problems the check reports, each with its key path.
 func TestEachSettingsProblemNamesItsKeyPath(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name, from, to string
 		want           []string
@@ -433,6 +438,7 @@ func TestEachSettingsProblemNamesItsKeyPath(t *testing.T) {
 }
 
 func TestSettingsFileThatIsNotSettings(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct{ text, want string }{
 		{"", "the settings file is empty"},
 		{"team_name: [", "the settings file is not valid YAML: line 1: did not find expected node content"},
@@ -453,6 +459,7 @@ func TestSettingsFileThatIsNotSettings(t *testing.T) {
 // a file someone other than root could change or everyone could read, and
 // say how to fix it; settings check skips the check (CA2).
 func TestSettingsFileOwnerAndMode(t *testing.T) {
+	t.Parallel()
 	self := []uint32{uint32(os.Getuid())}
 	fix := "Fix the settings file owner and mode with: sudo chown root:mmhotline "
 	path := writeSettingsFile(t, exampleSettingsYAML)

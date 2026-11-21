@@ -178,6 +178,7 @@ func (r newerCommitRig) what() string {
 // list that changed makes the request stale, as before: nothing runs, and
 // MMHotline judges the playbook again and asks or warns again.
 func TestRunAtANewerCommitOfRecords(t *testing.T) {
+	parallelStartingProcesses(t)
 	type newer func(t *testing.T, a *App) string
 	commit := func(files map[string]string) newer {
 		return func(t *testing.T, a *App) string { return commitToCopyAndOrigin(t, a, files) }
@@ -257,6 +258,7 @@ func TestRunAtANewerCommitOfRecords(t *testing.T) {
 // A symlink in one_time_playbooks/, which a person may commit, can point at
 // a note without naming its folder, so it ends the carry-over.
 func TestRunAtANewerCommitWithASymlink(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newerCommitRig{triageSessionRig: newTriageSessionRig(t, true), records: t.TempDir()}
 	prepareApprovals(t, r.a, miniRunMMX(r.records))
 	directory := filepath.Join(r.a.Store.Dir, "systems_repository")
@@ -276,6 +278,7 @@ func TestRunAtANewerCommitWithASymlink(t *testing.T) {
 // When the copy moves again between MMHotline's check and MMHotline's fetch,
 // MMHotline checks the newer commit again and tries again, three execution attempts at most for one approval.
 func TestRunAtANewerCommitWhileTheCopyMoves(t *testing.T) {
+	parallelStartingProcesses(t)
 	const otherNote = "triage_agent_notes/2026-11-03_app003_stopped_answering.md"
 	for _, test := range []struct {
 		name   string
@@ -319,6 +322,7 @@ func TestRunAtANewerCommitWhileTheCopyMoves(t *testing.T) {
 // an escape hides a name from the text, and a !!binary value hides its
 // text.
 func TestRecordFolderInPlaybook(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct{ text, want string }{
 		{rebootPlaybookText, ""},
 		{"fleet_stages:\n  - id: copy\n    nodes: app002\n    node_tasks:\n      - file: {path: /etc/motd, source: triage_agent_notes/x.md}\n", "the playbook names the folder triage_agent_notes, so it could read a file that changed"},
@@ -340,6 +344,7 @@ func TestRecordFolderInPlaybook(t *testing.T) {
 // as the Cloudflare token, do not count. A registry password from the vault
 // makes podman_image unrecognized, so it counts.
 func TestTasksCouldReadARecord(t *testing.T) {
+	t.Parallel()
 	task := func(action, status, arguments string) string {
 		return unrecognizedTaskExplained(`{"path":"fix_app002/task_1","node":"app002","action":"` + action + `","module_kind":"core","status":"` + status + `","arguments":[` + arguments + `]}`)
 	}
@@ -389,6 +394,7 @@ func TestTasksCouldReadARecord(t *testing.T) {
 // with one warning: a person's playbook cannot have been written to read
 // the note.
 func TestAWarnedListedPlaybookRunsOnceAfterANoteCommit(t *testing.T) {
+	parallelStartingProcesses(t)
 	const reboot = "playbooks/reboot_servers_after_updates.yml"
 	records := t.TempDir()
 	r := newTriageSessionRig(t, true)

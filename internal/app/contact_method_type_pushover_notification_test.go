@@ -100,6 +100,7 @@ func (r *pushoverRig) status(t *testing.T, id, want string) {
 	}
 }
 func TestPushoverSetupChecksTokenAndRestoresWithoutSecrets(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	ctx := context.Background()
 	_, err := r.a.SetUpSendingService(ctx, r.principal, "pushover", map[string]string{"pushover_application_token": strings.Repeat("x", 30)})
@@ -138,6 +139,7 @@ func TestPushoverSetupChecksTokenAndRestoresWithoutSecrets(t *testing.T) {
 // TestPushoverContactCommandsUseExplicitJSON: a Pushover contact method
 // needs the Pushover sending service set up, and defaults to every severity.
 func TestPushoverContactCommandsUseExplicitJSON(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	a.WebURL = "https://mmhotline.example.com"
 	addPerson(t, a, "barbara@example.test", "Barbara", RoleAdministrator)
@@ -177,6 +179,7 @@ func TestPushoverContactCommandsUseExplicitJSON(t *testing.T) {
 	commandRequest(t, a, CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: ContactMethodsCommandRequest{SharedWithTeam: true, ContactMethodType: "pushover_notification", PushoverUserKey: fakesendingservices.PushoverThirdUserKey}}, 400)
 }
 func TestPushoverContactRequiresSetupAndBoundsPersonalKeys(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	p := memberFixture(t, a, "barbara@example.test").Principal
 	a.WebURL = "https://mmhotline.example.com"
@@ -212,6 +215,7 @@ func TestPushoverContactRequiresSetupAndBoundsPersonalKeys(t *testing.T) {
 	}
 }
 func TestPushoverSOSCombinesAndAcknowledgementClaimsExactlyCountedIncidents(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	first := r.sos(t, "Database down")
@@ -262,6 +266,7 @@ func TestPushoverSOSCombinesAndAcknowledgementClaimsExactlyCountedIncidents(t *t
 	}
 }
 func TestPushoverPageClaimAndResolutionCancelEveryFinishedEmergency(t *testing.T) {
+	t.Parallel()
 	for _, action := range []string{"claim", "resolve"} {
 		t.Run(action, func(t *testing.T) {
 			r := newPushoverRig(t)
@@ -294,6 +299,7 @@ func TestPushoverPageClaimAndResolutionCancelEveryFinishedEmergency(t *testing.T
 	}
 }
 func TestPushoverAcknowledgementDoesNotTakeOverAnotherClaim(t *testing.T) {
+	t.Parallel()
 	for _, outcome := range []string{"claimed", "resolved"} {
 		t.Run(outcome, func(t *testing.T) {
 			r := newPushoverRig(t)
@@ -341,6 +347,7 @@ func TestPushoverAcknowledgementDoesNotTakeOverAnotherClaim(t *testing.T) {
 	}
 }
 func TestPushoverExpiredEmergencyAllowsNextMinuteRepeat(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	r.sos(t, "Database down")
@@ -362,6 +369,7 @@ func TestPushoverExpiredEmergencyAllowsNextMinuteRepeat(t *testing.T) {
 	}
 }
 func TestPushoverReceiptDeadlinesSurviveRestartAndIdleDoesNoWork(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	ctx := context.Background()
 	r.a.backgroundRound(ctx, func(err error) { t.Error(err) })
@@ -415,6 +423,7 @@ func TestPushoverReceiptDeadlinesSurviveRestartAndIdleDoesNoWork(t *testing.T) {
 	}
 }
 func TestPushoverWarningInfoResolvedPrioritiesAndMessageLimits(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	c := r.a.configuredContactMethodTypes()["pushover_notification"].(*PushoverNotificationContactMethodType)
 	settings, _ := c.CheckSettings(context.Background(), ContactMethodSettingsInput{Fields: map[string]string{"pushover_user_key": fakesendingservices.PushoverUserKey}})
@@ -446,6 +455,7 @@ func (c pushoverLostResponse) RoundTrip(r *http.Request) (*http.Response, error)
 	return response, err
 }
 func TestPushoverUnknownSOSIsNotResentButNextRepeatCanWake(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	c := r.a.configuredContactMethodTypes()["pushover_notification"].(*PushoverNotificationContactMethodType)
@@ -482,6 +492,7 @@ func TestPushoverUnknownSOSIsNotResentButNextRepeatCanWake(t *testing.T) {
 }
 
 func TestPushoverSendingServiceFailuresAndUnknownOrdinaryMessages(t *testing.T) {
+	t.Parallel()
 	for _, status := range []int{400, 401, 429, 500, 503} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -508,6 +519,7 @@ func TestPushoverSendingServiceFailuresAndUnknownOrdinaryMessages(t *testing.T) 
 }
 
 func TestPushoverMuteCancelsEmergencyAndDoesNotSendNewSOS(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	r.sos(t, "Database down")
@@ -541,6 +553,7 @@ func (c pushoverSendBarrier) RoundTrip(r *http.Request) (*http.Response, error) 
 	return response, err
 }
 func TestPushoverInFlightCombinedMessageKeepsItsCountedIncidents(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	first := r.sos(t, "Database down")
@@ -587,6 +600,7 @@ func TestPushoverInFlightCombinedMessageKeepsItsCountedIncidents(t *testing.T) {
 }
 
 func TestPushoverFractionalClockNeverPollsEarly(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	clock := r.a.Now
 	r.a.Now = func() time.Time { return clock().Add(900 * time.Millisecond) }
@@ -615,6 +629,7 @@ func TestPushoverFractionalClockNeverPollsEarly(t *testing.T) {
 }
 
 func TestPushoverClosedReceiptsMakeNoIdleRequestsOrWrites(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	ctx := context.Background()
@@ -659,6 +674,7 @@ func (c pushoverCancelFailure) RoundTrip(r *http.Request) (*http.Response, error
 	return c.next.RoundTrip(r)
 }
 func TestPushoverFailedCancellationWaitsForPersistedRetryDeadline(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	id := r.sos(t, "Database down")
@@ -692,6 +708,7 @@ func TestPushoverFailedCancellationWaitsForPersistedRetryDeadline(t *testing.T) 
 }
 
 func TestPushoverSubscribedWarningInfoAndResolutionUseOrdinaryPriorities(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	ctx := context.Background()
@@ -729,6 +746,7 @@ func TestPushoverSubscribedWarningInfoAndResolutionUseOrdinaryPriorities(t *test
 }
 
 func TestPushoverRestartNeverResendsAnUnfinishedEmergency(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	ctx := context.Background()
@@ -768,6 +786,7 @@ func TestPushoverRestartNeverResendsAnUnfinishedEmergency(t *testing.T) {
 // be ringing, so it is never sent again. Any other Pushover message, a
 // contact method test among them, is sent again.
 func TestPushoverUnfinishedSendIsResentOnlyWhenItIsNoEmergency(t *testing.T) {
+	t.Parallel()
 	for _, restart := range []bool{true, false} {
 		for _, message := range []string{"sos", "contact_method_test", "warn", "info"} {
 			name := message + " after its reservation runs out"
@@ -831,6 +850,7 @@ func TestPushoverUnfinishedSendIsResentOnlyWhenItIsNoEmergency(t *testing.T) {
 // cancelled, not suppressed, even when the person's or the team's controls
 // would also suppress it: the escalation round is over.
 func TestReservedSOSEscalationThatStoppedBeingValidIsCancelled(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"team mute", "personal unavailability"} {
 		t.Run(change, func(t *testing.T) {
 			r := newPushoverRig(t)
@@ -866,6 +886,7 @@ func TestReservedSOSEscalationThatStoppedBeingValidIsCancelled(t *testing.T) {
 // Each reason a delivery is no longer wanted also stops an emergency that
 // already rings.
 func TestPushoverEmergencyStopsWhenTheContactMethodNoLongerWantsIt(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"contact method removed", "contact method changed", "personal unavailability"} {
 		t.Run(change, func(t *testing.T) {
 			r := newPushoverRig(t)
@@ -894,6 +915,7 @@ func TestPushoverEmergencyStopsWhenTheContactMethodNoLongerWantsIt(t *testing.T)
 }
 
 func TestPushoverSetupAndContactThroughTheBrowserOperations(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	h.app.WebURL = "https://mmhotline.example.com"
 	browser := h.browser()
@@ -951,6 +973,7 @@ func (c pushoverReceiptFailure) RoundTrip(r *http.Request) (*http.Response, erro
 	return c.next.RoundTrip(r)
 }
 func TestPushoverExpiredReceiptStopsPollingDuringSendingServiceOutage(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	r.sos(t, "Database down")
@@ -974,6 +997,7 @@ func TestPushoverExpiredReceiptStopsPollingDuringSendingServiceOutage(t *testing
 // and the next test send through it. It waits while an emergency is open,
 // which only the old token can read and cancel.
 func TestPushoverApplicationTokenReplacementKeepsContactMethods(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	ctx := context.Background()
 	method := r.add(t, fakesendingservices.PushoverUserKey)
@@ -1028,6 +1052,7 @@ func TestPushoverApplicationTokenReplacementKeepsContactMethods(t *testing.T) {
 // A combined message lists whole alert titles while they fit in Pushover's
 // 1,024 characters, then counts the rest, as a combined email does.
 func TestPushoverCombinedMessageListsWholeTitlesAndCountsTheRest(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	c := r.a.configuredContactMethodTypes()["pushover_notification"].(*PushoverNotificationContactMethodType)
 	settings, _ := c.CheckSettings(context.Background(), ContactMethodSettingsInput{Fields: map[string]string{"pushover_user_key": fakesendingservices.PushoverUserKey}})
@@ -1064,6 +1089,7 @@ func TestPushoverCombinedMessageListsWholeTitlesAndCountsTheRest(t *testing.T) {
 }
 
 func TestPushoverSingleAlertDoesNotRepeatTitle(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	c := r.a.configuredContactMethodTypes()["pushover_notification"].(*PushoverNotificationContactMethodType)
 	settings, _ := c.CheckSettings(context.Background(), ContactMethodSettingsInput{Fields: map[string]string{"pushover_user_key": fakesendingservices.PushoverUserKey}})
@@ -1089,6 +1115,7 @@ func TestPushoverSingleAlertDoesNotRepeatTitle(t *testing.T) {
 // a member's failing contact method names it by its owner. A Pushover user key
 // would let anyone with a Pushover application send that member notifications.
 func TestFailingPersonalContactMethodNoticeNamesTheOwnerNotTheDestination(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	c := r.add(t, fakesendingservices.PushoverUserKey)
 	ctx := context.Background()

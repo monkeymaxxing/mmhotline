@@ -89,6 +89,7 @@ func writeDatabase(t *testing.T, dir string, format int, statements ...string) {
 // format with the same tables, columns, indexes, and triggers as a new
 // database, and keeps its rows.
 func TestADatabaseOfEachFormatUpgradesToTheSetupSchema(t *testing.T) {
+	t.Parallel()
 	formatOne, err := os.ReadFile(filepath.Join("testdata", "database_format_1.sql"))
 	if err != nil {
 		t.Fatal(err)
@@ -144,6 +145,7 @@ func TestADatabaseOfEachFormatUpgradesToTheSetupSchema(t *testing.T) {
 // no format number, from a build before the first release, and one of a
 // newer format than the program knows.
 func TestOpenRefusesADatabaseItCannotUpgrade(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		format int
 		want   string
@@ -172,6 +174,7 @@ func TestOpenRefusesADatabaseItCannotUpgrade(t *testing.T) {
 // the words cannot tell MMHotline's stop from the run's own end, the cause
 // is unknown rather than a guess, and only the listed causes are allowed.
 func TestUpgradeGivesEachRunTheEndCauseItsReasonRecorded(t *testing.T) {
+	t.Parallel()
 	formatOne, err := os.ReadFile(filepath.Join("testdata", "database_format_1.sql"))
 	if err != nil {
 		t.Fatal(err)

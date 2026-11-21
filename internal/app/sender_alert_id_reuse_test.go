@@ -12,6 +12,7 @@ import (
 // A sender's retry of the same alert is received once. A different alert
 // that reuses its sender_alert_id is refused, never answered as received.
 func TestReusedSenderAlertIDForADifferentAlertIsRefused(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	now := a.Now()
 	first := `{"sender_alert_id":"disk_full","severity":"warn","title":"Disk full","message":"/var is 95% full","happened_at":"2026-09-29T11:59:00Z"}`
@@ -47,6 +48,7 @@ func TestReusedSenderAlertIDForADifferentAlertIsRefused(t *testing.T) {
 // A refused SOS never vanishes: reusing a sender_alert_id for a new SOS opens
 // MMHotline's own SOS about the refused SOS.
 func TestReusedSenderAlertIDOnAnSOSOpensMmhotlineSOS(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	now := a.Now()
 	alertReceipt(t, intakeHTTP(a, p, s, `{"sender_alert_id":"1","severity":"warn","title":"Backup slow","message":""}`, now))
@@ -62,6 +64,7 @@ func TestReusedSenderAlertIDOnAnSOSOpensMmhotlineSOS(t *testing.T) {
 // An SOS that joins a claimed incident goes to the person who claimed it,
 // once, through their waking contact methods; the history says so.
 func TestSOSJoiningAClaimedIncidentWakesTheClaimer(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	ctx := context.Background()
 	push := r.add(t, fakesendingservices.PushoverUserKey)

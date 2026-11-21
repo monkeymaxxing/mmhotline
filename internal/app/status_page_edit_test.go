@@ -18,6 +18,7 @@ import (
 var statusPageVersionPattern = regexp.MustCompile(`name="expected_updated_at" value="([^"]+)"`)
 
 func TestStatusPageWebEditsKeepRetiredComponentsAndRefuseStaleForms(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	clock := atomic.Int64{}
 	clock.Store(time.Now().Unix())
@@ -188,6 +189,7 @@ func statusPageIncidentLink(t *testing.T, a *App, incidentID string) (noticeID i
 // A read of status.json that began before another responder's post saved
 // notice N does not know N yet; it must not free the incident's button.
 func TestStatusPageAStaleReadNeverMarksANewerIncidentNoticeResolved(t *testing.T) {
+	t.Parallel()
 	a, _ := statusPageApp(t)
 	ctx := context.Background()
 	link := func(incidentID string, noticeID int64) {
@@ -236,6 +238,7 @@ func TestStatusPageAStaleReadNeverMarksANewerIncidentNoticeResolved(t *testing.T
 // A notice deleted straight in the bucket, from a laptop, frees its
 // incident's button the next time MMHotline reads the page.
 func TestStatusPageADirectLaptopDeletionFreesTheIncidentButton(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	ctx := context.Background()
 	member := memberFixture(t, a, "responder@example.com")
@@ -274,6 +277,7 @@ func TestStatusPageADirectLaptopDeletionFreesTheIncidentButton(t *testing.T) {
 }
 
 func TestStatusPageEditAndDeleteRequestsAreCheckedWhereverTheyRun(t *testing.T) {
+	t.Parallel()
 	text, number := pointerTo[string], pointerTo[int64]
 	for name, test := range map[string]struct {
 		request StatusPageCommandRequest
@@ -330,6 +334,7 @@ func TestStatusPageEditAndDeleteRequestsAreCheckedWhereverTheyRun(t *testing.T) 
 }
 
 func TestStatusPageCommandEditAndDelete(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	clock := atomic.Int64{}
 	clock.Store(time.Now().Unix())
@@ -425,6 +430,7 @@ func TestStatusPageCommandEditAndDelete(t *testing.T) {
 // shows the text beside the error instead of dropping it. A stage the notice's
 // impact no longer has stays selected on an update's edit form.
 func TestStatusPageDraftsStayInTheirOwnFormAndNothingTypedIsLost(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	ctx := context.Background()
 	member := memberFixture(t, a, "responder@example.com")
@@ -491,6 +497,7 @@ func TestStatusPageDraftsStayInTheirOwnFormAndNothingTypedIsLost(t *testing.T) {
 // not leave the reservation at notice_id 0, which would block the button for
 // good: the post finishes and its notice is linked.
 func TestPostIncidentToStatusPageFinishesWhenTheCallerGivesUp(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	member := memberFixture(t, a, "responder@example.com")
 	incident, err := a.ManualSOS(context.Background(), member.Principal, "Sign-in fails", "")

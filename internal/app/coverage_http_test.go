@@ -80,6 +80,7 @@ func mustContain(t *testing.T, what, text string, wants ...string) {
 // call; another member takes it under today's rules, and from then on is
 // the one on call.
 func TestOnCallPageSaysWhoIsOnCallAndWhomAnSOSWakes(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	page := r.daniel.get("/on-call", 200)
 	mustContain(t, "Daniel's on call now", screenReaderText(page, "on-call-now"),
@@ -118,6 +119,7 @@ func TestOnCallPageSaysWhoIsOnCallAndWhomAnSOSWakes(t *testing.T) {
 // page never says "No one scheduled", which the page before the redesign
 // printed under every rotation.
 func TestOnCallWeeksFollowTheRotationAcrossAHandover(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	page := r.maya.get("/on-call", 200)
 	if strings.Contains(page, "No one scheduled") {
@@ -139,6 +141,7 @@ func TestOnCallWeeksFollowTheRotationAcrossAHandover(t *testing.T) {
 // A day-of-week schedule lists its coming handovers, a run of days with the
 // same person as one.
 func TestOnCallHandoversJoinDaysWithTheSamePerson(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	weekdays := ScheduleConfig{Kind: "day_of_week", TimeZone: "America/New_York", HandoffHour: 9, Assignments: []string{r.priyaID, r.danielID, r.danielID, r.danielID, r.danielID, r.danielID, r.priyaID}, BackupKind: "everyone_available"}
 	if _, err := r.h.app.SaveSchedule(context.Background(), r.h.app.settingsPrincipal(), weekdays, 1); err != nil {
@@ -155,6 +158,7 @@ func TestOnCallHandoversJoinDaysWithTheSamePerson(t *testing.T) {
 // unavailable: the escalation code skips them, and the person on call is
 // followed by the backup first.
 func TestOnCallPageShowsWhatHappensWhileYouAreUnavailable(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	mustContain(t, "Daniel's availability", screenReaderText(r.daniel.get("/on-call", 200), "your-availability"),
 		"Your availability On call You are available. While you are unavailable, MMHotline skips you and wakes Priya Natarajan first.")
@@ -173,6 +177,7 @@ func TestOnCallPageShowsWhatHappensWhileYouAreUnavailable(t *testing.T) {
 // When nobody is available, the escalation code wakes every member, and
 // the page says so rather than skipping them.
 func TestOnCallPageWhenNobodyIsAvailable(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	ctx := context.Background()
 	until := r.h.app.Now().Add(time.Hour)
@@ -194,6 +199,7 @@ func TestOnCallPageWhenNobodyIsAvailable(t *testing.T) {
 // wakes nobody. The forms keep their CSRF and revision checks, and the page
 // saves no schedule: the settings file sets it.
 func TestOnCallPageShowsMembersOnlyWhatTheyMayChange(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	page := r.daniel.get("/on-call", 200)
 	if strings.Contains(page, `value="team_mute"`) {
@@ -220,6 +226,7 @@ func TestOnCallPageShowsMembersOnlyWhatTheyMayChange(t *testing.T) {
 
 // Names are written as text, never as markup.
 func TestOnCallPageEscapesNames(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	addTeamMember(t, r.h.app, "alex@example.test", "Alex <Admin>", RoleMember)
 	page := r.daniel.get("/on-call", 200)
@@ -231,6 +238,7 @@ func TestOnCallPageEscapesNames(t *testing.T) {
 // The actions that end something show only while it lasts: I'm available
 // again, Unmute the team, and Give on call back to the schedule.
 func TestOnCallEndActionsShowOnlyWhileActive(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	ctx := context.Background()
 	p := Principal{SignInEmailAddress: "maya@example.test"}
@@ -263,6 +271,7 @@ func TestOnCallEndActionsShowOnlyWhileActive(t *testing.T) {
 // An action on a page that someone else changed meanwhile says so in plain
 // words, in place of the bare "conflicting state".
 func TestOnCallActionOnAChangedPageSaysWhatHappened(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	r.priya.postOnCall(url.Values{"action": {"claim_on_call"}, "revision": {"0"}, "duration": {"2h"}, "take_from_member_id": {""}}, 303)
 	fields := url.Values{"action": {"end_on_call_claim"}, "revision": {"0"}}

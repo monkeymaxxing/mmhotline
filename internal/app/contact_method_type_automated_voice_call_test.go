@@ -21,6 +21,7 @@ func (r *phoneRig) lastCallTo(t *testing.T, number string) fakesendingservices.P
 const oneIncidentScript = "Hello. This is Hotline. An SOS incident needs someone now. Team: Fixture team. Database down. Open Hotline and claim it. Claiming makes you responsible and stops the calls."
 
 func TestSOSCallSaysTheMessageTwiceAndEnds(t *testing.T) {
+	t.Parallel()
 	for _, pushover := range []bool{false, true} {
 		r := newPhoneRig(t)
 		r.addPhone(t, r.s.Principal, barbaraNumber)
@@ -54,6 +55,7 @@ func TestSOSCallSaysTheMessageTwiceAndEnds(t *testing.T) {
 }
 
 func TestOneCallAboutEveryWaitingIncident(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	r.addPhone(t, r.s.Principal, barbaraNumber)
 	r.sos(t, "Database down")
@@ -77,6 +79,7 @@ func TestOneCallAboutEveryWaitingIncident(t *testing.T) {
 }
 
 func TestACallWithoutAFinalStatusBlocksTheNumberForThreeMinutes(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	r.addPhone(t, r.s.Principal, barbaraNumber)
 	r.sos(t, "Database down")
@@ -94,6 +97,7 @@ func TestACallWithoutAFinalStatusBlocksTheNumberForThreeMinutes(t *testing.T) {
 }
 
 func TestSOSCallsNeverRetryAfterAnUnknownOutcome(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	p := r.s.Principal
 	call := r.addPhone(t, p, barbaraNumber)
@@ -121,6 +125,7 @@ func (r *phoneRig) twilioJustTookACall(t *testing.T) {
 }
 
 func TestACallThatTwilioRefusesWithHTTP429IsMadeAgainASecondLater(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	p := r.s.Principal
 	call := r.addPhone(t, p, barbaraNumber)
@@ -147,6 +152,7 @@ func TestACallThatTwilioRefusesWithHTTP429IsMadeAgainASecondLater(t *testing.T) 
 }
 
 func TestACallThatTwilioKeepsRefusingWithHTTP429IsTriedEightTimes(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -201,6 +207,7 @@ func TestACallThatTwilioKeepsRefusingWithHTTP429IsTriedEightTimes(t *testing.T) 
 // made again; the next repeat is the retry. After mmhotline serve starts,
 // it is made again (TestAfterARestartTheCallThatWasReservedIsMade).
 func TestAReservedCallWithoutAResultWaitsForTheNextRepeat(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -224,6 +231,7 @@ func TestAReservedCallWithoutAResultWaitsForTheNextRepeat(t *testing.T) {
 }
 
 func TestVoicemailPacingAfterThirtyMinutes(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	r.addPhone(t, r.s.Principal, barbaraNumber)
 	r.sos(t, "Database down")
@@ -271,6 +279,7 @@ func TestVoicemailPacingAfterThirtyMinutes(t *testing.T) {
 }
 
 func TestCallLabels(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	call := r.addPhone(t, r.s.Principal, barbaraNumber)
 	labels := map[string]string{
@@ -299,6 +308,7 @@ func TestCallLabels(t *testing.T) {
 }
 
 func TestTestCallNeverClaims(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	p := r.s.Principal
 	call := r.addPhone(t, p, barbaraNumber)
@@ -322,6 +332,7 @@ func TestTestCallNeverClaims(t *testing.T) {
 }
 
 func TestWhenAutomatedVoiceCallFailsOtherContactMethodsGetTheSOS(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -357,6 +368,7 @@ func TestWhenAutomatedVoiceCallFailsOtherContactMethodsGetTheSOS(t *testing.T) {
 }
 
 func TestClaimingTheIncidentAWaitingCallWasForKeepsTheOthersWaiting(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -388,6 +400,7 @@ func TestClaimingTheIncidentAWaitingCallWasForKeepsTheOthersWaiting(t *testing.T
 // "Watchdog" and "Hotline", in built-in sentences and in an alert's own text
 // alike. Written text keeps the full names.
 func TestCallsSpeakProductNamesWithoutTheLeadingMM(t *testing.T) {
+	t.Parallel()
 	markup := callMarkup("This is MMHotline. MMWatchdog: disk full on web01 (mmwatchdog check). The MMHotline-down alarm. MMX run failed. HAMMHotline stays.")
 	want := "This is Hotline. Watchdog: disk full on web01 (Watchdog check). The Hotline-down alarm. MMX run failed. HAMMHotline stays."
 	if !strings.Contains(markup, "<Say>"+want+"</Say>") {

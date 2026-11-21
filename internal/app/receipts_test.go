@@ -32,6 +32,7 @@ func verifyReceipt(t *testing.T, secretHex, route, requestBody string, requestAt
 }
 
 func TestIntakeReceiptsAreSignedWithTheRequestsSecret(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	now := a.Now()
 	body := `{"sender_alert_id":"one","title":"Backup","message":""}`
@@ -75,6 +76,7 @@ func TestIntakeReceiptsAreSignedWithTheRequestsSecret(t *testing.T) {
 // check-in route; the signed 400 it gets back is no receipt for the
 // alert, and relabelling the status code breaks the signature too.
 func TestReceiptsCannotBeReusedAcrossRoutesOrStatuses(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	now := a.Now()
 	alert := `{"sender_alert_id":"sos","severity":"sos","title":"Disk full","message":""}`
@@ -92,6 +94,7 @@ func TestReceiptsCannotBeReusedAcrossRoutesOrStatuses(t *testing.T) {
 }
 
 func TestHappenedAtIsShownWhenAnAlertArrivesLate(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	received := a.Now()
 	if w := intakeHTTP(a, p, s, `{"title":"x","message":"","happened_at":"yesterday"}`, received); w.Code != 400 || !strings.Contains(w.Body.String(), "happened_at must be an RFC 3339 time") {

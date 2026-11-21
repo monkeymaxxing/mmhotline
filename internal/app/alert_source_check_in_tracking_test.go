@@ -17,6 +17,7 @@ func (r *checkInRig) watch(t *testing.T, column string) int64 {
 }
 
 func TestCheckInsFromAHealthyAlertSourceAreNotWrittenToTheDatabase(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	r.checkIn(t, "")
 	first := r.clock
@@ -46,6 +47,7 @@ func TestCheckInsFromAHealthyAlertSourceAreNotWrittenToTheDatabase(t *testing.T)
 }
 
 func TestAlertSourceMarkedAsStoppedKeepsItsTimesAcrossARestart(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	r.checkIn(t, "")
 	lastCheckIn := r.clock
@@ -81,6 +83,7 @@ func TestAlertSourceMarkedAsStoppedKeepsItsTimesAcrossARestart(t *testing.T) {
 // stopped has the time of its last one in no database. Its silence counts
 // from when the new MMHotline read the team's database.
 func TestRestartCountsSilenceFromTheRestartForAnAlertSourceHeardInTheLastMinute(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	r.checkIn(t, "")
 	r.clock = r.clock.Add(30 * time.Second)
@@ -101,6 +104,7 @@ func TestRestartCountsSilenceFromTheRestartForAnAlertSourceHeardInTheLastMinute(
 }
 
 func TestCheckInsAfterARestartNeedNoDatabaseWrite(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	r.checkIn(t, "")
 	first := r.clock
@@ -120,6 +124,7 @@ func TestCheckInsAfterARestartNeedNoDatabaseWrite(t *testing.T) {
 }
 
 func TestSigningSecretChangesReachCheckInTracking(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	ctx := context.Background()
 	body := `{"sent_at":"2026-09-29T12:00:00Z","sent_by_node_name":"util"}`
@@ -158,6 +163,7 @@ func TestSigningSecretChangesReachCheckInTracking(t *testing.T) {
 }
 
 func TestCheckInThatSaysSomethingNewIsWritten(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	ctx := context.Background()
 	downtime := func() *PlannedDowntimeView {
@@ -193,6 +199,7 @@ func TestCheckInThatSaysSomethingNewIsWritten(t *testing.T) {
 }
 
 func TestMaintenanceWindowBeyondSevenDaysIsStoredAgainOnceADay(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	list := `[{"node_name":"util","maintenance_until":"` + r.clock.Add(100*24*time.Hour).Format(time.RFC3339) + `"}]`
 	until := func() time.Time {
@@ -218,6 +225,7 @@ func TestMaintenanceWindowBeyondSevenDaysIsStoredAgainOnceADay(t *testing.T) {
 }
 
 func TestAnAlertCountsAsHearingFromTheAlertSourceInMemory(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	r.checkIn(t, "")
 	r.clock = r.clock.Add(50 * time.Second)
@@ -241,6 +249,7 @@ func TestAnAlertCountsAsHearingFromTheAlertSourceInMemory(t *testing.T) {
 }
 
 func TestCheckInsResumingEndTheWarningAtOnce(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	r.checkIn(t, "")
 	r.at(t, 3*time.Minute)
@@ -259,6 +268,7 @@ func TestCheckInsResumingEndTheWarningAtOnce(t *testing.T) {
 // afterwards: the next check-in leaves the alert source not marked, and
 // nobody is alerted.
 func TestCheckInRacingTheStoppedMark(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	ctx := context.Background()
 	r.checkIn(t, "")

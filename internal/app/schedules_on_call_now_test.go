@@ -12,6 +12,7 @@ import (
 // need not work out the rotation; schedules preview prints its times as
 // the other commands do.
 func TestSchedulesShowSaysWhoIsOnCallNow(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	result, raw := commandRequest(t, r.a, CommandRequest{Group: "schedules", Action: "show"}, 200)
 	text := result.Text()
@@ -25,6 +26,7 @@ func TestSchedulesShowSaysWhoIsOnCallNow(t *testing.T) {
 }
 
 func TestSchedulesPreviewPrintsRFC3339Times(t *testing.T) {
+	t.Parallel()
 	a, _, members := coverageFixture(t)
 	file := ScheduleFile{ScheduleType: "weekly_rotation", TimeZone: "UTC", HandoffHour: 9, HandoffWeekday: 1, FirstStartDate: "2026-09-28", RotationSignInEmailAddresses: []string{members[0].SignInEmailAddress, members[1].SignInEmailAddress}, BackupOption: "next_in_rotation"}
 	result, _ := commandRequest(t, a, CommandRequest{Group: "schedules", Action: "preview", Schedules: SchedulesCommandRequest{Schedule: settingsSchedule(file)}}, 200)
@@ -37,6 +39,7 @@ func TestSchedulesPreviewPrintsRFC3339Times(t *testing.T) {
 // until the mute ends, as the On call page does, so a person or a coding
 // agent reading the command does not expect a phone to ring.
 func TestSchedulesShowSaysAMutedTeamWakesNobody(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	until := r.a.Now().Add(15 * time.Minute)
 	if _, err := r.a.SetTeamMute(context.Background(), r.a.settingsPrincipal(), until, 0); err != nil {

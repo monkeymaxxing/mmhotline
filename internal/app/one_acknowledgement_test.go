@@ -16,6 +16,7 @@ import (
 // proves it. The team's only person is told the command without a flag; in a
 // larger team the command names the owner.
 func TestAddingAPushoverPhoneSendsAQuietTestAndSaysTheWakeIsNotProvedYet(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	result, raw := commandRequest(t, r.a, CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: ContactMethodsCommandRequest{SignInEmailAddress: "pushover@example.test", ContactMethodType: "pushover_notification", PushoverUserKey: fakesendingservices.PushoverUserKey}}, 200)
 	r.dispatch(t)
@@ -63,6 +64,7 @@ func listedMethod(t *testing.T, r *pushoverRig) ContactMethod {
 
 // Only the owner's own acknowledgement of a test SOS proves the wake.
 func TestOnlyAnAcknowledgedTestSOSOfTheOwnKeyProvesThePhoneWakes(t *testing.T) {
+	parallelStartingProcesses(t)
 	proved := func(r *triageHoldRig, email string) time.Time {
 		t.Helper()
 		listed, _ := commandRequest(t, r.a, CommandRequest{Group: "contact-methods", Action: "list", ContactMethods: ContactMethodsCommandRequest{SignInEmailAddress: email}}, 200)
@@ -165,6 +167,7 @@ func TestOnlyAnAcknowledgedTestSOSOfTheOwnKeyProvesThePhoneWakes(t *testing.T) {
 // A test SOS for one person goes to that person alone, though they are not on
 // call, and never on to the person on call, the backup, or anyone else.
 func TestTestSOSForOnePersonWakesOnlyThatPerson(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	result, raw := commandRequest(t, r.a, CommandRequest{Group: "incidents", Action: "send-test-sos", Incidents: IncidentsCommandRequest{SignInEmailAddress: " Barbara@Example.test "}}, 200)
 	id := result.TestSOS.IncidentID
@@ -205,6 +208,7 @@ func TestTestSOSForOnePersonWakesOnlyThatPerson(t *testing.T) {
 // A team of one person needs no --sign-in-email-address: the test goes to
 // that person only, as with the flag, and the result names them.
 func TestTestSOSWithoutAnAddressGoesToTheOnlyPersonOfATeamOfOne(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	result, _ := commandRequest(t, r.a, CommandRequest{Group: "incidents", Action: "send-test-sos"}, 200)
@@ -225,6 +229,7 @@ func TestTestSOSWithoutAnAddressGoesToTheOnlyPersonOfATeamOfOne(t *testing.T) {
 }
 
 func TestTestSOSForOnePersonRefusesAPersonItCannotWake(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	for email, refusal := range map[string]struct {
 		code int
@@ -247,6 +252,7 @@ func TestTestSOSForOnePersonRefusesAPersonItCannotWake(t *testing.T) {
 // When the one person becomes unavailable, the test wakes nobody and times
 // out; it does not go on to the person on call or the backup.
 func TestTestSOSForOnePersonDoesNotGoOnWhenThatPersonBecomesUnavailable(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	result, _ := commandRequest(t, r.a, CommandRequest{Group: "incidents", Action: "send-test-sos", Incidents: IncidentsCommandRequest{SignInEmailAddress: "barbara@example.test"}}, 200)
 	id := result.TestSOS.IncidentID

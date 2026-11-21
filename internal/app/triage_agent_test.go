@@ -146,6 +146,7 @@ func TestTriageAgentSetupTestTimeLimit(t *testing.T) {
 }
 
 func TestTriageAgentSetupRunResults(t *testing.T) {
+	t.Parallel()
 	for _, outcome := range []string{"passed", "failed", "wrong answer", "early close", "stopped"} {
 		t.Run(outcome, func(t *testing.T) {
 			a := foundationApp(t)
@@ -224,6 +225,7 @@ func TestTriageAgentSetupRunResults(t *testing.T) {
 	}
 }
 func TestTriageAgentFailedReplacementKeepsSetup(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	runs := triageRunFixture(t, a)
 	p := Principal{UnixUser: "administrator"}
@@ -255,6 +257,7 @@ func TestTriageAgentFailedReplacementKeepsSetup(t *testing.T) {
 	}
 }
 func TestTriageAgentSetupValidationAndRecovery(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	admin := memberFixture(t, a, "admin@example.test").Principal
 	member := memberFixture(t, a, "member@example.test").Principal
@@ -289,6 +292,7 @@ func TestTriageAgentSetupValidationAndRecovery(t *testing.T) {
 	}
 }
 func TestTriageAgentInternetAccessAndListedHosts(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	p := Principal{UnixUser: "administrator"}
 	ctx := context.Background()
@@ -384,6 +388,7 @@ func waitProxyEnded(t *testing.T, a *App, count int) TriageAgentView {
 	return TriageAgentView{}
 }
 func TestTriageAgentProxyPoliciesAndAccounting(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name, host, address, access string
 		listed                      bool
@@ -474,6 +479,7 @@ func TestTriageAgentProxyPoliciesAndAccounting(t *testing.T) {
 	}
 }
 func TestTriageAgentProxyRefusesHTTPAndNoRun(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	for _, test := range []struct {
 		request string
@@ -496,6 +502,7 @@ func TestTriageAgentProxyRefusesHTTPAndNoRun(t *testing.T) {
 	}
 }
 func TestTriageAgentRunEndClosesTunnels(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	runs := triageRunFixture(t, a)
 	p := Principal{UnixUser: "administrator"}
@@ -533,6 +540,7 @@ func TestTriageAgentRunEndClosesTunnels(t *testing.T) {
 }
 
 func TestTriageAgentProxyMixedAddressesAndServiceReplacement(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	runs := triageRunFixture(t, a)
 	p := Principal{UnixUser: "administrator"}
@@ -582,6 +590,7 @@ func TestTriageAgentProxyMixedAddressesAndServiceReplacement(t *testing.T) {
 	waitProxyEnded(t, a, 3)
 }
 func TestTriageAgentProxyTunnelLimitAndLatestFifty(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	runs := triageRunFixture(t, a)
 	p := Principal{UnixUser: "administrator"}
@@ -634,6 +643,7 @@ func TestTriageAgentProxyTunnelLimitAndLatestFifty(t *testing.T) {
 	}
 }
 func TestTriageAgentProxyRequestBound(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	client, server := net.Pipe()
 	defer client.Close()
@@ -656,6 +666,7 @@ func TestTriageAgentProxyRequestBound(t *testing.T) {
 }
 
 func TestTriageAgentRunEndClosesPendingProxyRequests(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	runs := triageRunFixture(t, a)
 	p := Principal{UnixUser: "administrator"}
@@ -690,6 +701,21 @@ func TestTriageAgentRunEndClosesPendingProxyRequests(t *testing.T) {
 	waitProxyEnded(t, a, 1)
 }
 
+// processStartingTests limits how many parallel tests at once start Git,
+// ssh-keygen, shell scripts, and the test binary. Each start is checked by the
+// operating system, and with every test at once, a test's own waits of
+// seconds for a fake agent or MMX run fail on a busy machine; four at once
+// keep the waits short and still make the tests several times faster.
+var processStartingTests = make(chan struct{}, 4)
+
+// parallelStartingProcesses is t.Parallel for a test that starts programs.
+func parallelStartingProcesses(t *testing.T) {
+	t.Helper()
+	t.Parallel()
+	processStartingTests <- struct{}{}
+	t.Cleanup(func() { <-processStartingTests })
+}
+
 func testGit(t *testing.T, directory string, args ...string) string {
 	t.Helper()
 	command := exec.Command("git", args...)
@@ -714,6 +740,7 @@ func testGit(t *testing.T, directory string, args ...string) string {
 // starts at MMHotline's main branch; the playbook and note the agent commits
 // reach origin, and the run records what happened to them.
 func TestTriageAgentRunPushesTheAgentsCommits(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	run := startSystemsRepositoryRun(t, a, `set -e
 /bin/mkdir -p one_time_playbooks triage_agent_notes

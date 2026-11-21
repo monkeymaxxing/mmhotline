@@ -14,6 +14,7 @@ import (
 )
 
 func TestTriageAgentPageStatesAndForms(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	h.app.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	settings := h.app.settingsPrincipal()

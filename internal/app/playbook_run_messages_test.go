@@ -40,6 +40,7 @@ func rebootUpdatesExplanation(t *testing.T) string {
 }
 
 func TestPlaybookRunNotificationMessages(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, warning := range []bool{false, true} {
 		t.Run(fmt.Sprintf("warning=%v", warning), func(t *testing.T) {
 			r := newTriageSessionRig(t, true)
@@ -107,6 +108,7 @@ func TestPlaybookRunNotificationMessages(t *testing.T) {
 }
 
 func TestDiagnosisNotificationParagraph(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")
 	r.alert(t, "warn", "app002 answers slowly", "")
@@ -140,6 +142,7 @@ func TestDiagnosisNotificationParagraph(t *testing.T) {
 }
 
 func TestApprovalOnlyIncidentEndsWithRequest(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, scenario := range []string{"refused", "claimed", "succeeded", "failed", "restart", "sender alert", "agent report", "another open", "another approved", "another running"} {
 		t.Run(scenario, func(t *testing.T) {
 			r := newTriageSessionRig(t, true)
@@ -251,6 +254,7 @@ func TestApprovalOnlyIncidentEndsWithRequest(t *testing.T) {
 }
 
 func TestTriagePromptsExplainNotificationTextAndResolution(t *testing.T) {
+	t.Parallel()
 	session := triageSessionStartPrompt("app001", "", []string{"servers"}, nil, nil, nil)
 	review := softwareReviewPrompt("app001", time.Time{}, []string{"servers"}, rigSoftwareReviewTask)
 	for name, prompt := range map[string]string{"session": session, "software review": review} {

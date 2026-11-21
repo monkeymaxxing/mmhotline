@@ -16,6 +16,7 @@ import (
 // Automated voice call markup and Send test checks.
 
 func TestTeamNamesAndTitlesCannotAddCallMarkup(t *testing.T) {
+	t.Parallel()
 	message := sosCallMessage(`Ops & "Co" </Say><Dial>+19005550100</Dial>`, []string{`x'"></Say><Redirect>https://evil.example/t</Redirect><Say>`, "<speak><prosody rate='x-slow'>hi</prosody></speak>"}, false)
 	decoder := xml.NewDecoder(strings.NewReader(callMarkup(message)))
 	var elements []string
@@ -37,6 +38,7 @@ func TestTeamNamesAndTitlesCannotAddCallMarkup(t *testing.T) {
 }
 
 func TestSendTestOnCallsIsLimited(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -88,6 +90,7 @@ func TestSendTestOnCallsIsLimited(t *testing.T) {
 // calls: the test made when a number is added counts against the Send Test
 // limits, and past the limit the number is still added, with a visible reason.
 func TestAddingAndRemovingANumberIsLimitedLikeSendTest(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -130,6 +133,7 @@ func TestAddingAndRemovingANumberIsLimitedLikeSendTest(t *testing.T) {
 }
 
 func TestPersonalCommunicationsAndInterexchangeNumbersAreRefused(t *testing.T) {
+	t.Parallel()
 	for _, typed := range []string{"+1 500 555 0123", "+1 533 555 0123", "+1 700 555 0123", "+1 900 555 0123"} {
 		if _, _, err := parsePhoneNumber(typed); err == nil || !strings.Contains(err.Error(), "not a toll-free or premium number") {
 			t.Errorf("%s: %v", typed, err)

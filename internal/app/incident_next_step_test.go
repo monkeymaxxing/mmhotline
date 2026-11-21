@@ -32,6 +32,7 @@ func countdownFor(t *testing.T, a *App, id string, viewer Member) (incidentNextS
 // not woken yet, never Responder again, and ends when MMHotline keeps waking
 // everyone available.
 func TestTheCountdownNamesWhomTheNextStepWakes(t *testing.T) {
+	t.Parallel()
 	a, p, members := incidentTeam(t)
 	responder, backup, third := members[0], members[1], members[2]
 	ctx := context.Background()
@@ -78,6 +79,7 @@ func TestTheCountdownNamesWhomTheNextStepWakes(t *testing.T) {
 // The prediction uses the coverage at the deadline: an unavailable backup
 // is passed over, unless their unavailability ends before the deadline.
 func TestTheCountdownPassesOverABackupWhoIsUnavailableAtTheDeadline(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		unavailableFor time.Duration
 		want           string
@@ -99,6 +101,7 @@ func TestTheCountdownPassesOverABackupWhoIsUnavailableAtTheDeadline(t *testing.T
 // An SOS that waits for the triage agent wakes nobody yet; the countdown
 // runs to the end of the hold, when MMHotline wakes the person on call.
 func TestTheCountdownOfAnSOSHeldForTheTriageAgent(t *testing.T) {
+	t.Parallel()
 	a, p, members := incidentTeam(t)
 	if _, err := a.Store.db.Exec(`INSERT INTO triage_agent_setup(id,coding_agent,credential_type,credential,model,reasoning_effort,set_up_at,set_up_by) VALUES(1,'codex','api_key','key','test-model','high',1,'administrator')`); err != nil {
 		t.Fatal(err)

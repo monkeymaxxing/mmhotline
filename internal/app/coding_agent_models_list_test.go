@@ -73,6 +73,7 @@ func waitForSignInCheck(t *testing.T, a *App, purpose string) (state, reason str
 // failed prompt check is: one warn alert, then one info alert when the key
 // works again, and show gives the reason.
 func TestAnAPIKeySignInCheckAsksTheModelsList(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, role := range agentRoles {
 		t.Run(role.name, func(t *testing.T) {
 			r := newTriageSessionRig(t, false)
@@ -175,6 +176,7 @@ func TestAnAPIKeySignInCheckAsksTheModelsList(t *testing.T) {
 // The daily check of an API key asks the models list when it is due, as the
 // daily prompt check does.
 func TestTheDailyAPIKeySignInCheckAsksTheModelsList(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	fake, _ := installFakeModelsLists(t, r.a)
 	if err := r.a.SetSoftwareReviewInterval(context.Background(), r.p, 8760); err != nil {
@@ -196,6 +198,7 @@ func TestTheDailyAPIKeySignInCheckAsksTheModelsList(t *testing.T) {
 // TestAnAPIKeySignInCheckFollowsNoRedirect: a models list that answers with a
 // redirect fails the check, and the key never reaches the redirect's address.
 func TestAnAPIKeySignInCheckFollowsNoRedirect(t *testing.T) {
+	parallelStartingProcesses(t)
 	var elsewhere sync.Mutex
 	reached := false
 	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -163,6 +163,7 @@ func writeResult(t *testing.T, results, name, content string) {
 // sign-in, which the runs used up, never replaces the newest copy, and a run
 // killed halfway through a refresh keeps the last whole copy.
 func TestChatGPTSignInKeepsTheNewestCopyAcrossRuns(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	a := foundationApp(t)
 	results := t.TempDir()
@@ -316,6 +317,7 @@ ON CONFLICT(id) DO UPDATE SET coding_agent='codex',credential_type='chatgpt_sign
 // the content, the stored copy stays, and no output shows a token, of the
 // lent copy or of one the run sent back.
 func TestReturnedChatGPTSignInsThatFailTheChecksAreRefused(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, role := range agentRoles {
 		t.Run(role.name, func(t *testing.T) {
 			r := newTriageSessionRig(t, false)
@@ -371,6 +373,7 @@ func TestReturnedChatGPTSignInsThatFailTheChecksAreRefused(t *testing.T) {
 // triage run that asked for it is active, and two copies of one sign-in end
 // each other. Two sign-ins of one account are fine.
 func TestReviewAgentChatGPTSignInMustNotBeTheTriageAgents(t *testing.T) {
+	t.Parallel()
 	settings := func(triage, review string) string {
 		text := replaced(t, exampleSettingsYAML, "  coding_agent: claude_code\n  credential_type: subscription_token\n  credential: \"sk-ant-oat01-example-triage-agent-credential\"\n",
 			"  coding_agent: codex\n  credential_type: chatgpt_sign_in\n  credential: '"+strings.ReplaceAll(triage, "\n", "")+"'\n")
@@ -411,6 +414,7 @@ func TestReviewAgentChatGPTSignInMustNotBeTheTriageAgents(t *testing.T) {
 // date in credential_expires_on. A token that applies with 30 days or less
 // left gets only the 7-day reminder.
 func TestAccessTokenExpiryReminders(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name          string
 		daysLeft      int
@@ -472,6 +476,7 @@ func TestAccessTokenExpiryReminders(t *testing.T) {
 // cause in plain words and says how to sign in again; an access token's
 // alert says how to make a new token.
 func TestCodexSignInCheckAlertsSayHowToSignInAgain(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		credentialType, reason string
 		want                   []string
@@ -513,6 +518,7 @@ func TestCodexSignInCheckAlertsSayHowToSignInAgain(t *testing.T) {
 // OpenAI's API for an API key; ChatGPT and OpenAI's sign-in service for a
 // ChatGPT sign-in or a Codex access token, which never reach the API.
 func TestCodexListedHostsFollowTheCredentialType(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		credentialType, credential string
 		allowed, refused           []string

@@ -169,6 +169,7 @@ func (r *triageHoldRig) emailStates(t *testing.T, incidentID string) []string {
 // nobody, and the incident closes. The resolved message reaches the person
 // on call at Pushover's normal priority, as the start did.
 func TestAServerReplacementKeepsTheSOSWaitingUntilItsAlertResolves(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos, _, _, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -242,6 +243,7 @@ func TestAServerReplacementKeepsTheSOSWaitingUntilItsAlertResolves(t *testing.T)
 // Pushover, so Pushover gets no resolved message either. Email, which got
 // the SOS at once, gets its resolved message.
 func TestAHeldSOSTheAgentFixedSendsNoResolvedMessageToPushover(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	r.addEmail(t)
 	sos, _, _, _ := replacementSession(t, r)
@@ -264,6 +266,7 @@ func TestAHeldSOSTheAgentFixedSendsNoResolvedMessageToPushover(t *testing.T) {
 // An SOS that woke the person on call resolves as it always did: the
 // ordinary resolved message, at low priority.
 func TestAnSOSThatWokeThePersonResolvesWithTheOrdinaryMessage(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos, _, _, _ := replacementSession(t, r)
 	r.at(t, 6*time.Minute)
@@ -282,6 +285,7 @@ func TestAnSOSThatWokeThePersonResolvesWithTheOrdinaryMessage(t *testing.T) {
 // ordinary resolved message under the SOS's own title, not the partner of
 // a warn that said nobody would be woken.
 func TestAnSOSWokenAfterAReplacementResolvesWithTheOrdinaryMessage(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos, _, _, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -306,6 +310,7 @@ func TestAnSOSWokenAfterAReplacementResolvesWithTheOrdinaryMessage(t *testing.T)
 // A run that fails during the replacement wakes the person on call at
 // once, saying which run failed, and sends no further warn alert.
 func TestAFailedRunDuringAServerReplacementWakesThePersonAtOnce(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, true)
 	sos, _, _, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -331,6 +336,7 @@ func TestAFailedRunDuringAServerReplacementWakesThePersonAtOnce(t *testing.T) {
 // limit, measured from the replacement's start; before the replacement
 // starts, the SOS waits as any other.
 func TestAServerReplacementPastItsLimitWakesThePerson(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos, _, _, ask := replacementSession(t, r)
 	if history := r.history(t, sos.IncidentID); !inOrder(history, "Held for the triage agent until "+r.start.Add(5*time.Minute).UTC().Format("15:04")+" UTC") {
@@ -367,6 +373,7 @@ func TestAServerReplacementPastItsLimitWakesThePerson(t *testing.T) {
 // With the setting at 0, a replacement extends nothing and sends no warn
 // alert: the SOS wakes the person at its ordinary wait.
 func TestAServerReplacementWithTheSettingAtZeroChangesNothing(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	if outcomes, err := r.a.applySettingsParts(context.Background(), Settings{TriageAgent: &SettingsTriageAgent{SOSWaitsForAServerReplacementMinutes: 0}}, nil, []settingsFilePart{settingsSOSWaitsForAServerReplacementPart}); err != nil || outcomes[0].State != "applied" {
 		t.Fatalf("applying 0: %+v %v", outcomes, err)
@@ -390,6 +397,7 @@ func TestAServerReplacementWithTheSettingAtZeroChangesNothing(t *testing.T) {
 // The agent's report at sos during the replacement wakes the person at
 // once, and the waking message names the report.
 func TestAnSOSReportDuringAServerReplacementWakesThePersonAtOnce(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos, run, answers, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -409,6 +417,7 @@ func TestAnSOSReportDuringAServerReplacementWakesThePersonAtOnce(t *testing.T) {
 // A session whose run fails after the start warning wakes the person on
 // call at once, naming the cause.
 func TestASessionThatFailsDuringAServerReplacementWakesThePerson(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos, run, _, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -428,6 +437,7 @@ func TestASessionThatFailsDuringAServerReplacementWakesThePerson(t *testing.T) {
 // A restart during the replacement sends no second warn alert and keeps
 // the replacement's limit.
 func TestARestartDuringAServerReplacementKeepsItsLimit(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos, _, _, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -456,6 +466,7 @@ func TestARestartDuringAServerReplacementKeepsItsLimit(t *testing.T) {
 // warn alert, and no waking at the ordinary wait. Each replacement is a
 // fresh outage the agent is fixing.
 func TestASecondServerReplacementInTheSameSessionGetsItsOwnWait(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos1, _, _, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -500,6 +511,7 @@ func TestASecondServerReplacementInTheSameSessionGetsItsOwnWait(t *testing.T) {
 // A marked run while a replacement is in progress changes nothing: no
 // second warn alert and no new limit.
 func TestAMarkedRunDuringAServerReplacementStartsNoSecondOne(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos, _, _, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -520,6 +532,7 @@ func TestAMarkedRunDuringAServerReplacementStartsNoSecondOne(t *testing.T) {
 // A restart after the second replacement started sends no further warn
 // alert and keeps the second limit.
 func TestARestartAfterASecondServerReplacementKeepsItsLimit(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	sos1, _, _, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -555,6 +568,7 @@ func TestARestartAfterASecondServerReplacementKeepsItsLimit(t *testing.T) {
 // replacement, so the second replace run starts a new one with its own
 // START warn and limit.
 func TestASecondOutageSoonAfterAReplacementGetsItsOwnWait(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	_, _, _, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -584,6 +598,7 @@ func TestASecondOutageSoonAfterAReplacementGetsItsOwnWait(t *testing.T) {
 // When the SOS's own wait for the agent ends after the replacement's limit,
 // the person is woken at the SOS's wait, so the START warn names that time.
 func TestTheStartWarnNamesTheLaterOfTheTwoWaits(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	ctx := context.Background()
 	if outcomes, err := r.a.applySettingsParts(ctx, Settings{TriageAgent: &SettingsTriageAgent{SOSWaitsForTheAgentMinutes: 6, SOSWaitsForAServerReplacementMinutes: 1}}, nil, []settingsFilePart{settingsSOSWaitsForTheAgentPart, settingsSOSWaitsForAServerReplacementPart}); err != nil || outcomes[0].State != "applied" || outcomes[1].State != "applied" {
@@ -606,6 +621,7 @@ func TestTheStartWarnNamesTheLaterOfTheTwoWaits(t *testing.T) {
 // The START warn goes at once, even right after another message to the same
 // contact method: it tells the person when they will be woken.
 func TestTheStartWarnSkipsTheOneAMinuteGrouping(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	_, run, answers, ask := replacementSession(t, r)
 	r.at(t, time.Minute)
@@ -637,6 +653,7 @@ func TestTheStartWarnSkipsTheOneAMinuteGrouping(t *testing.T) {
 // agent's info report to the same contact method: it is the end the START
 // warn announced.
 func TestTheEndMessageSkipsTheOneAMinuteGrouping(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
 	_, run, answers, ask := replacementSession(t, r)
 	r.at(t, time.Minute)

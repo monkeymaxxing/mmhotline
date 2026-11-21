@@ -109,6 +109,7 @@ func (r *checkInRig) titles(t *testing.T) []string {
 }
 
 func TestCheckInRouteAndReceipt(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	body := `{"sent_at":"2026-09-29T12:00:00Z","sent_by_node_name":"util","nodes_in_whole_node_maintenance":[{"node_name":"web-1","maintenance_until":"2026-09-29T12:30:00Z","reason":"moving the database","started_by":"matt"}]}`
 	w := checkInHTTP(r.a, r.p, r.source, body, r.clock)
@@ -144,6 +145,7 @@ func TestCheckInRouteAndReceipt(t *testing.T) {
 }
 
 func TestMissingCheckInsWarnThenSOSThenResolve(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	r.at(t, 10*time.Minute)
 	if titles := r.titles(t); len(titles) != 0 {
@@ -194,6 +196,7 @@ func TestMissingCheckInsWarnThenSOSThenResolve(t *testing.T) {
 // minutes, says nothing new: it neither delays the alarm about silence nor
 // ends an alarm already sent. Only a newer sent_at counts.
 func TestAResentCheckInDoesNotDelayTheSilenceAlarm(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	sentAt := r.clock
 	body := `{"sent_at":"` + sentAt.Format(time.RFC3339) + `","sent_by_node_name":"util"}`
@@ -223,6 +226,7 @@ func TestAResentCheckInDoesNotDelayTheSilenceAlarm(t *testing.T) {
 }
 
 func TestClaimedCheckInIncidentStaysOpen(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	email := savedEmail(t, r.a, r.p, true)
 	r.checkIn(t, "")
@@ -252,6 +256,7 @@ func TestClaimedCheckInIncidentStaysOpen(t *testing.T) {
 }
 
 func TestWarningOnlyEpisodeResolvesWithResolvedWarn(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	r.checkIn(t, "")
 	r.at(t, 3*time.Minute)
@@ -264,6 +269,7 @@ func TestWarningOnlyEpisodeResolvesWithResolvedWarn(t *testing.T) {
 }
 
 func TestCheckInTimesAndOff(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	ctx := context.Background()
 	for _, bad := range [][2]time.Duration{{5 * time.Minute, 5 * time.Minute}, {30 * time.Second, 5 * time.Minute}, {0, 61 * time.Minute}, {time.Minute, 90 * time.Second}} {
@@ -283,6 +289,7 @@ func TestCheckInTimesAndOff(t *testing.T) {
 }
 
 func TestPlannedDowntimeByHandForCheckIns(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	ctx := context.Background()
 	r.checkIn(t, "")
@@ -316,6 +323,7 @@ func TestPlannedDowntimeByHandForCheckIns(t *testing.T) {
 }
 
 func TestPlannedDowntimeEndedEarlyByHand(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	ctx := context.Background()
 	r.checkIn(t, "")
@@ -338,6 +346,7 @@ func TestPlannedDowntimeEndedEarlyByHand(t *testing.T) {
 }
 
 func TestSenderMaintenanceWindowOnTheSendingNodeIsPlannedDowntime(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	until := r.clock.Add(30 * time.Minute).Format(time.RFC3339)
 	// A window for another node, or only some check groups (not listed), does
@@ -361,6 +370,7 @@ func TestSenderMaintenanceWindowOnTheSendingNodeIsPlannedDowntime(t *testing.T) 
 }
 
 func TestCheckInDecodingIsStrict(t *testing.T) {
+	t.Parallel()
 	for _, bad := range []string{
 		`{}`,
 		`{"sent_at":"2026-09-29T12:00:00Z"}`,
@@ -380,6 +390,7 @@ func TestCheckInDecodingIsStrict(t *testing.T) {
 }
 
 func TestAlertSourcePageCheckInsAndPlannedDowntime(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	owner := h.browser()
 	p := owner.addPerson("owner@example.com", "Matt")
@@ -422,6 +433,7 @@ func TestAlertSourcePageCheckInsAndPlannedDowntime(t *testing.T) {
 }
 
 func TestCheckInWindowsAreCappedAndOrdered(t *testing.T) {
+	t.Parallel()
 	r := newCheckInRig(t)
 	far := r.clock.Add(100 * 24 * time.Hour).Format(time.RFC3339)
 	r.checkIn(t, `[{"node_name":"util","maintenance_until":"`+far+`"}]`)

@@ -10,6 +10,7 @@ import (
 // with a period before "This happened for", and schedules show says a test
 // case's backup is not checked, in place of an empty value.
 func TestCustomScheduleMessagesReadAsSentences(t *testing.T) {
+	t.Parallel()
 	problem := CustomScheduleCodeProblem{Kind: customScheduleErrorUnknownSignInEmailAddress, Message: "dana@example.com", AskedAt: time.Date(2026, 11, 15, 6, 15, 0, 0, time.UTC)}
 	if text := problem.Error(); !strings.Contains(text, "dana@example.com. This happened for") {
 		t.Fatalf("unknown address: %q", text)

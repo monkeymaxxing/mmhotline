@@ -108,6 +108,7 @@ func findDelivery(t *testing.T, a *App, p Principal, key string) Delivery {
 }
 
 func TestDeliveryRetryPreservesIdentityAndPayloadAcrossRestart(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "delivery@example.test")
@@ -160,6 +161,7 @@ func TestDeliveryRetryPreservesIdentityAndPayloadAcrossRestart(t *testing.T) {
 }
 
 func TestDeliveryRechecksMuteAndContactMethodAfterReservation(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"team mute", "personal unavailability", "contact method changed", "contact method removed"} {
 		t.Run(change, func(t *testing.T) {
 			a := foundationApp(t)
@@ -215,6 +217,7 @@ func (s *barrierEmailSender) Send(ctx context.Context, m ContactMethodSend) Deli
 	}
 }
 func TestDeliveryLateCompletionRecordsOriginalAddress(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "inflight@example.test")
@@ -246,6 +249,7 @@ func TestDeliveryLateCompletionRecordsOriginalAddress(t *testing.T) {
 }
 
 func TestDeliveryExpiredReservationAndRetryHorizon(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "recovery@example.test")
@@ -294,6 +298,7 @@ func TestDeliveryExpiredReservationAndRetryHorizon(t *testing.T) {
 }
 
 func TestDeliveryAttemptLimitAndQueueAtomicity(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "limits@example.test")
@@ -352,6 +357,7 @@ func TestDeliveryAttemptLimitAndQueueAtomicity(t *testing.T) {
 }
 
 func TestContactMethodPermissionsAndPrivateSentTos(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	owner := memberFixture(t, a, "owner@example.test")
@@ -390,6 +396,7 @@ func TestContactMethodPermissionsAndPrivateSentTos(t *testing.T) {
 }
 
 func TestRoutingSeverityMuteAndSOSEscalationCoalescing(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "routing@example.test")
@@ -493,6 +500,7 @@ func TestRoutingSeverityMuteAndSOSEscalationCoalescing(t *testing.T) {
 }
 
 func TestQueueBoundCountsPendingNotSuppressedOrAccepted(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "queue-limit@example.test")
@@ -530,6 +538,7 @@ func TestQueueBoundCountsPendingNotSuppressedOrAccepted(t *testing.T) {
 }
 
 func TestPausedReservedWorkerDoesNotSendAfterExpiry(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "paused@example.test")
@@ -554,6 +563,7 @@ func TestPausedReservedWorkerDoesNotSendAfterExpiry(t *testing.T) {
 }
 
 func TestUnchangedContactMethodSavePreservesPendingDelivery(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	p := memberFixture(t, a, "unchanged@example.test").Principal
@@ -572,6 +582,7 @@ func TestUnchangedContactMethodSavePreservesPendingDelivery(t *testing.T) {
 }
 
 func TestSOSDeliveryGoesBeforeOlderBacklog(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "backlog@example.test")
@@ -594,6 +605,7 @@ func TestSOSDeliveryGoesBeforeOlderBacklog(t *testing.T) {
 }
 
 func TestDeliveryOutcomeLabelsIncludeRetryState(t *testing.T) {
+	t.Parallel()
 	next := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	for _, test := range []struct {
 		state string
@@ -612,6 +624,7 @@ func TestDeliveryOutcomeLabelsIncludeRetryState(t *testing.T) {
 }
 
 func TestContactMethodEmailSubjectsAndPurposes(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	person := memberFixture(t, a, "mail@example.test")
@@ -654,6 +667,7 @@ func TestContactMethodEmailSubjectsAndPurposes(t *testing.T) {
 }
 
 func TestContactMethodKindRulesComeFromContactMethodTypeFacts(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	s := memberFixture(t, a, "kinds@example.test")
 	ctx := context.Background()
@@ -692,6 +706,7 @@ func finishSaveTest(t *testing.T, a *App, p Principal, contactMethodType Contact
 }
 
 func TestContactMethodSaveQueuesTestsOnlyForNewDestinations(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	p := memberFixture(t, a, "save-test@example.test").Principal
@@ -749,6 +764,7 @@ func TestContactMethodSaveQueuesTestsOnlyForNewDestinations(t *testing.T) {
 }
 
 func TestNewContactMethodReceivesSOSBeforeItsTest(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	p := memberFixture(t, a, "immediate@example.test").Principal
@@ -777,6 +793,7 @@ func TestNewContactMethodReceivesSOSBeforeItsTest(t *testing.T) {
 }
 
 func TestSendContactMethodTestOncePerMinute(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	p := memberFixture(t, a, "minute@example.test").Principal
@@ -802,6 +819,7 @@ func TestSendContactMethodTestOncePerMinute(t *testing.T) {
 }
 
 func TestSaveTestDoesNotFailAtQueueCapacity(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	p := memberFixture(t, a, "full-save@example.test").Principal
@@ -823,6 +841,7 @@ func TestSaveTestDoesNotFailAtQueueCapacity(t *testing.T) {
 }
 
 func TestContactMethodsPageShowsLatestTestResult(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	p := memberFixture(t, a, "test-result@example.test").Principal
@@ -884,6 +903,7 @@ func TestContactMethodsPageShowsLatestTestResult(t *testing.T) {
 // Before, reservation always picked the same delivery first, so its error
 // stopped every later delivery.
 func TestADeliveryThatCannotBeCheckedFailsAndTheNextOneIsSent(t *testing.T) {
+	t.Parallel()
 	a, p, _ := incidentTeam(t)
 	ctx := context.Background()
 	now := a.Now()

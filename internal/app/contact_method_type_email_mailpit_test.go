@@ -61,6 +61,7 @@ func smtpTestCertificate(t *testing.T) (string, string, *tls.Config, *tls.Config
 	return certPath, keyPath, &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}, &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12}
 }
 func TestSMTPImplicitTLSAndCertificateChecks(t *testing.T) {
+	t.Parallel()
 	_, _, trusted, serverTLS := smtpTestCertificate(t)
 	server := newSMTPFixture(t, "250 accepted", "", false, serverTLS)
 	contactMethodType := server.contactMethodType()

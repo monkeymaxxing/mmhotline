@@ -174,6 +174,7 @@ func TestSignInLinkSingleUseAndCookieExpiry(t *testing.T) {
 }
 
 func TestSignInLinkExpiryAndCleanup(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	memberFixture(t, a, "admin@example.test")
 	now := a.Now()
@@ -188,6 +189,7 @@ func TestSignInLinkExpiryAndCleanup(t *testing.T) {
 }
 
 func TestRemovingPersonRevokesBrowserSignIns(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	memberFixture(t, a, "admin@example.test")
 	memberFixture(t, a, "member@example.test")
@@ -270,6 +272,7 @@ func TestAccessHeaderTakesPrecedenceOverCookie(t *testing.T) {
 }
 
 func TestSignInExchangeRollsBackWhenCookieCannotBeSaved(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	memberFixture(t, a, "admin@example.test")
 	link := createBrowserSignInLink(t, a, "admin@example.test")
@@ -289,6 +292,7 @@ func TestSignInExchangeRollsBackWhenCookieCannotBeSaved(t *testing.T) {
 }
 
 func TestIntakeRoutesAreAbsentFromPages(t *testing.T) {
+	t.Parallel()
 	a, _, source := alertFixture(t)
 	for _, route := range []string{"alert-intake", "check-in"} {
 		request := httptest.NewRequest("POST", "/"+route+"/"+source.Source.ID, strings.NewReader(`{}`))
@@ -301,6 +305,7 @@ func TestIntakeRoutesAreAbsentFromPages(t *testing.T) {
 }
 
 func TestAlertSourceAddressesUseIntakeListener(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	a.WebURL = "https://ops.example.com"
 	a.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
@@ -344,6 +349,7 @@ func TestAlertSourceAddressesUseIntakeListener(t *testing.T) {
 // WebKit keeps no Secure cookie there, so both cookies go without Secure and
 // the __Host- prefix, and the session still opens pages and saves forms.
 func TestSignInLinkThroughSSHForwardUsesPlainHTTPCookies(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	memberFixture(t, a, "admin@example.test")
 	a.WebURL = "https://ops.example.com"
@@ -395,6 +401,7 @@ func TestSignInLinkThroughSSHForwardUsesPlainHTTPCookies(t *testing.T) {
 }
 
 func TestSignInPageWithoutCloudflareAccessShowsSignInLinkInstructions(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	a.AccessVerifier = nil
 	a.WebURL = "https://ops.example.com"

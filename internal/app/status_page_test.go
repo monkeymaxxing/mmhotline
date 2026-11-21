@@ -38,6 +38,7 @@ func setUpStatusPageFromALaptop(fake *fakecloudflare.Server, hostName string) (S
 const statusPageBucket = "mmhotline-status-status-example-com-18a8ea11"
 
 func TestStatusPageSetUpInCloudflareIsRepeatableAndKeepsNoToken(t *testing.T) {
+	t.Parallel()
 	_, fake := statusPageApp(t)
 	result, err := setUpStatusPageFromALaptop(fake, "Status.Example.com")
 	if err != nil {
@@ -91,6 +92,7 @@ func TestStatusPageSetUpInCloudflareIsRepeatableAndKeepsNoToken(t *testing.T) {
 // name: at most 63 lowercase letters, digits, and hyphens, starting and
 // ending with a letter or digit.
 func TestCloudflareNamesDifferForEachHostName(t *testing.T) {
+	t.Parallel()
 	digest := func(hostName string) string {
 		sum := sha256.Sum256([]byte(hostName))
 		return hex.EncodeToString(sum[:])[:8]
@@ -125,6 +127,7 @@ func TestCloudflareNamesDifferForEachHostName(t *testing.T) {
 }
 
 func TestStatusPageSetUpKeepsTheZonesOtherRewriteRules(t *testing.T) {
+	t.Parallel()
 	_, fake := statusPageApp(t)
 	for _, hostName := range []string{"other.example.com", "status.example.com"} {
 		if _, err := setUpStatusPageFromALaptop(fake, hostName); err != nil {
@@ -141,6 +144,7 @@ func TestStatusPageSetUpKeepsTheZonesOtherRewriteRules(t *testing.T) {
 }
 
 func TestStatusPageSetUpRefusals(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	fake.RefuseNext("POST /accounts/"+fake.AccountID+"/r2/buckets", 1)
 	if _, err := setUpStatusPageFromALaptop(fake, "status.example.com"); err == nil || !strings.Contains(err.Error(), "Cloudflare refused to create R2 bucket "+statusPageBucket+" (HTTP 403, error 10000): Authentication error. Check the API token's permissions") {
@@ -204,6 +208,7 @@ func setUpStatusPageWithKey(t *testing.T, a *App, fake *fakecloudflare.Server) {
 }
 
 func TestStatusPagePostsFromTheIncidentPageAndTheStatusPagePage(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	memberFixture(t, a, "admin@example.com")
 	member := memberFixture(t, a, "responder@example.com")
@@ -258,6 +263,7 @@ func TestStatusPagePostsFromTheIncidentPageAndTheStatusPagePage(t *testing.T) {
 }
 
 func TestStatusPageCommandPostAndResolve(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	setUpStatusPageWithKey(t, a, fake)
 	post := func(request StatusPageCommandRequest, want int) (CommandResult, string) {
@@ -335,6 +341,7 @@ func TestStatusPageCommandPostAndResolve(t *testing.T) {
 // The command shows a notice without updates, which only a file edited by
 // hand holds, instead of failing on it.
 func TestStatusPageTextShowsNoticesWithoutUpdates(t *testing.T) {
+	t.Parallel()
 	at := time.Date(2026, 11, 21, 8, 0, 0, 0, time.UTC)
 	resolvedAt := at.Add(time.Hour)
 	view := StatusPageView{IsSetUp: true, PublishedStatusJSON: &statuspage.File{PageTitle: "Example Inc.", PublishedAt: at, Notices: []statuspage.Notice{
@@ -368,6 +375,7 @@ func publishedStatusFile(t *testing.T, fake *fakecloudflare.Server) statuspage.F
 // the incident page shows it instead of the button, and a second post from
 // that incident is refused.
 func TestTheIncidentPagePostsOneNoticeWhileItIsOpen(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	member := memberFixture(t, a, "responder@example.com")
 	server := httptest.NewServer(a.Handler())
@@ -431,6 +439,7 @@ func TestTheIncidentPagePostsOneNoticeWhileItIsOpen(t *testing.T) {
 // The incident page's button says what one click publishes: an outage notice
 // with the generic title and message. It sends only the incident.
 func TestTheIncidentPageSaysWhatItsButtonPublishes(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	member := memberFixture(t, a, "responder@example.com")
 	server := httptest.NewServer(a.Handler())
@@ -451,6 +460,7 @@ func TestTheIncidentPageSaysWhatItsButtonPublishes(t *testing.T) {
 // A refused form shows what the person typed, with its fold open, so a long
 // message typed in a hurry is never lost.
 func TestStatusPageFormsKeepWhatWasTypedAfterARefusal(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	member := memberFixture(t, a, "responder@example.com")
 	server := httptest.NewServer(a.Handler())
@@ -509,6 +519,7 @@ func TestStatusPageFormsKeepWhatWasTypedAfterARefusal(t *testing.T) {
 // A planned time typed on the page is in the team's time zone; the notice is
 // stored in UTC, and the page shows it in the team's time zone again.
 func TestStatusPagePlannedTimesAreInTheTeamsTimeZone(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	ctx := context.Background()
 	member := memberFixture(t, a, "responder@example.com")
@@ -568,6 +579,7 @@ func setUpStatusPageWithComponents(t *testing.T, a *App, fake *fakecloudflare.Se
 // status.json and index.html, and a later apply that changes them keeps the
 // notices. status-page show prints them with the status the open notices give.
 func TestStatusPageApplyingTheSettingsFilePublishesTheLinksAndComponents(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	page := setUpStatusPageWithComponents(t, a, fake)
 	file := publishedStatusFile(t, fake)
@@ -613,6 +625,7 @@ func TestStatusPageApplyingTheSettingsFilePublishesTheLinksAndComponents(t *test
 // names another bucket, the links from incidents to notices are removed, so a
 // notice 1 in the new bucket is never taken for the old one.
 func TestStatusPageApplyingAnotherBucketRemovesTheIncidentNoticeLinks(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	page := setUpStatusPageWithComponents(t, a, fake)
 	linked := func() int {
@@ -660,6 +673,7 @@ func TestStatusPageApplyingAnotherBucketRemovesTheIncidentNoticeLinks(t *testing
 // Removing the status_page section removes the incident links with the setup,
 // so enabling the page again on another bucket never inherits them.
 func TestStatusPageRemovingTheSectionAndEnablingAnotherBucketKeepsNoIncidentNoticeLinks(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	page := setUpStatusPageWithComponents(t, a, fake)
 	linked := func() int {
@@ -701,6 +715,7 @@ func statusPageBucketOf(bucketURL string) string {
 // name, links, and components of the settings file. Only applying the file
 // does.
 func TestStatusPageAnOrdinaryPostNeverCreatesAMissingStatusJSON(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	setUpStatusPageWithComponents(t, a, fake)
 	other, err := setUpStatusPageFromALaptop(fake, "other.example.com")
@@ -722,6 +737,7 @@ func TestStatusPageAnOrdinaryPostNeverCreatesAMissingStatusJSON(t *testing.T) {
 }
 
 func TestStatusPageCommandPostWithComponents(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	setUpStatusPageWithComponents(t, a, fake)
 	post := func(request StatusPageCommandRequest, want int) (CommandResult, string) {
@@ -757,6 +773,7 @@ func TestStatusPageCommandPostWithComponents(t *testing.T) {
 // The Post a new notice form offers a checkbox for each component of the
 // page, and a refused form keeps the boxes that were checked.
 func TestStatusPageFormTagsComponentsAndKeepsTheBoxesAfterARefusal(t *testing.T) {
+	t.Parallel()
 	a, fake := statusPageApp(t)
 	member := memberFixture(t, a, "responder@example.com")
 	server := httptest.NewServer(a.Handler())

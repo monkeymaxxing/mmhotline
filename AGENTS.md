@@ -32,8 +32,8 @@ superseded alternatives from `docs/changing-mmhotline/design/open-questions.md`.
 [How MMHotline works](docs/how-it-works.md) explains components and workflows.
 Follow [implementation rules](docs/changing-mmhotline/implementation-rules.md) and
 [testing](docs/changing-mmhotline/testing.md). Run the whole Go suite with
-`go test -timeout 30m ./...`; `internal/app` takes close to `go test`'s
-default 10-minute limit
+`go test -timeout 30m ./...`; `internal/app` can pass `go test`'s
+default 10-minute limit on a busy machine
 ([why](docs/changing-mmhotline/testing.md#test-in-levels)). [Validation](docs/changing-mmhotline/validation.md) records
 the evidence for the current build.
 

@@ -41,9 +41,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
-      # internal/app runs its tests one after another, longer than go test's
-      # default 10-minute limit on a slow machine; the testing guide gives
-      # the measurements.
+      # internal/app runs most of its tests in parallel and still takes
+      # minutes, longer than go test's default 10-minute limit on a slow or
+      # busy machine; the testing guide gives the measurements.
       - run: go test -timeout 30m ./...
       - if: runner.os == 'Linux'
         run: go vet ./...

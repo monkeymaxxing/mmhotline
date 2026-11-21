@@ -22,6 +22,7 @@ func (s *progressEmailSender) Send(_ context.Context, m ContactMethodSend) Deliv
 }
 
 func TestFullQueueDrainsWhenMuteExpiryCannotEnqueue(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "queue-drain@example.test")
@@ -89,6 +90,7 @@ func TestFullQueueDrainsWhenMuteExpiryCannotEnqueue(t *testing.T) {
 // The real loop: a team with nothing due costs nothing, and an alert that
 // arrives is sent in the next round.
 func TestBackgroundSchedulerSendsAnAlertThatArrivesWhileItsTeamIsIdle(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "idle@example.test")

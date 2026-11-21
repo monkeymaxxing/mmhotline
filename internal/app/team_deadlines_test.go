@@ -92,6 +92,7 @@ func (r *deadlineRig) systemTitles(t *testing.T) []string {
 }
 
 func TestATeamWithNothingDueIsLeftAlone(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	if !r.round(t) {
 		t.Fatal("a team whose database changed was not visited")
@@ -104,6 +105,7 @@ func TestATeamWithNothingDueIsLeftAlone(t *testing.T) {
 }
 
 func TestIdleBackgroundRoundsDoNotWrite(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	if !r.round(t) {
 		t.Fatal("the first round did not visit the team")
@@ -123,6 +125,7 @@ func TestIdleBackgroundRoundsDoNotWrite(t *testing.T) {
 }
 
 func TestIdleTeamIsVisitedAfterTenMinutes(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	r.settle(t)
 	r.quietFor(t, 10*time.Minute-time.Second)
@@ -134,6 +137,7 @@ func TestIdleTeamIsVisitedAfterTenMinutes(t *testing.T) {
 }
 
 func TestFailedBackgroundVisitIsRetriedNextRound(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	r.settle(t)
 	// A visit that cannot read its delivery work fails.
@@ -166,6 +170,7 @@ func (*panickingEmailSender) Send(context.Context, ContactMethodSend) DeliveryRe
 // the loop goes on: the next round visits again, and the delivery the panic
 // interrupted is still sent.
 func TestPanickingBackgroundVisitIsReportedAndTheLoopGoesOn(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	r.settle(t)
 	r.a.ContactMethodTypes = map[string]ContactMethodType{"email": &panickingEmailSender{}}
@@ -190,6 +195,7 @@ func TestPanickingBackgroundVisitIsReportedAndTheLoopGoesOn(t *testing.T) {
 }
 
 func TestAnAlertWakesItsTeam(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	r.settle(t)
 	r.quietFor(t, 10*time.Second)
@@ -211,6 +217,7 @@ func TestAnAlertWakesItsTeam(t *testing.T) {
 }
 
 func TestARetryIsDueAtItsTime(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	r.settle(t)
 	r.sender.Results = append(make([]DeliveryResult, len(r.sender.messages())), DeliveryResult{State: "failed", Diagnostic: "sending service is down", Retryable: true})
@@ -236,6 +243,7 @@ func TestARetryIsDueAtItsTime(t *testing.T) {
 }
 
 func TestAnUnclaimedIncidentIsVisitedAtItsRepeatAndItsResponseDeadline(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	ctx := context.Background()
 	r.settle(t)
@@ -286,6 +294,7 @@ func TestAnUnclaimedIncidentIsVisitedAtItsRepeatAndItsResponseDeadline(t *testin
 }
 
 func TestCoverageDeadlines(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	ctx := context.Background()
 	r.settle(t)
@@ -325,6 +334,7 @@ func TestCoverageDeadlines(t *testing.T) {
 }
 
 func TestScheduleHandoffIsObservedAtItsTime(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	ctx := context.Background()
 	_, barbara := addMember(t, r.a, "Barbara", RoleMember)
@@ -361,6 +371,7 @@ func TestScheduleHandoffIsObservedAtItsTime(t *testing.T) {
 }
 
 func TestNextScheduleHandoffForEachKindOfSchedule(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 29, 12, 10, 20, 0, time.UTC)
 	for _, c := range []struct {
 		config ScheduleConfig
@@ -385,6 +396,7 @@ func TestNextScheduleHandoffForEachKindOfSchedule(t *testing.T) {
 }
 
 func TestASilentAlertSourceIsVisitedAtItsStoppedMarkItsWarningAndItsSOS(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	ctx := context.Background()
 	source, err := createAlertSource(ctx, r.a, r.p, "Monitoring on util.example.com")
@@ -458,6 +470,7 @@ func TestASilentAlertSourceIsVisitedAtItsStoppedMarkItsWarningAndItsSOS(t *testi
 }
 
 func TestASilentAlertSourceInPlannedDowntimeIsVisitedWhenTheDowntimeEnds(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	ctx := context.Background()
 	source, err := createAlertSource(ctx, r.a, r.p, "Monitoring on util.example.com")
@@ -493,6 +506,7 @@ func TestASilentAlertSourceInPlannedDowntimeIsVisitedWhenTheDowntimeEnds(t *test
 }
 
 func TestCustomScheduleCodeIsKnownAfterRestart(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	ctx := context.Background()
 	if usesCode, err := h.app.usesCustomScheduleCode(ctx); err != nil || usesCode {
@@ -544,6 +558,7 @@ func backgroundRounds(t *testing.T, a *App) {
 }
 
 func TestAfterARestartKnownCallsArePolledBeforeAnotherCall(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	r.addPhone(t, r.s.Principal, barbaraNumber)
 	r.sos(t, "Database down")
@@ -579,6 +594,7 @@ func TestAfterARestartKnownCallsArePolledBeforeAnotherCall(t *testing.T) {
 }
 
 func TestAfterARestartTheCallThatWasReservedIsMade(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -606,6 +622,7 @@ func TestAfterARestartTheCallThatWasReservedIsMade(t *testing.T) {
 
 // A recovered call refused by Twilio fails and reaches the other contact methods.
 func TestAfterARestartAReservedCallRefusedByTwilioFallsBack(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -633,6 +650,7 @@ func TestAfterARestartAReservedCallRefusedByTwilioFallsBack(t *testing.T) {
 }
 
 func TestAfterARestartTheEmailThatWasReservedIsSentAtOnce(t *testing.T) {
+	t.Parallel()
 	r := newDeadlineRig(t)
 	queueDelivery(t, r.a, r.p, "reserved", "warn")
 	if d, _, err := r.a.reserveDelivery(context.Background(), "https://mmhotline.example.com", []string{"email"}); err != nil || d.ID == "" {

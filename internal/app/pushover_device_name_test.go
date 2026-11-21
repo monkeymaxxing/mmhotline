@@ -21,6 +21,7 @@ func (r *pushoverRig) addOnDevice(t *testing.T, device string) (ContactMethod, e
 // emergency SOS, and on warning and info messages. Fails if any Send path
 // drops the field.
 func TestPushoverDeviceNameIsSentOnEveryDelivery(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	if _, err := r.addOnDevice(t, "tablet"); err != nil {
 		t.Fatal(err)
@@ -55,6 +56,7 @@ func TestPushoverDeviceNameIsSentOnEveryDelivery(t *testing.T) {
 // With no device named, no `device` field is sent, and the device name is not
 // stored in the settings.
 func TestPushoverWithoutDeviceNameSendsNoDeviceField(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	c, err := r.addOnDevice(t, "")
 	if err != nil {
@@ -81,6 +83,7 @@ func TestPushoverWithoutDeviceNameSendsNoDeviceField(t *testing.T) {
 // The MMHotline-down alarm's held requests, the ordinary one and its test,
 // carry the device; without one they carry none.
 func TestPushoverDownAlarmRequestsCarryTheDeviceName(t *testing.T) {
+	t.Parallel()
 	c := &PushoverNotificationContactMethodType{ApplicationToken: fakesendingservices.PushoverApplicationToken}
 	text := downAlarmText{WebURL: "https://mmhotline.example.com"}
 	for settings, want := range map[string]string{
@@ -103,6 +106,7 @@ func TestPushoverDownAlarmRequestsCarryTheDeviceName(t *testing.T) {
 // An invalid name and a device Pushover does not list for the user are refused
 // in plain words, and nothing is saved or sent.
 func TestPushoverInvalidOrUnknownDeviceNameIsRefusedAndChangesNothing(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	_, err := r.addOnDevice(t, "my phone!")
 	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "1 to 25 characters") {
@@ -128,6 +132,7 @@ func TestPushoverInvalidOrUnknownDeviceNameIsRefusedAndChangesNothing(t *testing
 // The command adds a contact method on a device, and list shows it after the
 // user key.
 func TestContactMethodsAddWithPushoverDeviceNameThenListShowsIt(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	add := CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: ContactMethodsCommandRequest{
 		SignInEmailAddress: r.principal.SignInEmailAddress, ContactMethodType: "pushover_notification", PushoverUserKey: fakesendingservices.PushoverUserKey, PushoverDeviceName: "tablet"}}

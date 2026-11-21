@@ -9,6 +9,7 @@ import (
 )
 
 func TestBurstBecomesOneCombinedMessage(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "burst@example.test")
@@ -38,6 +39,7 @@ func TestBurstBecomesOneCombinedMessage(t *testing.T) {
 }
 
 func TestThrottleWaitsOneMinuteThenTenAfterTenMessages(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "slow@example.test")
@@ -89,6 +91,7 @@ func TestThrottleWaitsOneMinuteThenTenAfterTenMessages(t *testing.T) {
 }
 
 func TestSOSIsNeverDelayedOrCombined(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "sos-fast@example.test")
@@ -116,6 +119,7 @@ func TestSOSIsNeverDelayedOrCombined(t *testing.T) {
 }
 
 func TestCombinedMessageIsFrozenAfterItsFirstAttempt(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "frozen@example.test")
@@ -141,6 +145,7 @@ func TestCombinedMessageIsFrozenAfterItsFirstAttempt(t *testing.T) {
 }
 
 func TestWebhookGetsEveryAlertUpToSixtyAMinute(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "warn", "sos")
 	for n := range webhookMaximumAlertsPerMinute {
 		queueDelivery(t, r.a, r.s.Principal, fmt.Sprintf("w%d", n), "warn")
@@ -164,6 +169,7 @@ func TestWebhookGetsEveryAlertUpToSixtyAMinute(t *testing.T) {
 }
 
 func TestContactMethodTestsAreNeverThrottled(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "tests@example.test")
@@ -201,6 +207,7 @@ func joinersOf(t *testing.T, a *App, p Principal, keys []string, state, reason, 
 // When a combined email fails for good, the messages combined into it failed
 // with it: nothing was sent together.
 func TestCombinedMessagesFailWithTheEmailThatCarriedThem(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "combined-failed@example.test")
@@ -221,6 +228,7 @@ func TestCombinedMessagesFailWithTheEmailThatCarriedThem(t *testing.T) {
 // A combined email that is suppressed before it goes (the team is muted)
 // suppresses the messages combined into it.
 func TestCombinedMessagesAreSuppressedWithTheirMessage(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "combined-suppressed@example.test")
@@ -244,6 +252,7 @@ func TestCombinedMessagesAreSuppressedWithTheirMessage(t *testing.T) {
 // Removing a contact method cancels its waiting combined message and the
 // messages combined into it.
 func TestRemovingAContactMethodCancelsItsCombinedMessages(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "combined-removed@example.test")
@@ -266,6 +275,7 @@ func TestRemovingAContactMethodCancelsItsCombinedMessages(t *testing.T) {
 // the person unticks keeps the messages already queued for it, so nothing
 // the person was about to get is lost.
 func TestChangingSubscriptionsKeepsQueuedMessages(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "combined-subscriptions@example.test")

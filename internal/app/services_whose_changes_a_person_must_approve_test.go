@@ -18,6 +18,7 @@ import (
 // gets .service, as systemctl reads it, and show prints the list with who
 // changed it and when.
 func TestServicesWhoseChangesAPersonMustApproveList(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	a.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	now := time.Date(2026, 11, 3, 9, 30, 0, 0, time.UTC)
@@ -81,6 +82,7 @@ func TestServicesWhoseChangesAPersonMustApproveList(t *testing.T) {
 // Every member reads the list on the page of rules for running the agent's playbooks, with where it is
 // set, so a person sees why a playbook waits.
 func TestAgentPlaybookRulesPageShowsServicesWhoseChangesAPersonMustApprove(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	admin := h.browser()
 	admin.addPerson("admin@example.test", "Administrator")
@@ -119,6 +121,7 @@ func restartExplained(stage, server, service string) string {
 // approval-requests show. A playbook on another service still runs, and with
 // the list empty both run.
 func TestServicesWhoseChangesAPersonMustApproveMakeAPlaybookWait(t *testing.T) {
+	parallelStartingProcesses(t)
 	const (
 		restartPostgres = "one_time_playbooks/2026-11-03_restart_postgres_on_db01.yml"
 		restartCaddy    = "one_time_playbooks/2026-11-03_restart_caddy_on_app002.yml"
@@ -237,6 +240,7 @@ func TestServicesWhoseChangesAPersonMustApproveMakeAPlaybookWait(t *testing.T) {
 // only during the run could act on one, so it needs a person too; with an
 // empty list, no task does.
 func TestTasksOnServicesWhoseChangesAPersonMustApprove(t *testing.T) {
+	t.Parallel()
 	recognition, err := actionkinds.Recognize([]byte(`{"schema_version":2,"fleet_stages":[{"path":"fix","node_tasks":[
 {"path":"fix/task_1","node":"db01","action":"systemd_service","module_kind":"core","status":"ready","arguments":[{"field":"systemd_service.name","value":"pgautofailover.service","status":"resolved"},{"field":"systemd_service.state","value":"running","status":"literal"}]},
 {"path":"fix/task_2","node":"db01","action":"systemd_unit","module_kind":"core","status":"ready","arguments":[{"field":"systemd_unit.name","value":"pgautofailover.service","status":"literal"},{"field":"systemd_unit.drop_in","value":"20-limits.conf","status":"literal"}]},

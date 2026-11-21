@@ -71,6 +71,7 @@ func scalarTeam(t *testing.T, a *App, query string, args ...any) int64 {
 	return v
 }
 func TestSignedIntakeValidationReplayAndRotation(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	now := a.Now()
 	body := `{"sender_alert_id":"one","title":"Backup","message":""}`
@@ -130,6 +131,7 @@ func TestSignedIntakeValidationReplayAndRotation(t *testing.T) {
 	}
 }
 func TestSOSCorrelationAndImmutableHistory(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	giveWakingContactMethod(t, a, p.SignInEmailAddress)
 	ctx := context.Background()
@@ -189,6 +191,7 @@ func TestSOSCorrelationAndImmutableHistory(t *testing.T) {
 	}
 }
 func TestIntakeRollsBackAlertIncidentAndRateWithOutbox(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	ctx := context.Background()
 	err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
@@ -220,6 +223,7 @@ func TestIntakeRollsBackAlertIncidentAndRateWithOutbox(t *testing.T) {
 	}
 }
 func TestSourceRateLimitPreservesAcceptedRetry(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	var first string
 	for n := 0; n < SourceAlertsPerMinute; n++ {
@@ -240,6 +244,7 @@ func TestSourceRateLimitPreservesAcceptedRetry(t *testing.T) {
 // The Alert sources page escapes an alert source's name and never shows a
 // signing secret.
 func TestAlertSourcesPageEscapesNamesAndShowsNoSecret(t *testing.T) {
+	t.Parallel()
 	a, p, _ := alertFixture(t)
 	source, err := createAlertSource(context.Background(), a, p, "<script>not code</script>")
 	if err != nil {
@@ -264,6 +269,7 @@ func TestAlertSourcesPageEscapesNamesAndShowsNoSecret(t *testing.T) {
 }
 
 func TestIntakeSignatureNamesAndReceiptFields(t *testing.T) {
+	t.Parallel()
 	a, p, source := alertFixture(t)
 	body := `{"sender_alert_id":"one","sender_incident_key":"disk","severity":"sos","title":"Disk full","message":""}`
 	valid := alertSignature(source.Secret, a.Now(), []byte(body))
@@ -326,6 +332,7 @@ func TestIntakeSignatureNamesAndReceiptFields(t *testing.T) {
 }
 
 func TestSenderRoutesUseInstallationTeam(t *testing.T) {
+	t.Parallel()
 	a, _, source := alertFixture(t)
 	handler := a.IntakeHandler()
 	for _, item := range []struct{ route, body string }{

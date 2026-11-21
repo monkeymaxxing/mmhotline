@@ -18,6 +18,7 @@ import (
 )
 
 func TestPublicInternetAddress(t *testing.T) {
+	t.Parallel()
 	for address, public := range map[string]bool{
 		"93.184.216.34": true, "2606:4700::1111": true,
 		"127.0.0.1": false, "10.1.2.3": false, "172.16.0.1": false, "192.168.1.1": false,
@@ -34,6 +35,7 @@ func TestPublicInternetAddress(t *testing.T) {
 }
 
 func TestWebhookSettings(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	check := func(fields map[string]string) (ContactMethodSettings, error) {
 		return OutgoingWebhookContactMethodType{}.CheckSettings(ctx, ContactMethodSettingsInput{Fields: fields})
@@ -106,6 +108,7 @@ func (r *webhookRig) dispatch(t *testing.T) {
 }
 
 func TestWebhookDeliverySignedBodyAndHeaders(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "info", "warn", "sos")
 	e, err := r.a.ManualSOS(context.Background(), r.s.Principal, "Database down", "Connection refused")
 	if err != nil {
@@ -148,6 +151,7 @@ func TestWebhookDeliverySignedBodyAndHeaders(t *testing.T) {
 // A team without Cloudflare opens MMHotline through an SSH forward, so its web
 // URL is http://localhost; alerts must still go out, with links to that URL.
 func TestDeliveryWithLocalhostWebURL(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "sos")
 	r.a.WebURL = "http://localhost:8480"
 	e, err := r.a.ManualSOS(context.Background(), r.s.Principal, "Database down", "Connection refused")
@@ -169,6 +173,7 @@ func TestDeliveryWithLocalhostWebURL(t *testing.T) {
 }
 
 func TestWebhookRetriesSameBodyAndStopsOnRefusal(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "warn")
 	r.fake.SetWebhookAnswer("ops", 503, false)
 	queueDelivery(t, r.a, r.s.Principal, "retried", "warn")
@@ -196,6 +201,7 @@ func TestWebhookRetriesSameBodyAndStopsOnRefusal(t *testing.T) {
 }
 
 func TestWebhookNeverConnectsToPrivateAddresses(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	receiver := httptest.NewServer(fakesendingservices.New())
@@ -220,6 +226,7 @@ func TestWebhookNeverConnectsToPrivateAddresses(t *testing.T) {
 }
 
 func TestFailingWebhookKeepsOnlyNewestAndTellsAdministratorsOnce(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "warn")
 	r.fake.SetWebhookAnswer("ops", 500, false)
 	for _, key := range []string{"one", "two", "three", "four"} {
@@ -280,6 +287,7 @@ func TestFailingWebhookKeepsOnlyNewestAndTellsAdministratorsOnce(t *testing.T) {
 }
 
 func TestWebhookSigningSecretRotationAndBearerToken(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "warn")
 	ctx := context.Background()
 	p := r.s.Principal
@@ -325,6 +333,7 @@ func TestWebhookSigningSecretRotationAndBearerToken(t *testing.T) {
 }
 
 func TestWebhookLimitPerTeam(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "warn")
 	for i := 1; i < 20; i++ {
 		if _, err := r.a.SaveContactMethod(context.Background(), r.s.Principal, ContactMethodInput{ContactMethodType: "outgoing_webhook", Fields: map[string]string{"outgoing_webhook_url": r.contactMethodType.AllowedPrivateURLPrefix + "more"}, Subscriptions: []string{"warn"}}); err != nil {
@@ -337,6 +346,7 @@ func TestWebhookLimitPerTeam(t *testing.T) {
 }
 
 func TestAdministratorNoticesNeverGoToWebhooks(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "warn")
 	ctx := context.Background()
 	personal, err := r.a.SaveContactMethod(ctx, r.s.Principal, ContactMethodInput{ContactMethodType: "outgoing_webhook", Fields: map[string]string{"outgoing_webhook_url": r.contactMethodType.AllowedPrivateURLPrefix + "personal"}, Subscriptions: []string{"warn"}})
@@ -373,6 +383,7 @@ func TestAdministratorNoticesNeverGoToWebhooks(t *testing.T) {
 }
 
 func TestWebhookThroughTheContactMethodsPage(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	fake := fakesendingservices.New()
 	server := httptest.NewServer(fake)
@@ -410,6 +421,7 @@ func TestWebhookThroughTheContactMethodsPage(t *testing.T) {
 }
 
 func TestWebhookAnswersThatRetryAndThatFail(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		status int
@@ -436,6 +448,7 @@ func TestWebhookAnswersThatRetryAndThatFail(t *testing.T) {
 }
 
 func TestWebhookIncidentStatusIsCopiedWhenQueued(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "sos")
 	r.fake.SetWebhookAnswer("ops", 503, false)
 	e, err := r.a.ManualSOS(context.Background(), r.s.Principal, "Database down", "")
@@ -460,6 +473,7 @@ func TestWebhookIncidentStatusIsCopiedWhenQueued(t *testing.T) {
 }
 
 func TestFailingWebhookNoticeNeverBlocksTheResult(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "warn")
 	ctx := context.Background()
 	long := r.contactMethodType.AllowedPrivateURLPrefix + "ops?padding=" + strings.Repeat("x", 300)
@@ -510,6 +524,7 @@ func TestFailingWebhookNoticeNeverBlocksTheResult(t *testing.T) {
 }
 
 func TestFailureStreakFollowsTheCurrentURL(t *testing.T) {
+	t.Parallel()
 	r := newWebhookRig(t, "warn", "sos")
 	ctx := context.Background()
 	r.fake.SetWebhookAnswer("ops", 500, false)
@@ -567,6 +582,7 @@ func TestFailureStreakFollowsTheCurrentURL(t *testing.T) {
 }
 
 func TestInterruptedSendRetriesOnlyWhereTheContactMethodTypeAllows(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	s := memberFixture(t, a, "interrupted@example.test")

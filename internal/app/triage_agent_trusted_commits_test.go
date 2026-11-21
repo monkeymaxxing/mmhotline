@@ -43,6 +43,7 @@ ON CONFLICT(part) DO UPDATE SET applied_values=excluded.applied_values`, setting
 // no warning goes out, the checkpoint and MMHotline's checkout move to
 // origin's tip through the one function, and MMX runs.
 func TestEveryCommitOnOriginTrustsEveryCommitOnOrigin(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	records := t.TempDir()
 	commitRunMMXInCopy(t, a, fakeRunMMX(records, "exit 0\n"))
@@ -78,6 +79,7 @@ func TestEveryCommitOnOriginTrustsEveryCommitOnOrigin(t *testing.T) {
 // check still answers, and the commit-reviews commands answer the tip with
 // nothing waiting; trust-through keeps working.
 func TestEveryCommitOnOriginCommands(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	commitRunMMXInCopy(t, a, "")
 	trustEveryCommitOnOriginForTest(t, a)
@@ -111,6 +113,7 @@ func TestEveryCommitOnOriginCommands(t *testing.T) {
 // A settings file without the systems_repository_commits section applies
 // the value null and no keys, and the check then trusts nothing.
 func TestWithoutTheSystemsRepositoryCommitsSectionNothingIsTrusted(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	commitRunMMXInCopy(t, a, "")
 	trustEveryCommitOnOriginForTest(t, a)
@@ -130,6 +133,7 @@ func TestWithoutTheSystemsRepositoryCommitsSectionNothingIsTrusted(t *testing.T)
 // With every_commit_on_origin no commit review run starts and no warning
 // goes out, even for a commit recorded earlier as waiting.
 func TestEveryCommitOnOriginStartsNoCommitReviewRun(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	trustEveryCommitOnOriginForTest(t, a)
 	if _, err := a.Store.db.Exec(`INSERT INTO triage_agent_refused_commits(commit_id,reason_kind,paths_json,changed_paths_json,author,committed_at,message,diff,diff_truncated,found_at) VALUES(?,'not_signed_by_a_trusted_key','[]','[]','Someone',1,'A change','',0,1)`, strings.Repeat("a", 40)); err != nil {
@@ -152,6 +156,7 @@ func TestEveryCommitOnOriginStartsNoCommitReviewRun(t *testing.T) {
 // check trusts every commit with it, the applied view says so, and
 // signed_by_a_trusted_key_or_reviewed brings the signing keys back.
 func TestSettingsFileAppliesTrustedCommits(t *testing.T) {
+	t.Parallel()
 	f := newSettingsFileFixture(t, everyCommitOnOriginSettingsYAML())
 	f.start()
 	every, err := trustsEveryCommitOnOrigin(t.Context(), f.a.Store.db)
@@ -178,6 +183,7 @@ func TestSettingsFileAppliesTrustedCommits(t *testing.T) {
 // plain cause, the triage agent, set up, holds no key and knows no commit as
 // its own, and settings show says so.
 func TestLeavingOutSystemsRepositoryCommitsTrustsNothing(t *testing.T) {
+	parallelStartingProcesses(t)
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()
 	commitRunMMXInCopy(t, f.a, "")
@@ -209,6 +215,7 @@ func TestLeavingOutSystemsRepositoryCommitsTrustsNothing(t *testing.T) {
 // trusted keys alone decide: a commit a trusted key signed passes, and any
 // other commit, the triage agent's key's included, waits for a person.
 func TestSignaturesWithoutTheTriageAgentNeedNoAgentKey(t *testing.T) {
+	parallelStartingProcesses(t)
 	yaml := strings.Replace(withoutSection(t, withoutSection(t, exampleSettingsYAML, "triage_agent"), "review_agent"), "approved_by: a_person_or_the_triage_agent", "approved_by: a_person", 1)
 	f := newSettingsFileFixture(t, yaml)
 	f.start()
@@ -232,6 +239,7 @@ func TestSignaturesWithoutTheTriageAgentNeedNoAgentKey(t *testing.T) {
 // check passes a commit on origin nobody signed and starts no triage agent
 // run.
 func TestEveryCommitOnOriginWithoutTheTriageAgent(t *testing.T) {
+	parallelStartingProcesses(t)
 	f := newSettingsFileFixture(t, withoutSection(t, withoutSection(t, everyCommitOnOriginSettingsYAML(), "triage_agent"), "review_agent"))
 	f.start()
 	commitRunMMXInCopy(t, f.a, "")
@@ -250,6 +258,7 @@ func TestEveryCommitOnOriginWithoutTheTriageAgent(t *testing.T) {
 // agent's own commits: a commit that changes AGENTS.md is not pushed and
 // stays under MMHotline's private ref for a person.
 func TestEveryCommitOnOriginKeepsThePushFilterForTheAgentsCommits(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	trustEveryCommitOnOriginForTest(t, a)
 	run := prepareSystemsRepositoryRunWithFiles(t, a, map[string]string{"README.md": "The servers.\n", "AGENTS.md": "Rules.\n"}, `/bin/mkdir -p triage_agent_notes

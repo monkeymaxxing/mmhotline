@@ -11,6 +11,7 @@ import (
 )
 
 func TestAlertPagesShowWhatEachAlertDid(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	h, browser := r.h, r.maya
 	p := Principal{SignInEmailAddress: "maya@example.test"}
@@ -60,6 +61,7 @@ func TestAlertPagesShowWhatEachAlertDid(t *testing.T) {
 }
 
 func TestAlertHistoryFiltersUseLocalCalendarDays(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	h := r.h
 	p := Principal{SignInEmailAddress: "maya@example.test"}
@@ -91,6 +93,7 @@ func TestAlertHistoryFiltersUseLocalCalendarDays(t *testing.T) {
 }
 
 func TestAlertSourcePageStatesAndLocalDowntime(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	h, browser := r.h, r.daniel // Ordinary members can start and end downtime.
 	p := Principal{SignInEmailAddress: "maya@example.test"}
@@ -158,6 +161,7 @@ func TestAlertSourcePageStatesAndLocalDowntime(t *testing.T) {
 }
 
 func TestEmptyAlertsAndSourcesSayWhatToDo(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	browser := h.browser()
 	browser.addPerson("admin@example.test", "Barbara")

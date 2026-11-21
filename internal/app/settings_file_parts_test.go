@@ -55,6 +55,7 @@ const triageAgentSetupPartName = "triage_agent.coding_agent, triage_agent.creden
 // the part with its reason, and a section left out removes the setup. A
 // subscription token's year counts from when the file's credential applied.
 func TestSettingsFileAppliesTheAgentsThroughTheirSetupTests(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	root := Principal{UnixUser: "root"}
 	clock := time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC)
@@ -177,6 +178,7 @@ func TestSettingsFileAppliesTheAgentsThroughTheirSetupTests(t *testing.T) {
 // review agent's reviews and sign-in checks. The setup tests take the
 // file's (TestSettingsFileAppliesTheAgentsThroughTheirSetupTests).
 func TestEveryAgentRunCarriesTheModelAndReasoningEffort(t *testing.T) {
+	parallelStartingProcesses(t)
 	ctx := context.Background()
 	r := newSoftwareReviewRig(t)
 	// Credentials whose sign-in check runs the coding agent: an API key's
@@ -258,6 +260,7 @@ func fiveSendingServices(t *testing.T, smtpServer string) string {
 // unchanged service is not checked again; a service left out is removed,
 // and refused while contact methods use it.
 func TestSettingsFileAppliesEachSendingService(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	root := Principal{UnixUser: "root"}
 	smtp := newSMTPFixture(t, "250 accepted", "", false, nil)
@@ -344,6 +347,7 @@ func TestSettingsFileAppliesEachSendingService(t *testing.T) {
 // through a post of the current page with the file's R2 key; an unchanged
 // apply calls Cloudflare and R2 no more; a section left out removes each.
 func TestSettingsFileAppliesTheDownAlarmAndTheStatusPage(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	root := Principal{UnixUser: "root"}
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
@@ -412,6 +416,7 @@ func TestSettingsFileAppliesTheDownAlarmAndTheStatusPage(t *testing.T) {
 // file, and shown; a playbook the file stops listing, or of an inventory
 // the file stops listing, goes.
 func TestListedPlaybooksApplyAsTheFileListsThem(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	const preset = "    preset: routine_fixes_without_permission\n"
 	const staging = "  staging:\n    preset: permission_for_every_fix\n    playbooks:\n      every_server: {rule: get_permission_then_act, approvals_needed: 2}\n"
@@ -460,6 +465,7 @@ func TestListedPlaybooksApplyAsTheFileListsThem(t *testing.T) {
 // page of rules for running the agent's playbooks, and agent-playbook-rules show each name it; listing it
 // removes the note.
 func TestAnActionKindTheFileLeavesOutIsNamed(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	const note = "rules_for_running_agent_playbooks.production: check_only has no rule; it needs a person until you add one"
 	kinds := `    action_kinds:
@@ -523,6 +529,7 @@ func TestAnActionKindTheFileLeavesOutIsNamed(t *testing.T) {
 // each changed part in full and the unchanged parts as one counted line; the
 // JSON output keeps every part.
 func TestSettingsFileTextCountsUnchangedPartsOnOneLine(t *testing.T) {
+	t.Parallel()
 	view := SettingsFileView{SettingsFile: "/etc/mmhotline/mmhotline_settings.yml", Parts: []SettingsFilePartOutcome{
 		{Part: "team_name", State: "unchanged"},
 		{Part: "people", State: "applied"},

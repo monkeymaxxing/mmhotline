@@ -11,6 +11,7 @@ import (
 )
 
 func TestStoreCountsOnlyCommittedChanges(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	changes := 0
 	a.Store.teamChanged = func() { changes++ }
@@ -52,6 +53,7 @@ func TestStoreCountsOnlyCommittedChanges(t *testing.T) {
 }
 
 func TestOpenRequiresExistingRegularDatabase(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"missing", "directory", "symlink", "missing_schema", "invalid_database"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()
@@ -96,6 +98,7 @@ func TestOpenRequiresExistingRegularDatabase(t *testing.T) {
 }
 
 func TestStoreDatabaseSettings(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	if a.Store.db.Stats().MaxOpenConnections != 1 {
 		t.Fatal("database permits multiple connections")

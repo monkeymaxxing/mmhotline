@@ -72,6 +72,7 @@ func listedServers(t *testing.T, a *App) (map[string]string, TriageAgentView) {
 // A commit review run lists the servers and vendor pages' hosts too, so the
 // page and show describe its listing when it is the latest.
 func TestTheLatestCommitReviewRunsListingIsShown(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	for _, run := range []struct {
 		id, purpose, notListedBecause string
@@ -104,6 +105,7 @@ func runRecord(t *testing.T, a *App, runID string) (state, notListedBecause stri
 // listed. The agent's SSH settings get each server's address as its host key
 // alias. A person cannot remove an inventory server.
 func TestTriageAgentRunListsTheInventoryServers(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	installFakeMMXNodes(t, a, map[string]string{"production": productionNodes, "staging": stagingNodes})
 	// A server an earlier run listed, which the inventories no longer have.
@@ -156,6 +158,7 @@ func TestTriageAgentRunListsTheInventoryServers(t *testing.T) {
 // When mmx nodes fails for an inventory, or MMHotline finds no mmx, the run
 // goes on without those servers, and the run's record and the page say why.
 func TestTriageAgentRunGoesOnWithoutServersMMXCannotList(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name             string
 		mmx              map[string]string // nil: no mmx program
@@ -198,6 +201,7 @@ func TestTriageAgentRunGoesOnWithoutServersMMXCannotList(t *testing.T) {
 // private address and lets the connection through, both ways. A name the
 // inventories do not have is refused, and ssh shows the proxy's reason.
 func TestTriageAgentReadsAServerOverSSHThroughTheLoggingProxy(t *testing.T) {
+	parallelStartingProcesses(t)
 	ssh, err := exec.LookPath("ssh")
 	if err != nil {
 		t.Skip("this test connects with OpenSSH's ssh, which is not installed")

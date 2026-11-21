@@ -61,6 +61,7 @@ func assertCommandKeys(t *testing.T, raw string, keys ...string) {
 	check(value)
 }
 func TestCommandPeopleHandler(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	addPerson(t, a, "Barbara@Example.com", "Barbara", RoleAdministrator)
 	result, raw := commandRequest(t, a, CommandRequest{Group: "people", Action: "list"}, 200)
@@ -73,6 +74,7 @@ func TestCommandPeopleHandler(t *testing.T) {
 // TestRemovedCommandsAreRefusedAsUnknown: the settings file sets what these
 // commands changed, so the command socket answers each as unknown.
 func TestRemovedCommandsAreRefusedAsUnknown(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	for group, actions := range map[string][]string{
 		"people":               {"add", "change", "remove"},
@@ -87,6 +89,7 @@ func TestRemovedCommandsAreRefusedAsUnknown(t *testing.T) {
 	}
 }
 func TestCommandContactMethodsHandlerAndPageOwnership(t *testing.T) {
+	t.Parallel()
 	a, admin, members := coverageFixture(t)
 	a.WebURL = "https://mmhotline.example.com"
 	severities := []string{"sos", "warn", "info"}
@@ -149,6 +152,7 @@ func TestCommandContactMethodsHandlerAndPageOwnership(t *testing.T) {
 	}
 }
 func TestCommandWebhookSecretAndPhoneSave(t *testing.T) {
+	t.Parallel()
 	a, _, members := coverageFixture(t)
 	severities := []string{"sos"}
 	result, raw := commandRequest(t, a, CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: ContactMethodsCommandRequest{SharedWithTeam: true, ContactMethodType: "outgoing_webhook", OutgoingWebhookURL: "https://example.com/private-path?token=hidden", OutgoingWebhookBearerToken: "private-bearer", AlertSeverities: &severities}}, 200)
@@ -183,6 +187,7 @@ func TestCommandWebhookSecretAndPhoneSave(t *testing.T) {
 	commandRequest(t, a, CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: in}, 400)
 }
 func TestCommandAlertSourcesHandler(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	a.WebURL = "https://mmhotline.example.com"
 	a.AlertIntakeListenAddress = "10.0.0.5:8080"
@@ -208,6 +213,7 @@ func TestCommandAlertSourcesHandler(t *testing.T) {
 	}
 }
 func TestScheduleFileSignInEmailAddressTranslation(t *testing.T) {
+	t.Parallel()
 	members := []Member{{ID: "person-1", SignInEmailAddress: "barbara@example.com"}, {ID: "person-2", SignInEmailAddress: "carlos@example.com"}}
 	original := ScheduleConfig{Kind: "custom_schedule_code", TimeZone: "UTC", Assignments: []string{"person-1", ""}, RotationMemberIDs: []string{"person-2", "person-1"}, BackupKind: "fixed_person", BackupMemberID: "person-2", CustomScheduleCode: "unchanged source", CustomScheduleTestCases: []CustomScheduleTestCase{{When: "2026-10-05T09:00", ExpectedPrimaryMemberID: "person-1", ExpectedBackupMemberID: "person-2"}}}
 	file, err := scheduleFile(original, members)
@@ -230,6 +236,7 @@ func TestScheduleFileSignInEmailAddressTranslation(t *testing.T) {
 	}
 }
 func TestCommandSchedulesHandlerAndAudit(t *testing.T) {
+	t.Parallel()
 	a, _, members := coverageFixture(t)
 	a.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	file := ScheduleFile{ScheduleType: "weekly_rotation", TimeZone: "UTC", HandoffHour: 9, HandoffWeekday: 1, FirstStartDate: "2026-09-28", RotationSignInEmailAddresses: []string{members[0].SignInEmailAddress, members[1].SignInEmailAddress}, BackupOption: "next_in_rotation"}
@@ -276,6 +283,7 @@ func TestCommandSchedulesHandlerAndAudit(t *testing.T) {
 // schedules show reports the time to claim; the settings file sets it in
 // whole minutes from 1 to 60.
 func TestCommandEscalateIfUnclaimedAfter(t *testing.T) {
+	t.Parallel()
 	a, _, members := coverageFixture(t)
 	a.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	ctx := context.Background()
@@ -308,6 +316,7 @@ func TestCommandEscalateIfUnclaimedAfter(t *testing.T) {
 	}
 }
 func TestCommandCustomScheduleValidationAndAuthor(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	h.app.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	file := ScheduleFile{ScheduleType: customScheduleKind, TimeZone: "UTC", BackupOption: "fixed_person", BackupSignInEmailAddress: h.barbaraSignInEmailAddress, CustomScheduleCode: "def on_call(at):\n    return {\"primary_sign_in_email_address\": \"carlos@example.com\"}\n", CustomScheduleTestCases: []ScheduleFileTestCase{{LocalTime: "2026-10-05T09:00", ExpectedPrimarySignInEmailAddress: h.carlosInputSignInEmailAddress, ExpectedBackupSignInEmailAddress: h.barbaraSignInEmailAddress}}}
@@ -346,6 +355,7 @@ func TestCommandCustomScheduleValidationAndAuthor(t *testing.T) {
 	}
 }
 func TestSchedulePreviewExactChangeTimes(t *testing.T) {
+	t.Parallel()
 	a, _, members := coverageFixture(t)
 	now := time.Date(2026, 10, 5, 8, 37, 12, 0, time.UTC)
 	a.Now = func() time.Time { return now }
@@ -357,6 +367,7 @@ func TestSchedulePreviewExactChangeTimes(t *testing.T) {
 	}
 }
 func TestCommandRejectsMalformedEnvelope(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	for _, body := range []string{`{"group":"people","action":"list","typo":true}`, `{"group":"people","action":"list"} {}`} {
 		response := httptest.NewRecorder()
@@ -368,6 +379,7 @@ func TestCommandRejectsMalformedEnvelope(t *testing.T) {
 }
 
 func TestCommandContactMethodTextNames(t *testing.T) {
+	t.Parallel()
 	result := CommandResult{ContactMethods: []CommandContactMethod{{ContactMethodID: "method", SharedWithTeam: true, ContactMethodType: "email", SendsTo: "team@example.com"}}}
 	if text := result.Text(); !strings.Contains(text, "belongs to the team") || !strings.Contains(text, "Sends to: team@example.com") || !strings.Contains(text, "Last test message: no test message yet") {
 		t.Fatal(text)
@@ -397,6 +409,7 @@ func TestCommandContactMethodTextNames(t *testing.T) {
 // The alert source's lines call the machine that sends the check-ins, and
 // one in maintenance, a server, as the pages do.
 func TestCommandAlertSourceTextNamesServers(t *testing.T) {
+	t.Parallel()
 	until := time.Date(2026, 10, 27, 14, 0, 0, 0, time.UTC)
 	result := CommandResult{AlertSources: []CommandAlertSource{{Name: "Monitoring on util.example.com", AlertSourceID: "source", Active: true, CheckInState: CommandAlertSourceCheckInState{
 		Expected: true, LastCheckInAt: until.Add(-time.Hour), SentByNodeName: "util",
@@ -439,6 +452,7 @@ func settingsSchedule(f ScheduleFile) *SettingsOnCallSchedule {
 // An address with spaces around it and capitals is the same person for the
 // settings check, the apply, and the schedules preview.
 func TestScheduleAddressWithSpacesAndCapitalsIsOnePersonEverywhere(t *testing.T) {
+	t.Parallel()
 	a, _, members := coverageFixture(t)
 	a.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	admin := members[0]

@@ -200,6 +200,7 @@ func sendSignedAlert(a *App, sourceID, secret, senderAlertID string) error {
 }
 
 func TestSettingsFileAppliesEachPartAtStart(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	server := f.start()
@@ -266,6 +267,7 @@ func TestSettingsFileAppliesEachPartAtStart(t *testing.T) {
 }
 
 func TestSettingsFileAppliesTheTriageAgentsOwnSettings(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, replaced(t, exampleSettingsYAML,
 		"internet_access: listed_hosts_only", "internet_access: any_site",
@@ -328,6 +330,7 @@ func TestSettingsFileAppliesTheTriageAgentsOwnSettings(t *testing.T) {
 // TestUnchangedPartsAreNotWrittenAgain: a part whose value is the one in
 // effect is neither tested nor written again; only a changed part applies.
 func TestUnchangedPartsAreNotWrittenAgain(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()
@@ -367,6 +370,7 @@ func TestUnchangedPartsAreNotWrittenAgain(t *testing.T) {
 // parts apply; once the incident is resolved, the next apply deactivates
 // the person and keeps their history.
 func TestAFailedPartKeepsItsEarlierSetting(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	withBruno := replaced(t, exampleSettingsYAML, "    role: administrator\n", "    role: administrator\n  - name: Bruno Costa\n    sign_in_email_address: bruno@example.com\n    role: member\n")
 	f := newSettingsFileFixture(t, withBruno)
@@ -429,6 +433,7 @@ func TestAFailedPartKeepsItsEarlierSetting(t *testing.T) {
 // TestPeopleAndScheduleChangeInOneEdit: a person takes over another's place
 // in the rotation in one edit, which applies whole.
 func TestPeopleAndScheduleChangeInOneEdit(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, replaced(t, exampleSettingsYAML,
 		"    role: administrator\n", "    role: administrator\n  - name: Bruno Costa\n    sign_in_email_address: bruno@example.com\n    role: member\n",
@@ -455,6 +460,7 @@ func TestPeopleAndScheduleChangeInOneEdit(t *testing.T) {
 // saved schedule, so a saved schedule of another type no longer names
 // people who may have left.
 func TestTheScheduleIsTheOnlySavedSchedule(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()
@@ -475,6 +481,7 @@ func TestTheScheduleIsTheOnlySavedSchedule(t *testing.T) {
 // which names it, and gets the safest setting for every kind; the listed
 // inventories apply.
 func TestAnInventoryWithoutAgentPlaybookRules(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	inventories := filepath.Join(f.store.Dir, systemsrepository.DirectoryName, "inventories")
@@ -530,6 +537,7 @@ func TestAnInventoryWithoutAgentPlaybookRules(t *testing.T) {
 // TestAKindWithoutASavedSettingNeedsAPerson: no inventory gets a silent
 // default; every kind of one with no saved setting waits for a person.
 func TestAKindWithoutASavedSettingNeedsAPerson(t *testing.T) {
+	t.Parallel()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	rules, err := f.a.AgentPlaybookRules(context.Background(), Principal{UnixUser: "root"}, "testing")
 	if err != nil {
@@ -548,6 +556,7 @@ func TestAKindWithoutASavedSettingNeedsAPerson(t *testing.T) {
 // TestAnAlertSourceLeftOutIsDisabled: its secrets stop working at once, its
 // alerts stay, and listing it again enables it.
 func TestAnAlertSourceLeftOutIsDisabled(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()
@@ -585,6 +594,7 @@ func TestAnAlertSourceLeftOutIsDisabled(t *testing.T) {
 // restart is needed, naming the keys, and applies nothing, so the command
 // restarts MMHotline first.
 func TestARestartKeyChangeAppliesNothing(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()
@@ -616,6 +626,7 @@ func TestARestartKeyChangeAppliesNothing(t *testing.T) {
 // the settings it last applied and warns the administrators, naming the
 // problems by key path only.
 func TestAStartWithABrokenFileUsesTheEarlierSettings(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()
@@ -656,6 +667,7 @@ func TestAStartWithABrokenFileUsesTheEarlierSettings(t *testing.T) {
 }
 
 func TestTheFirstStartRefusesABrokenFile(t *testing.T) {
+	t.Parallel()
 	f := newSettingsFileFixture(t, replaced(t, exampleSettingsYAML, "  reasoning_effort: high\n  internet_access", "  internet_access"))
 	_, err := f.a.LoadSettingsFileAtStart(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "has problems, and MMHotline has never applied a settings file, so it cannot start:\ntriage_agent.reasoning_effort: required") {
@@ -666,6 +678,7 @@ func TestTheFirstStartRefusesABrokenFile(t *testing.T) {
 // TestAnAddressServeCannotOpenUsesTheEarlierOne: serve listens with the
 // server settings it last applied, and the server part says why.
 func TestAnAddressServeCannotOpenUsesTheEarlierOne(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()

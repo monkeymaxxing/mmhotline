@@ -147,6 +147,7 @@ func (r *slackRig) sos(t *testing.T) (Alert, fakesendingservices.SlackMessage) {
 }
 
 func TestSlackSetupCheckSecretsAndReplacement(t *testing.T) {
+	t.Parallel()
 	r := newSlackRig(t, false)
 	ctx := context.Background()
 	for _, field := range []string{"slack_bot_token", "slack_app_level_token"} {
@@ -206,6 +207,7 @@ func TestSlackSetupCheckSecretsAndReplacement(t *testing.T) {
 }
 
 func TestSlackConnectsPersonalAndSharedConversations(t *testing.T) {
+	t.Parallel()
 	r := newSlackRig(t, true)
 	ctx := context.Background()
 	connection := r.code(t, r.member.Principal, "personal_direct_message")
@@ -250,6 +252,7 @@ func TestSlackConnectsPersonalAndSharedConversations(t *testing.T) {
 }
 
 func TestSlackConnectionCodeBoundaries(t *testing.T) {
+	t.Parallel()
 	r := newSlackRig(t, true)
 	personal := r.code(t, r.member.Principal, "personal_direct_message")
 	r.sendCode(t, personal.Code, "U0001", "C0001", true)
@@ -291,6 +294,7 @@ func TestSlackConnectionCodeBoundaries(t *testing.T) {
 }
 
 func TestSlackSOSButtonsAuthorizeAndMatchTheirMessage(t *testing.T) {
+	t.Parallel()
 	r := newSlackRig(t, true)
 	r.connect(t, "personal_direct_message", "U0001", "D0001")
 	r.dispatch(t)
@@ -358,6 +362,7 @@ func TestSlackSOSButtonsAuthorizeAndMatchTheirMessage(t *testing.T) {
 }
 
 func TestSlackSocketModeFollowsSetupAndReconnects(t *testing.T) {
+	t.Parallel()
 	r := newSlackRig(t, false)
 	if opened, active := r.fake.SlackConnections(); opened != 0 || active != 0 {
 		t.Fatal("connected without setup")
@@ -403,6 +408,7 @@ func (transport *slackBlockingTransport) RoundTrip(request *http.Request) (*http
 }
 
 func TestSlackAcknowledgesWhileSendingServiceReplyWaits(t *testing.T) {
+	t.Parallel()
 	r := newSlackRig(t, true)
 	// Publish a replacement instance instead of mutating the running one.
 	current := r.a.configuredContactMethodTypes()["slack_message"].(*SlackMessageContactMethodType)
@@ -429,6 +435,7 @@ func TestSlackAcknowledgesWhileSendingServiceReplyWaits(t *testing.T) {
 }
 
 func TestSlackManifestAndCommandJSON(t *testing.T) {
+	t.Parallel()
 	parsed, err := url.Parse(SlackManifestLink())
 	if err != nil {
 		t.Fatal(err)
@@ -486,6 +493,7 @@ func TestSlackManifestAndCommandJSON(t *testing.T) {
 }
 
 func TestSlackConnectionPages(t *testing.T) {
+	t.Parallel()
 	r := newSlackRig(t, true)
 	server := httptest.NewTLSServer(r.a.Handler())
 	defer server.Close()
@@ -521,6 +529,7 @@ func TestSlackConnectionPages(t *testing.T) {
 }
 
 func TestSlackSendingKeepsTextEscapingAndResults(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		code          int
 		answer, state string
@@ -560,6 +569,7 @@ func TestSlackSendingKeepsTextEscapingAndResults(t *testing.T) {
 }
 
 func TestSlackFailedReplyKeepsAcknowledgedConnections(t *testing.T) {
+	t.Parallel()
 	r := newSlackRig(t, true)
 	current := r.a.configuredContactMethodTypes()["slack_message"].(*SlackMessageContactMethodType)
 	replacement := *current
@@ -582,6 +592,7 @@ func TestSlackFailedReplyKeepsAcknowledgedConnections(t *testing.T) {
 }
 
 func TestSlackCombinedMessagesHaveNoButtons(t *testing.T) {
+	t.Parallel()
 	r := newSlackRig(t, true)
 	r.connect(t, "shared_channel", "U0001", "C0001")
 	r.dispatch(t)
@@ -599,6 +610,7 @@ func TestSlackCombinedMessagesHaveNoButtons(t *testing.T) {
 }
 
 func TestFitChatMessageShortensOnlyTheAlertMessage(t *testing.T) {
+	t.Parallel()
 	fits := func(s string) bool { return utf8.RuneCountInString(s) <= 40 }
 	// The message "down" also appears in the title; only the message after
 	// the blank line is shortened.

@@ -14,6 +14,7 @@ import (
 )
 
 func TestTwilioSetupChecksAndProtectsContacts(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	fields := fakePhoneSetupFields()
@@ -57,6 +58,7 @@ func TestTwilioSetupChecksAndProtectsContacts(t *testing.T) {
 }
 
 func TestPhoneNumberRequiresSendingServiceSetup(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	s := memberFixture(t, a, "phone-setup@example.test")
 	if _, err := a.AddPhoneNumber(context.Background(), s.Principal, barbaraNumber); !errors.Is(err, ErrInvalid) {
@@ -65,6 +67,7 @@ func TestPhoneNumberRequiresSendingServiceSetup(t *testing.T) {
 }
 
 func TestPhoneCallPollingDeadlinesAndNoChangeWrites(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	r.addPhone(t, r.s.Principal, barbaraNumber)
 	r.sos(t, "Database down")
@@ -105,6 +108,7 @@ func TestPhoneCallPollingDeadlinesAndNoChangeWrites(t *testing.T) {
 }
 
 func TestPhoneCallPollingStopsAtThreeMinutes(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	r.addPhone(t, r.s.Principal, barbaraNumber)
 	r.sos(t, "Database down")
@@ -129,6 +133,7 @@ func TestPhoneCallPollingStopsAtThreeMinutes(t *testing.T) {
 }
 
 func TestIdleAutomatedVoiceCallContactMethodTypeMakesNoRequestsOrWrites(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	// The fake records call fetches on each call. Count all HTTP requests too,
 	// so an accidental account or empty-call lookup cannot pass this check.
@@ -188,6 +193,7 @@ func (c *phoneCreationTransport) RoundTrip(r *http.Request) (*http.Response, err
 	return c.next.RoundTrip(r)
 }
 func TestPhoneCallCreationHasNoStatusCallbackParameters(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	capture := &phoneCreationTransport{next: http.DefaultTransport}
 	r.sendingServices.Client = &http.Client{Transport: capture}
@@ -203,6 +209,7 @@ func TestPhoneCallCreationHasNoStatusCallbackParameters(t *testing.T) {
 }
 
 func TestPhoneCallCanceledResultEndsPolling(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	contact := r.addPhone(t, r.s.Principal, barbaraNumber)
 	r.sos(t, "Database down")

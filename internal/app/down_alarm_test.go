@@ -161,6 +161,7 @@ func (r *downAlarmRig) alertsTitled(t *testing.T, title string) []Alert {
 }
 
 func TestDownAlarmSetUpUploadsTheWorkerAndChecksInWithTheHeldMessages(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	result, raw := r.setUp(t, "")
 	worker := r.worker(t)
@@ -222,6 +223,7 @@ func TestDownAlarmSetUpUploadsTheWorkerAndChecksInWithTheHeldMessages(t *testing
 // refuses while the Worker's preview addresses are on. The set-up turns
 // previews off, so the whole name, up to 63 characters, works.
 func TestDownAlarmSetUpWithALongHostName(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.a.WebURL = "https://oncall-production.example-company.com"
 	name := downAlarmWorkerName(r.a.WebURL)
@@ -238,6 +240,7 @@ func TestDownAlarmSetUpWithALongHostName(t *testing.T) {
 // person on call's held messages wait the first time, the backup's the
 // second. Changing them uploads no Worker again.
 func TestDownAlarmWakeTimesAreTheSettings(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	held := r.lastCheckIn(t)
@@ -260,6 +263,7 @@ func TestDownAlarmWakeTimesAreTheSettings(t *testing.T) {
 }
 
 func TestDownAlarmSetUpRefusals(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.fake.WorkersDevSubdomain = ""
 	r.setUp(t, "Open Workers & Pages in the Cloudflare dashboard once")
@@ -277,6 +281,7 @@ func TestDownAlarmSetUpRefusals(t *testing.T) {
 }
 
 func TestDownAlarmChecksInEveryMinuteAndAtOnceWhenWhoIsOnCallChanges(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	r.advance(5 * time.Second)
@@ -312,6 +317,7 @@ func TestDownAlarmChecksInEveryMinuteAndAtOnceWhenWhoIsOnCallChanges(t *testing.
 }
 
 func TestDownAlarmAllClearReachesThePeopleTheDownAlarmWoke(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	stopped := r.a.Now().Add(-time.Hour).UTC()
@@ -355,6 +361,7 @@ func TestDownAlarmAllClearReachesThePeopleTheDownAlarmWoke(t *testing.T) {
 }
 
 func TestDownAlarmSetUpAgainAnnouncesNoEarlierSends(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	stopped := r.a.Now().Add(-time.Hour).UTC()
@@ -391,6 +398,7 @@ func TestDownAlarmSetUpAgainAnnouncesNoEarlierSends(t *testing.T) {
 }
 
 func TestDownAlarmFailingCheckInsRaiseOneWarnAlert(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	r.fake.ChangeWorker(downAlarmWorker, func(w *fakecloudflare.Worker) { w.Unreachable = true })
@@ -428,6 +436,7 @@ func TestDownAlarmFailingCheckInsRaiseOneWarnAlert(t *testing.T) {
 // stops checking in after 2 minutes, so the MMHotline-down alarm wakes the person on
 // call. A successful visit brings the check-ins back.
 func TestDownAlarmStopsCheckingInWhileTheBackgroundLoopFails(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	ctx := context.Background()
 	// The background visit sends through fake sending services, never the
@@ -488,6 +497,7 @@ func TestDownAlarmStopsCheckingInWhileTheBackgroundLoopFails(t *testing.T) {
 // The administrators hear once whom the MMHotline-down alarm cannot wake, and again
 // only when that changes.
 func TestDownAlarmTellsTheAdministratorsOnceWhomItCannotWake(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	const title = "The MMHotline-down alarm cannot wake everyone on call"
@@ -529,6 +539,7 @@ func TestDownAlarmTellsTheAdministratorsOnceWhomItCannotWake(t *testing.T) {
 }
 
 func TestDownAlarmUpgradeUploadsTheNewWorker(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	token := r.worker(t).Secrets[downalarm.CheckInTokenSecretName]
@@ -554,6 +565,7 @@ func TestDownAlarmUpgradeUploadsTheNewWorker(t *testing.T) {
 }
 
 func TestDownAlarmUpgradeUploadFailingForADayTellsTheAdministrators(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	// The person who made the token left the account, so Cloudflare stopped
@@ -593,6 +605,7 @@ func TestDownAlarmUpgradeUploadFailingForADayTellsTheAdministrators(t *testing.T
 }
 
 func TestDownAlarmRemoveSetupHoldsNothingFirst(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	r.fake.ChangeWorker(downAlarmWorker, func(w *fakecloudflare.Worker) { w.Unreachable = true })
@@ -623,6 +636,7 @@ func TestDownAlarmRemoveSetupHoldsNothingFirst(t *testing.T) {
 }
 
 func TestDownAlarmDashboardCardAndSendATest(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	server := httptest.NewServer(r.a.Handler())
 	defer server.Close()
@@ -704,6 +718,7 @@ func TestDownAlarmSetUpWaitsForANewWorkersDevAddress(t *testing.T) {
 // SOS escalates. Members reached only as everyone available raise no notice
 // when they cannot be woken, as with an SOS.
 func TestDownAlarmWakesEveryoneElseAvailableWhenTheBackupIsEveryoneAvailable(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	if _, err := r.a.SaveSchedule(context.Background(), r.barbara, ScheduleConfig{Kind: "day_of_week", TimeZone: "UTC", Assignments: []string{r.barbaraID, r.barbaraID, r.barbaraID, r.barbaraID, r.barbaraID, r.barbaraID, r.barbaraID}, BackupKind: "everyone_available"}, 1); err != nil {
 		t.Fatal(err)
@@ -732,6 +747,7 @@ func TestDownAlarmWakesEveryoneElseAvailableWhenTheBackupIsEveryoneAvailable(t *
 // MMHotline-down alarm wakes everyone available. A person reached only that
 // way raises no notice, unless no held message would wake anyone at all.
 func TestDownAlarmNamesNobodyReachedOnlyAsEveryoneAvailableWhenThePersonOnCallIsUnavailable(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	ctx := context.Background()
 	memberFixture(t, r.a, "carol@example.com") // no waking contact method
@@ -788,6 +804,7 @@ func pushoverEmergencyAt(t *testing.T, sendingServicesURL, userKey string) strin
 // notification, and cancels the notification's repeats at once. A voice call
 // keeps today's test. Each failure names its part.
 func TestDownAlarmTestIsProvedFromPushoversReceiptAndItsRepeatsAreCancelled(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	// The held requests keep Pushover's real https address; the receipt is
@@ -859,6 +876,7 @@ func TestDownAlarmTestIsProvedFromPushoversReceiptAndItsRepeatsAreCancelled(t *t
 // may start one at most once every 10 minutes, and 6 in 24 hours. Root's
 // command is not limited: root already holds those accounts' credentials.
 func TestDownAlarmTestFromThePageHasLimits(t *testing.T) {
+	t.Parallel()
 	r := newDownAlarmRig(t)
 	r.setUp(t, "")
 	code := 200

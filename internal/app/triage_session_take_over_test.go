@@ -68,6 +68,7 @@ func actThenReportReboot(t *testing.T, a *App) *fakeRunner {
 // a playbook it asks for is refused. When the hand-over ends, the session
 // ends, and the next alert starts a new one.
 func TestTakingOverStopsTheRunAndHandsOver(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	runner := actThenReportReboot(t, r.a)
 	sos := r.alert(t, "sos", "Database on db001 is down", "db001")
@@ -196,6 +197,7 @@ func TestTakingOverStopsTheRunAndHandsOver(t *testing.T) {
 // works on it, so MMHotline wakes the person on call at once. An SOS that
 // arrives before the session ends never waits for the agent.
 func TestTakingOverWakesAnSOSThatWaitsForTheAgent(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	sos := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
 	r.runStarted(t)
@@ -229,6 +231,7 @@ func TestTakingOverWakesAnSOSThatWaitsForTheAgent(t *testing.T) {
 // A Stop while no run is going hands over at once. When the agent never
 // began, nothing is handed over: the session ends at once.
 func TestTakingOverWhileNoRunIsGoing(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("the agent hands over at once", func(t *testing.T) {
 		r := newTriageSessionRig(t, true)
 		sos := r.alert(t, "sos", "Database on db001 is down", "db001")
@@ -297,6 +300,7 @@ func TestTakingOverWhileNoRunIsGoing(t *testing.T) {
 // tells the agent. Its approval requests stay open: nothing runs without a
 // person's approval anyway.
 func TestTakingOverStopsWarnedRunsAndKeepsApprovals(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")
 	runner := &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
@@ -346,6 +350,7 @@ func TestTakingOverStopsWarnedRunsAndKeepsApprovals(t *testing.T) {
 // A hand-over that MMHotline's own stop or restart cuts short is resumed, as
 // every run so cut is, and the session ends after it.
 func TestHandOverAfterARestart(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range restartsDuringARun {
 		t.Run(test.name, func(t *testing.T) {
 			r := newTriageSessionRig(t, true)
@@ -391,6 +396,7 @@ func TestHandOverAfterARestart(t *testing.T) {
 // review agent's minutes would allow, still runs nothing: the decision
 // checks the session again.
 func TestStopWhileMMHotlineReadsThePlaybook(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	runner := actThenReportReboot(t, r.a)
 	// mmx explain waits until the test releases it.
@@ -430,6 +436,7 @@ func TestStopWhileMMHotlineReadsThePlaybook(t *testing.T) {
 // MMHotline still records how the playbook run went, and the hand-over
 // tells the agent, so its note and report say whether the fix ran.
 func TestHandOverTellsTheResultOfAPlaybookRunTheStopInterrupted(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	actThenReportReboot(t, r.a)
 	r.a.triageAgent.playbookRunner = r.a

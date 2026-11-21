@@ -129,6 +129,7 @@ func standInField(t *testing.T, field *regexp.Regexp, text string) string {
 // guide's steps on the real handler, through a server with a cookie jar, so a
 // change to a form field or a route the guide uses fails here.
 func TestStandInPersonActsThroughThePages(t *testing.T) {
+	parallelStartingProcesses(t)
 	ctx := context.Background()
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")

@@ -61,6 +61,7 @@ func checkNoInternalTexts(t *testing.T, page string) {
 // line with a count, the next step shows at the end of "What happened", and
 // every reason is in plain words.
 func TestAnSOSThatWaitsForAClaimSaysWhomItWakesAndOffersClaim(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	ctx := context.Background()
 	renameMember(t, r.a, r.principal, "Daniel Reyes")
@@ -145,6 +146,7 @@ func TestAnSOSThatWaitsForAClaimSaysWhomItWakesAndOffersClaim(t *testing.T) {
 // Once resolved, nobody is offered Claim, Take over, or Resolve, and the
 // page says who resolved it.
 func TestAClaimedIncidentOffersTakeOverToOthersAndAResolvedOneNothing(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	ctx := context.Background()
 	renameMember(t, r.a, r.principal, "Daniel Reyes")
@@ -201,6 +203,7 @@ func TestAClaimedIncidentOffersTakeOverToOthersAndAResolvedOneNothing(t *testing
 // claimed the incident first, woke nobody, so the page says MMHotline was
 // about to wake the person; once one notification goes out, it woke them.
 func TestARoundThatSentNothingSaysMMHotlineWasAboutToWake(t *testing.T) {
+	t.Parallel()
 	r := incidentReader{id: "reader", names: map[string]string{"daniel": "Daniel Reyes"}, now: time.Date(2026, 11, 3, 3, 20, 0, 0, time.UTC), zone: time.UTC}
 	at := r.now.Add(-5 * time.Minute)
 	round := IncidentAction{Kind: "sos_escalation_due", Revision: 2, At: at, TargetMemberIDs: []string{"daniel"}, Message: "Contacting Daniel Reyes (on call)"}
@@ -228,6 +231,7 @@ func TestARoundThatSentNothingSaysMMHotlineWasAboutToWake(t *testing.T) {
 // acknowledgement sends, has a subject and no title; the incident's history
 // names it by its subject instead of printing an empty name.
 func TestTheHistoryNamesANoticeWithoutATitleBySubject(t *testing.T) {
+	t.Parallel()
 	r := incidentReader{id: "reader", names: map[string]string{"daniel": "Daniel Reyes"}, now: time.Date(2026, 11, 3, 3, 20, 0, 0, time.UTC), zone: time.UTC}
 	notice := Delivery{Purpose: "system_notice", Subject: "MMHotline claim result", Message: "You claimed Disk full.", CreatedAt: r.now, MemberID: "daniel", ContactMethodType: "pushover_notification", State: "accepted"}
 	rows := r.deliveries([]Delivery{notice})

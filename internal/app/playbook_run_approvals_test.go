@@ -169,6 +169,7 @@ func approvalSession(t *testing.T, r *triageSessionRig) (Alert, fakeTriageRun, t
 // session. Without an open incident, it opens one of its own, which never
 // waits for the triage agent.
 func TestApprovalNeededAsksAtSOS(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("it joins the session's incident and wakes the person on call", func(t *testing.T) {
 		r := newTriageHoldRig(t)
 		judged := prepareApprovals(t, r.a, "")
@@ -238,6 +239,7 @@ func TestApprovalNeededAsksAtSOS(t *testing.T) {
 // person who approves sees what is unusual. Here a restart also enables the
 // service at boot, as an agent wrote it on a real server.
 func TestApprovalSaysWhyATaskIsUnrecognized(t *testing.T) {
+	parallelStartingProcesses(t)
 	const playbook = "one_time_playbooks/2026-11-03_restart_caddy_on_app002.yml"
 	const why = "The task MMHotline did not recognize, and why: restart_caddy/task_1 (systemd_service): systemd_service.start_at_boot is not an allowed argument for Start or restart a service (name, state, restart_now, run_only_once_marker_file, in_systemd_of_user_account)."
 	r := newTriageSessionRig(t, true)
@@ -304,6 +306,7 @@ func TestApprovalSaysWhyATaskIsUnrecognized(t *testing.T) {
 // needed, one approval runs nothing, the same person's second counts
 // nothing, and a second person's runs it.
 func TestApprovedPlaybookRuns(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("one approval", func(t *testing.T) {
 		r := newTriageSessionRig(t, true)
 		records := t.TempDir()
@@ -381,6 +384,7 @@ func TestApprovedPlaybookRuns(t *testing.T) {
 // One refusal ends the request with its reason: nothing runs, nobody can
 // approve it any more, and the reason resumes the agent's session.
 func TestRefusedPlaybookRun(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")
 	runner := &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
@@ -421,6 +425,7 @@ func TestRefusedPlaybookRun(t *testing.T) {
 // commit and asks for approval again, or runs it when the rules for running the agent's playbooks now
 // let it run without a person.
 func TestStaleApproval(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name       string
 		actWithout bool
@@ -474,6 +479,7 @@ func TestStaleApproval(t *testing.T) {
 // after the start; a run that had started is never run again, and its record
 // says why.
 func TestApprovedRunAcrossARestart(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("approved, not started", func(t *testing.T) {
 		r := newTriageSessionRig(t, true)
 		prepareApprovals(t, r.a, "")
@@ -545,6 +551,7 @@ func (runner blockingRunner) RunPlaybook(context.Context, TriageAgentPlaybookRun
 // agent. While an approved run goes, its session stays open, and the quiet
 // time counts from the result.
 func TestApprovalAfterItsSessionEnded(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")
 	runner := &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
@@ -682,6 +689,7 @@ func postForRedirect(t *testing.T, b *workflowBrowser, path string, form url.Val
 // who is not signed in are refused. After a decision the person lands back
 // on the page, which shows what happened and offers no decision again.
 func TestApprovalPages(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	judged := prepareApprovals(t, r.a, "")
 	r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
@@ -833,6 +841,7 @@ func TestApprovalPages(t *testing.T) {
 // offers Approve again to the person who approved; another member still
 // may, and anyone may still refuse.
 func TestApprovalPageWithTwoApprovalsNeeded(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")
 	if err := setAgentPlaybookRule(context.Background(), r.a, Principal{UnixUser: "fixture"}, "production", string(actionkinds.RebootAServer), AgentPlaybookRule{Rule: getPermissionThenAct, ApprovalsNeeded: 2}); err != nil {
@@ -874,6 +883,7 @@ func TestApprovalPageWithTwoApprovalsNeeded(t *testing.T) {
 // approval leaves the request waiting, the page says Ben's approval no longer
 // counts, and the run starts only when Cara, a current member, approves.
 func TestRemovedMembersApprovalNoLongerCounts(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")
 	fixture := Principal{UnixUser: "fixture"}
@@ -930,6 +940,7 @@ func TestRemovedMembersApprovalNoLongerCounts(t *testing.T) {
 // runs, the one that runs next first, then, quiet, what was decided or run
 // lately; each leads to its own page.
 func TestApprovalsListOrder(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")
 	r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
@@ -982,6 +993,7 @@ func TestApprovalsListOrder(t *testing.T) {
 // server is named once, in order; past three the title counts the rest. A
 // task MMX knows it skips changes nothing.
 func TestServersItChanges(t *testing.T) {
+	t.Parallel()
 	// explained is mmx explain's output with one node task per "node status" pair.
 	explained := func(tasks ...string) string {
 		var listed []string

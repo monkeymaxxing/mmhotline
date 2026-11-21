@@ -338,18 +338,34 @@ Run the whole Go suite with a 30-minute limit:
 go test -timeout 30m ./...
 ```
 
-Reason: `internal/app` runs its 646 tests one after another, in about 9
-minutes on a MacBook (measured 2026-11-15), and a busy machine pushed it
+Reason: `internal/app` has 732 tests that start Git, shell scripts, and the
+test binary. They took about 7.5 minutes one after another on a MacBook
+(measured 2026-11-21), and a busy machine pushed an earlier, shorter run
 past `go test`'s default 10-minute limit, which fails the package with
-`panic: test timed out after 10m0s` while no test is at fault. The time is
-spread out: the 18 tests over 5 seconds take about 3 minutes together, the
-rest under a second or two each, so no single test is worth cutting for
-this. The time depends mostly on the machine's load: on 2026-11-15, with the
-MacBook's load average near 100 from other sessions, the same package took
-24 minutes, and four MMX run tests that measure seconds failed
+`panic: test timed out after 10m0s` while no test is at fault. Most tests
+now call `t.Parallel`, and the package takes about 3 minutes on the same
+MacBook. The time still depends mostly on the machine's load: on 2026-11-15,
+with the MacBook's load average near 100 from other sessions, the same
+package took 24 minutes, and four MMX run tests that measure seconds failed
 (`TestMMXRunTimeLimit` and three others), then passed when run alone. A
 suite slower than about 10 minutes, or a timing test that fails, means
 checking `uptime` before looking for a slow test.
+
+Parallel tests share one process, so a test stays serial, with no
+`t.Parallel`, when it changes something the process shares and restores it
+before it returns: environment variables (`t.Setenv`), the working
+directory, the `log` output, a package variable such as a time limit, or
+the copy lock's file when it checks that the lock is free. A test whose
+result is a wall-clock time of seconds, such as the MMX run time limit
+tests, also stays serial. Go finishes every serial top-level test before
+it resumes any parallel one, so a serial test never overlaps a parallel
+one. A test that starts Git, shell scripts, or the test binary begins with
+`parallelStartingProcesses(t)` instead of `t.Parallel()`, which lets four
+such tests run at once: with every test at once, each start is slower, and
+tests that wait ten seconds for a fake agent or MMX run failed. `TestMain`
+gives the whole run one empty `HOME`. It also wraps `http.DefaultTransport`
+so that `httptest.Server.Close` does not call its `CloseIdleConnections`:
+one test's server closing would otherwise break another test's request.
 
 ## Static analysis for a release
 

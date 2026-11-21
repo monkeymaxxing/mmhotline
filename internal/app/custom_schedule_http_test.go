@@ -11,6 +11,7 @@ import (
 // code worked out, to every member, and keeps the code, its test cases,
 // and its saved versions in a fold. The settings file saves the code.
 func TestPublicWorkflowCustomScheduleCode(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	h.app.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	admin := h.browser()

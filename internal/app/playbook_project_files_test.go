@@ -72,6 +72,7 @@ var payloadFileLines = []string{
 // that installs one_time_playbooks/.payload as a unit file can no longer
 // hide the unit's text behind its path.
 func TestApproversSeeTheFilesAPlaybookCopies(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	runner := &fakeRunner{calls: make(chan fakeRunnerCall, 8)}
 	r.a.triageAgent.playbookRunner = runner
@@ -110,6 +111,7 @@ func TestApproversSeeTheFilesAPlaybookCopies(t *testing.T) {
 // The review agent reads the same files, quoted line by line in their own
 // section after the playbook.
 func TestTheReviewAgentSeesTheFilesAPlaybookCopies(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newReviewRoundsRig(t)
 	installFakeMMX(t, r.a, map[string]string{"2026-11-03_free_disk_space_on_app002": strings.ReplaceAll(installPayloadExplained, installPayloadPlaybook, freeDiskSpacePlaybook)})
 	// The review agent reviews a playbook the rules would run without a person.

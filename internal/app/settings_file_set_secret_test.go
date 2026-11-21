@@ -14,6 +14,7 @@ import (
 // key of the Go types, and the other way round. The two lists must not
 // drift, because set-secret accepts exactly the types' list.
 func TestSettingsSecretKeyPathsAreTheReferencesSecretRows(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile("../../docs/reference/settings-file.md")
 	if err != nil {
 		t.Fatal(err)
@@ -79,6 +80,7 @@ const (
 )
 
 func TestEditSettingsSecretKeepsCommentsAndOrderAndCreatesTheParentSections(t *testing.T) {
+	t.Parallel()
 	const token = "azGDORePK8gMaC0QOYAMyEEuzJnyUi"
 	edit, problems, err := EditSettingsSecret([]byte(setSecretFile), "sending_services.pushover.application_token", token)
 	if err != nil {
@@ -103,6 +105,7 @@ func TestEditSettingsSecretKeepsCommentsAndOrderAndCreatesTheParentSections(t *t
 }
 
 func TestEditSettingsSecretRefusesWhatIsNotASecretKeyAndNamesTheSecretKeys(t *testing.T) {
+	t.Parallel()
 	for _, keyPath := range []string{"team_name", "sending_services.pushover.user_key", "alert_sources[].signing_secrets", "triage_agent[x].credential", ""} {
 		_, _, err := EditSettingsSecret([]byte(setSecretFile), keyPath, "value-0123")
 		if err == nil || !strings.Contains(err.Error(), "is not a secret key") || !strings.Contains(err.Error(), "triage_agent.credential") || !strings.Contains(err.Error(), "alert_sources[ID].signing_secrets") {
@@ -112,6 +115,7 @@ func TestEditSettingsSecretRefusesWhatIsNotASecretKeyAndNamesTheSecretKeys(t *te
 }
 
 func TestEditSettingsSecretRefusesAnUnknownAlertSourceAndNamesTheKnownOnes(t *testing.T) {
+	t.Parallel()
 	_, _, err := EditSettingsSecret([]byte(setSecretFile), "alert_sources[nope].signing_secrets", firstHexSecret)
 	if err == nil || !strings.Contains(err.Error(), "no alert source with the ID nope") || !strings.Contains(err.Error(), "monitoring") {
 		t.Fatalf("err=%v", err)
@@ -119,6 +123,7 @@ func TestEditSettingsSecretRefusesAnUnknownAlertSourceAndNamesTheKnownOnes(t *te
 }
 
 func TestEditSettingsSecretReportsTheKeysOwnProblemWithoutTheValue(t *testing.T) {
+	t.Parallel()
 	const bad = "Zq7-not-a-pushover-token"
 	_, problems, err := EditSettingsSecret([]byte(setSecretFile), "sending_services.pushover.application_token", bad)
 	if err != nil || len(problems) != 1 || problems[0].KeyPath != "sending_services.pushover.application_token" {
@@ -131,6 +136,7 @@ func TestEditSettingsSecretReportsTheKeysOwnProblemWithoutTheValue(t *testing.T)
 }
 
 func TestEditSettingsSecretReplacesThePlaceholderThenKeepsTheEarlierSigningSecret(t *testing.T) {
+	t.Parallel()
 	first, problems, err := EditSettingsSecret([]byte(setSecretFile), "alert_sources[monitoring].signing_secrets", firstHexSecret)
 	if err != nil || len(problems) != 0 || first.KeptEarlierSigningSecret {
 		t.Fatalf("edit=%+v problems=%v err=%v", first, problems, err)
@@ -149,6 +155,7 @@ func TestEditSettingsSecretReplacesThePlaceholderThenKeepsTheEarlierSigningSecre
 }
 
 func TestWriteSettingsFileTextKeepsTheModeAndLeavesNoTemporaryFile(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	path := filepath.Join(directory, "mmhotline_settings.yml")
 	if err := os.WriteFile(path, []byte("old"), 0o640); err != nil {

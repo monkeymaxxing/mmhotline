@@ -38,6 +38,7 @@ func dayOfWeekFor(memberID string) ScheduleConfig {
 }
 
 func TestScheduleDayOfWeekDSTAndHourOfDayRepeatedHours(t *testing.T) {
+	t.Parallel()
 	c := ScheduleConfig{Kind: "day_of_week", TimeZone: "America/New_York", HandoffHour: 2, HandoffMinute: 30, Assignments: []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}, BackupKind: "everyone_available"}
 	cases := []struct{ at, want string }{{"2026-03-08T06:59:59Z", "Saturday"}, {"2026-03-08T07:00:00Z", "Sunday"}, {"2026-03-09T06:29:59Z", "Sunday"}, {"2026-03-09T06:30:00Z", "Monday"}}
 	for _, tc := range cases {
@@ -74,6 +75,7 @@ func TestScheduleDayOfWeekDSTAndHourOfDayRepeatedHours(t *testing.T) {
 }
 
 func TestSchedulePreviewActivationPreservationAndAuthorization(t *testing.T) {
+	t.Parallel()
 	a, p, people := coverageFixture(t)
 	ctx := context.Background()
 	c := dayOfWeekFor(people[0].ID)
@@ -123,6 +125,7 @@ func TestSchedulePreviewActivationPreservationAndAuthorization(t *testing.T) {
 }
 
 func TestOnCallClaimExplicitReplacementConcurrentConflictAndBypass(t *testing.T) {
+	t.Parallel()
 	a, p, people := coverageFixture(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -197,6 +200,7 @@ func TestOnCallClaimExplicitReplacementConcurrentConflictAndBypass(t *testing.T)
 }
 
 func TestTeamMuteIsSeparateFromEligibilityAndCannotBeBypassed(t *testing.T) {
+	t.Parallel()
 	a, p, people := coverageFixture(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -249,6 +253,7 @@ func TestTeamMuteIsSeparateFromEligibilityAndCannotBeBypassed(t *testing.T) {
 }
 
 func TestCoverageExpiryPersistsAndAuditsOnce(t *testing.T) {
+	t.Parallel()
 	a, p, people := coverageFixture(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -306,6 +311,7 @@ func TestCoverageExpiryPersistsAndAuditsOnce(t *testing.T) {
 }
 
 func TestAvailabilityDurationAndRejectedState(t *testing.T) {
+	t.Parallel()
 	for _, s := range []string{"0m", "-1h", "31d", "9223372036854775807d", "1.5d", "soon", "30s"} {
 		if _, err := ParseAvailabilityDuration(s); err == nil {
 			t.Errorf("accepted %s", s)
@@ -336,6 +342,7 @@ func TestAvailabilityDurationAndRejectedState(t *testing.T) {
 }
 
 func TestScheduleHandoffCurrentOnlyAndNoOnCallClaimDuplicate(t *testing.T) {
+	t.Parallel()
 	a, p, people := coverageFixture(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -377,6 +384,7 @@ func TestScheduleHandoffCurrentOnlyAndNoOnCallClaimDuplicate(t *testing.T) {
 }
 
 func TestUnavailabilityIsTheOnlyPersonalControl(t *testing.T) {
+	t.Parallel()
 	a, p, members := coverageFixture(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -424,6 +432,7 @@ func weeklyRotationFor(memberIDs ...string) ScheduleConfig {
 }
 
 func TestWeeklyRotationCalendarOrderAndBoundaries(t *testing.T) {
+	t.Parallel()
 	c := weeklyRotationFor("First", "Second", "Third")
 	for _, tc := range []struct{ at, primary, backup string }{
 		{"2026-09-21T09:00:00Z", "", ""},
@@ -449,6 +458,7 @@ func TestWeeklyRotationCalendarOrderAndBoundaries(t *testing.T) {
 }
 
 func TestWeeklyRotationDST(t *testing.T) {
+	t.Parallel()
 	for _, transition := range []struct {
 		name, start string
 		hour        int
@@ -480,6 +490,7 @@ func TestWeeklyRotationDST(t *testing.T) {
 }
 
 func TestWeeklyRotationValidationAndPreservation(t *testing.T) {
+	t.Parallel()
 	a, p, people := coverageFixture(t)
 	ctx := context.Background()
 	c := weeklyRotationFor(people[2].ID, people[0].ID, people[1].ID)
@@ -529,6 +540,7 @@ func TestWeeklyRotationValidationAndPreservation(t *testing.T) {
 }
 
 func TestWeeklyRotationBackupFallbackAndHandoffs(t *testing.T) {
+	t.Parallel()
 	a, p, people := coverageFixture(t)
 	ctx := context.Background()
 	c := weeklyRotationFor(people[0].ID, people[1].ID, people[2].ID)
@@ -597,6 +609,7 @@ func TestWeeklyRotationBackupFallbackAndHandoffs(t *testing.T) {
 }
 
 func TestOnCallReasonsUsePlainSentences(t *testing.T) {
+	t.Parallel()
 	a, p, people := coverageFixture(t)
 	ctx := context.Background()
 	check := func(want string) {

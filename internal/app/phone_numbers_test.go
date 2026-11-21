@@ -162,6 +162,7 @@ func deliveriesOf(t *testing.T, a *App, contactMethodID string) []Delivery {
 }
 
 func TestParsePhoneNumberCountries(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ typed, number, country, refusal string }{
 		{"+1 (555) 555-0123", "+15555550123", usOrCanada, ""},
 		{"0044 7700 900123", "+447700900123", "the UK", ""},
@@ -195,6 +196,7 @@ func TestParsePhoneNumberCountries(t *testing.T) {
 }
 
 func TestAddingAPhoneNumberCreatesAAutomatedVoiceCallContactMethod(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -253,6 +255,7 @@ func getPage(t *testing.T, c *http.Client, url string) string {
 }
 
 func TestAddAPhoneNumberThroughTheContactMethodsPage(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	c := r.browser(t)
 	page := getPage(t, c, r.server.URL+"/contact-methods")
@@ -332,6 +335,7 @@ func alertTitles(t *testing.T, a *App, p Principal) string {
 }
 
 func TestNewPhoneReceivesSOSBeforeItsTest(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	added, err := r.a.AddPhoneNumber(context.Background(), r.s.Principal, barbaraNumber)
 	if err != nil {
@@ -359,6 +363,7 @@ func TestNewPhoneReceivesSOSBeforeItsTest(t *testing.T) {
 }
 
 func TestThreePhoneNumbersPerMember(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	for _, number := range []string{"+15555550101", "+15555550102", "+15555550103"} {
 		if _, err := r.a.AddPhoneNumber(context.Background(), r.s.Principal, number); err != nil {

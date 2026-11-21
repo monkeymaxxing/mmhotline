@@ -88,6 +88,7 @@ func checkedPlaybooksRig(t *testing.T) (*triageSessionRig, *fakeRunner, string, 
 // for each of the three settings, and needs_a_person says it in the JSON.
 // Checking changes nothing in the database and runs nothing.
 func TestCheckWhetherAPlaybookNeedsAPersonShowsWhatTheAgentPlaybookRulesDecide(t *testing.T) {
+	parallelStartingProcesses(t)
 	r, runner, mmxCalls, commit := checkedPlaybooksRig(t)
 	ctx := context.Background()
 	fixture := Principal{UnixUser: "fixture"}
@@ -226,6 +227,7 @@ func TestCheckWhetherAPlaybookNeedsAPersonShowsWhatTheAgentPlaybookRulesDecide(t
 // never reviewed, so its answer leaves the line out. The review agent is not
 // asked.
 func TestCheckWhetherAPlaybookNeedsAPersonSaysWhenTheReviewAgentWouldReviewIt(t *testing.T) {
+	parallelStartingProcesses(t)
 	r, _, _, commit := checkedPlaybooksRig(t)
 	const reviewLine = "\nA review agent would also review the playbook before the playbook runs. The check command does not ask the review agent.\n"
 
@@ -275,6 +277,7 @@ func TestCheckWhetherAPlaybookNeedsAPersonSaysWhenTheReviewAgentWouldReviewIt(t 
 // the same message for a request MMHotline refuses. needs_a_person is true
 // exactly when the agent's request waits for a person's approval.
 func TestCheckWhetherAPlaybookNeedsAPersonAgreesWithTheTriageAgentsRequest(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	ctx := context.Background()
 	runner := &fakeRunner{calls: make(chan fakeRunnerCall, 8)}

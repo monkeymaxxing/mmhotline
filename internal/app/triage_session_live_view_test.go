@@ -21,6 +21,7 @@ import (
 // shows there. With no session open, the dashboard says so in one line and
 // links to the last session.
 func TestASessionOfWarnAlertsOnlyIsSeenAndStoppedOnItsOwnPage(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	server := httptest.NewTLSServer(r.a.Handler())
 	t.Cleanup(server.Close)
@@ -119,6 +120,7 @@ func TestASessionOfWarnAlertsOnlyIsSeenAndStoppedOnItsOwnPage(t *testing.T) {
 // over, which returns to the incident, and links to the session's own page; a team without the triage agent sees no
 // triage agent part on the dashboard.
 func TestIncidentPageLinksToItsTriageSession(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	sos := r.alert(t, "sos", "Database on db001 is down", "db001")
 	r.drive(t)
@@ -159,6 +161,7 @@ func TestIncidentPageLinksToItsTriageSession(t *testing.T) {
 // The session page uses the team's time zone in every section and gives each
 // phase an honest action, including no run yet and a failed latest run.
 func TestTriageSessionPageStatesAndTeamTimes(t *testing.T) {
+	t.Parallel()
 	r := newOnCallTeamRig(t)
 	now := r.h.app.Now()
 	for _, test := range []struct {

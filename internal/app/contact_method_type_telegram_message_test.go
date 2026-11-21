@@ -202,6 +202,7 @@ func incidentHistory(t *testing.T, a *App, p Principal, id string) []string {
 }
 
 func TestTelegramConnectsAMemberChatAndATeamGroup(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	link, err := r.a.StartTelegramConnection(ctx, r.s.Principal, "personal_chat")
@@ -258,6 +259,7 @@ func TestTelegramConnectsAMemberChatAndATeamGroup(t *testing.T) {
 }
 
 func TestTelegramStartTokenIsSingleUseAndExpires(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	token := r.startToken(t, r.s.Principal, "personal_chat")
@@ -319,6 +321,7 @@ func TestTelegramStartTokenIsSingleUseAndExpires(t *testing.T) {
 }
 
 func TestTelegramSOSMessageButtonsClaimAsTheLinkedMember(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	c := r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())
@@ -365,6 +368,7 @@ func TestTelegramSOSMessageButtonsClaimAsTheLinkedMember(t *testing.T) {
 }
 
 func TestTelegramResolveButtonStaysAfterAClaimAndResolvesFromThatMessage(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())
@@ -389,6 +393,7 @@ func TestTelegramResolveButtonStaysAfterAClaimAndResolvesFromThatMessage(t *test
 }
 
 func TestTelegramPressFromAnUnknownAccountOrTheWrongMessage(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())
@@ -442,6 +447,7 @@ func TestTelegramPressFromAnUnknownAccountOrTheWrongMessage(t *testing.T) {
 }
 
 func TestTelegramNeverTakesOverAndReportsResolved(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())
@@ -477,6 +483,7 @@ func TestTelegramNeverTakesOverAndReportsResolved(t *testing.T) {
 }
 
 func TestTelegramResolveButton(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	// A responder who can be woken: otherwise the notice that MMHotline
@@ -506,6 +513,7 @@ func TestTelegramResolveButton(t *testing.T) {
 }
 
 func TestTelegramSOSChatRuleAfterTenInTenMinutes(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	// A responder who can be woken: otherwise each SOS adds the notice that
@@ -580,6 +588,7 @@ func TestTelegramSOSChatRuleAfterTenInTenMinutes(t *testing.T) {
 }
 
 func TestTelegramCombinedMessagesHaveNoButtons(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	r.connect(t, r.s.Principal, "team_group", barbara, opsGroup())
 	for n := range 3 {
@@ -595,6 +604,7 @@ func TestTelegramCombinedMessagesHaveNoButtons(t *testing.T) {
 }
 
 func TestTelegramSendTestAndSendFailures(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	c := r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())
@@ -628,6 +638,7 @@ func TestTelegramSendTestAndSendFailures(t *testing.T) {
 }
 
 func TestTelegramPollerOffsetAndRepeatedUpdates(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())
@@ -655,6 +666,7 @@ func TestTelegramPollerOffsetAndRepeatedUpdates(t *testing.T) {
 }
 
 func TestTelegramPollerStopsCleanlyAndRestarts(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	var reportsMu sync.Mutex
@@ -713,6 +725,7 @@ func TestTelegramPollerStopsCleanlyAndRestarts(t *testing.T) {
 }
 
 func TestTelegramPollingFailureIsReportedWithoutTheToken(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	a.ContactMethodTypes = map[string]ContactMethodType{"telegram_message": &TelegramMessageContactMethodType{BotToken: "123:secret-bot-token", APIBaseURL: "http://127.0.0.1:1/telegram"}}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -728,6 +741,7 @@ func TestTelegramPollingFailureIsReportedWithoutTheToken(t *testing.T) {
 }
 
 func TestClaimFromANotificationRacesTheBrowser(t *testing.T) {
+	t.Parallel()
 	for range 5 {
 		r := newTelegramRig(t)
 		ctx := context.Background()
@@ -757,6 +771,7 @@ func TestClaimFromANotificationRacesTheBrowser(t *testing.T) {
 }
 
 func TestClaimFromANotificationRules(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())
@@ -792,6 +807,7 @@ func TestClaimFromANotificationRules(t *testing.T) {
 }
 
 func TestTelegramThroughTheContactMethodsPage(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	fake := fakesendingservices.New()
 	server := httptest.NewServer(fake)
@@ -841,6 +857,7 @@ func TestTelegramThroughTheContactMethodsPage(t *testing.T) {
 // Everyone in a group sees the bot's /start message; repeating it must not
 // link anyone else to the member who made the link.
 func TestTelegramGroupStartRepeatedByAnotherUserLinksNobody(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	token := r.startToken(t, r.s.Principal, "team_group")
 	r.fake.TelegramStart(barbara, opsGroup(), token)
@@ -858,6 +875,7 @@ func TestTelegramGroupStartRepeatedByAnotherUserLinksNobody(t *testing.T) {
 
 // A press forged onto the buttonless "{N} more" message does nothing.
 func TestTelegramPressOnAMessageWithoutButtonsIsRefused(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())
@@ -886,6 +904,7 @@ func TestTelegramPressOnAMessageWithoutButtonsIsRefused(t *testing.T) {
 }
 
 func TestTelegramFollowsAGroupUpgradedToASupergroup(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	group := r.connect(t, r.s.Principal, "team_group", barbara, opsGroup())
 	update := telegramUpdate{UpdateID: 99, Message: &telegramMessage{MessageID: 7, Chat: telegramChat{ID: opsGroup().ID, Type: "group"}, MigrateToChatID: -1009999}}
@@ -899,6 +918,7 @@ func TestTelegramFollowsAGroupUpgradedToASupergroup(t *testing.T) {
 }
 
 func TestTelegramTextIsCutInUTF16Units(t *testing.T) {
+	t.Parallel()
 	if got := truncateUTF16(strings.Repeat("😀", 10), 11); got != "😀😀😀😀😀…" {
 		t.Fatalf("%q", got)
 	}
@@ -911,6 +931,7 @@ func TestTelegramTextIsCutInUTF16Units(t *testing.T) {
 }
 
 func TestTelegramConnectionRollsBackTokenWhenContactCreationFails(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	token := r.startToken(t, r.s.Principal, "personal_chat")
@@ -969,6 +990,7 @@ func (f failingSummaryTelegram) Send(ctx context.Context, m ContactMethodSend) D
 // combined into it are not shown as sent, in the delivery log or on their
 // incident page.
 func TestSOSCombinedIntoAFailedChatMessageShowsAsFailed(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())

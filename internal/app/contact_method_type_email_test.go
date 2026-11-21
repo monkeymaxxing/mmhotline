@@ -142,6 +142,7 @@ func emailSetupFields(contactMethodType EmailContactMethodType) map[string]strin
 }
 
 func TestSMTPSetupCheck(t *testing.T) {
+	t.Parallel()
 	for _, methods := range []string{"PLAIN LOGIN", "LOGIN", ""} {
 		t.Run(methods, func(t *testing.T) {
 			server := newSMTPFixture(t, "250 accepted", methods, false, nil)
@@ -187,6 +188,7 @@ func TestSMTPSetupCheck(t *testing.T) {
 	}
 }
 func TestSMTPSetupRefusalKeepsPrevious(t *testing.T) {
+	t.Parallel()
 	good := newSMTPFixture(t, "250 accepted", "", false, nil)
 	app := foundationApp(t)
 	member := memberFixture(t, app, "smtp-refusal@example.test")
@@ -206,6 +208,7 @@ func TestSMTPSetupRefusalKeepsPrevious(t *testing.T) {
 	}
 }
 func TestSMTPStartTLSRequired(t *testing.T) {
+	t.Parallel()
 	server := newSMTPFixture(t, "250 accepted", "", false, nil)
 	contactMethodType := server.contactMethodType()
 	contactMethodType.SMTPConnectionSecurity = "starttls"
@@ -217,6 +220,7 @@ func TestSMTPStartTLSRequired(t *testing.T) {
 	}
 }
 func TestSMTPAddressAndCredentialRules(t *testing.T) {
+	t.Parallel()
 	valid := EmailContactMethodType{SMTPServer: "smtp.example.com:587", SMTPConnectionSecurity: "starttls", EmailFromAddress: "alerts@example.com"}
 	for _, test := range []struct {
 		name   string
@@ -246,6 +250,7 @@ func TestSMTPAddressAndCredentialRules(t *testing.T) {
 	}
 }
 func TestSMTPMessageEncodingAndStableID(t *testing.T) {
+	t.Parallel()
 	server := newSMTPFixture(t, "250 accepted", "", false, nil)
 	contactMethodType := server.contactMethodType()
 	message := ContactMethodSend{DeliveryID: "delivery-1", SentTo: "barbara@example.com", Subject: "[SOS] Chișinău — investigate", Text: "Unicode: 你好 👋\n.dot\r\nTabs:\t trailing \n" + strings.Repeat("very long line ", 300)}
@@ -285,6 +290,7 @@ func TestSMTPMessageEncodingAndStableID(t *testing.T) {
 	}
 }
 func TestSMTPReplyOutboxResults(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		reply, state string
 		retry        bool
@@ -331,6 +337,7 @@ func TestSMTPReplyOutboxResults(t *testing.T) {
 	}
 }
 func TestSMTPConnectionFailureAndCancellation(t *testing.T) {
+	t.Parallel()
 	server := newSMTPFixture(t, "250 accepted", "", false, nil)
 	contactMethodType := server.contactMethodType()
 	_ = server.server.Close()
@@ -363,6 +370,7 @@ func TestSMTPConnectionFailureAndCancellation(t *testing.T) {
 }
 
 func TestSMTPSetupPageOptionalCredentials(t *testing.T) {
+	t.Parallel()
 	rig := newWorkflowRig(t)
 	browser := rig.browser()
 	browser.addPerson("smtp-admin@example.test", "Administrator")

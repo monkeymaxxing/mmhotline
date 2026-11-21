@@ -65,6 +65,7 @@ func noteGivenInRun(t *testing.T, a *App, note string) string {
 // incident of another cause stays for that cause. The session's next run
 // does not get the note again.
 func TestTriageSessionsFirstRunGetsANoteOfTheSameCauseOnce(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newIncidentNotesRig(t)
 	// The first session looks into two problems, and its runs end; then Ana
 	// resolves both incidents with a note, and the session ends.
@@ -112,6 +113,7 @@ func TestTriageSessionsFirstRunGetsANoteOfTheSameCauseOnce(t *testing.T) {
 // A note a person writes on the session's own incident while its run is
 // active reaches the session's next run, and only that run.
 func TestANoteOnTheSessionsOwnIncidentReachesItsNextRun(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newIncidentNotesRig(t)
 	disk := r.alert(t, "sos", "Disk of app002 is 97% full", "app002-disk")
 	r.drive(t)
@@ -142,6 +144,7 @@ func TestANoteOnTheSessionsOwnIncidentReachesItsNextRun(t *testing.T) {
 // joined the session while the run before was active. The run after it does
 // not get the note again.
 func TestANoteOnTheSessionsIncidentReachesItsNextRunWhateverItCarries(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newIncidentNotesRig(t)
 	outage := r.alert(t, "sos", "Writes to db001 fail", "db001-writes")
 	r.drive(t)
@@ -177,6 +180,7 @@ func TestANoteOnTheSessionsIncidentReachesItsNextRunWhateverItCarries(t *testing
 // for a person, gets the notes on every incident of the session, the one the
 // playbook run was asked for and the session's other one alike.
 func TestARunThatCarriesOnlyAResultGetsTheSessionsNotes(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newIncidentNotesRig(t)
 	prepareApprovals(t, r.a, "")
 	r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
@@ -205,6 +209,7 @@ func TestARunThatCarriesOnlyAResultGetsTheSessionsNotes(t *testing.T) {
 // agent, the prompt shows the newest, oldest first, and says how many older
 // ones it left out.
 func TestManyNotesLeaveTheAlertsRoom(t *testing.T) {
+	t.Parallel()
 	var notes []triageSessionPromptIncidentNote
 	for n := range 100 {
 		// '<' takes six bytes in JSON, so only the encoded size keeps the limit.
@@ -234,6 +239,7 @@ func TestManyNotesLeaveTheAlertsRoom(t *testing.T) {
 // A software review is no triage session: it gets no note, and the note
 // still reaches the next session about its cause.
 func TestASoftwareReviewGetsNoNote(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newSoftwareReviewRig(t)
 	if _, err := r.a.Store.db.Exec(`UPDATE members SET name='Ana Silva'`); err != nil {
 		t.Fatal(err)

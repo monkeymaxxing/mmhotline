@@ -63,7 +63,6 @@ func prepareSystemsRepositoryRunWithRunMMX(t *testing.T, a *App, runMMX, script 
 // files, by path, as the systems repository's first commit.
 func prepareSystemsRepositoryRunWithFiles(t *testing.T, a *App, files map[string]string, script string) *systemsRepositoryRun {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
 	gitProgram, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
@@ -283,6 +282,7 @@ const testDiagnosis = "# The journal fills the disk of app002\n\ndf shows / at 9
 // sends its report. MMHotline pushes the commit, hands the request to the
 // decider, and the agent reads each outcome's answer and exit code.
 func TestTriageAgentPlaybookRunRequest(t *testing.T) {
+	parallelStartingProcesses(t)
 	longOutput := "TASK [free disk space]\n" + strings.Repeat("ok: [app002]\n", 2000) + "PLAY RECAP app002 failed=1\n"
 	// The agent gets the last 16 KiB, after a line that says what was left out.
 	const sixteenKiB = 16 << 10
@@ -379,6 +379,7 @@ mmhotline triage-agent report --alert-severity warn --report-file "$HOME/report.
 
 // Commits that change run_mmx wait for a person, and the decider is never asked.
 func TestTriageAgentPlaybookRunRequestWithCommitsThatWait(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	runs := newFakePlaybookRuns(t, TriageAgentPlaybookRunDecision{Outcome: triageagent.RanAndSucceeded, Message: "ran"})
 	a.triageAgent.playbookRuns = runs
@@ -416,6 +417,7 @@ mmhotline triage-agent request-playbook-run --playbook `+requestedPlaybook+` --i
 // relay: it refuses what the relay would have refused and records it, and a
 // request ID it cannot answer fails the run.
 func TestTriageAgentHandWrittenRequests(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	admin := memberFixture(t, a, "admin@example.test").Principal
 	runs := triageRunFixture(t, a)
@@ -483,6 +485,7 @@ func TestTriageAgentHandWrittenRequests(t *testing.T) {
 
 // A request ID the run sent before fails the run: answers are matched by it.
 func TestTriageAgentRepeatedRequestIDFailsTheRun(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	admin := memberFixture(t, a, "admin@example.test").Principal
 	runs := triageRunFixture(t, a)

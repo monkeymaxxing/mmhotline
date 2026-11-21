@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -12,6 +13,10 @@ import (
 
 	"mmhotline/internal/triageagent"
 )
+
+// withoutCloseIdleConnections is a RoundTripper that is not a transport with
+// CloseIdleConnections, so httptest.Server.Close leaves it alone.
+type withoutCloseIdleConnections struct{ http.RoundTripper }
 
 // The test binary stands in for the mmhotline binary: the sandbox runner starts
 // os.Executable() with the hidden subcommand, and a fake coding agent runs
@@ -29,8 +34,25 @@ func TestMain(m *testing.M) {
 	if len(os.Args) == 3 && os.Args[1] == "custom-schedule-sandbox-lockdown-probe" {
 		os.Exit(customScheduleLockdownProbe(os.Args[2]))
 	}
+	// One empty home for the whole run, so Git, ssh-keygen, and the other
+	// programs the tests start never read the developer's own ~/.gitconfig or
+	// ~/.ssh. A per-test t.Setenv would keep every test that starts them from
+	// running in parallel. Nothing under test writes to it, and no test reads
+	// it back: the fake sandbox and MMX get their own HOME.
+	home, err := os.MkdirTemp("", "mmhotline-test-home-")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("HOME", home)
+	// httptest.Server.Close calls CloseIdleConnections on http.DefaultTransport
+	// when it has that method. Parallel tests share the transport, so one
+	// test's server closing would break another test's request in flight to its
+	// own server ("transport connection broken"). Without the method, each
+	// server still closes its own connections.
+	http.DefaultTransport = withoutCloseIdleConnections{http.DefaultTransport}
 	code := m.Run()
 	removeTestSigningFiles()
+	os.RemoveAll(home)
 	os.Exit(code)
 }
 
@@ -166,6 +188,7 @@ func signInEmailAddressOf(answer customScheduleAnswer) string {
 }
 
 func TestCustomScheduleCodeFieldsAndHelpers(t *testing.T) {
+	t.Parallel()
 	code := `
 def on_call(at):
     other = at.in_time_zone("Europe/Berlin")
@@ -198,6 +221,7 @@ def on_call(at):
 }
 
 func TestCustomScheduleCodeRestrictionsAndResults(t *testing.T) {
+	t.Parallel()
 	at := "2026-10-05T09:30:00-04:00"
 	for _, tc := range []struct {
 		name, code, kind, message string
@@ -245,6 +269,7 @@ func TestCustomScheduleCodeRestrictionsAndResults(t *testing.T) {
 }
 
 func TestCustomScheduleSandboxResponseIsNeverTrusted(t *testing.T) {
+	t.Parallel()
 	carlos := "carlos@example.com"
 	mallory := "mallory@example.com"
 	request := customScheduleSandboxRequest{TimeZone: "UTC", TeamMemberSignInEmailAddresses: []string{carlos}, AskedTimes: []string{"2026-10-05T09:30:00Z"}}
@@ -269,6 +294,7 @@ func TestCustomScheduleSandboxResponseIsNeverTrusted(t *testing.T) {
 }
 
 func TestCustomScheduleRefusesControlAndTextDirectionCharacters(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	for name, character := range map[string]string{"carriage return": "\r", "escape": "\x1b[2K", "C1 control": "\u0085", "right-to-left override": "\u202e", "isolate": "\u2066", "Arabic letter mark": "\u061c"} {
 		code := "def on_call(at):\n    # note" + character + "\n    return {\"primary_sign_in_email_address\": \"barbara@example.com\"}\n"
@@ -284,6 +310,7 @@ func TestCustomScheduleRefusesControlAndTextDirectionCharacters(t *testing.T) {
 }
 
 func TestCustomScheduleSandboxSlotsBoundConcurrencyAndHonorCancellation(t *testing.T) {
+	t.Parallel()
 	slots := newCustomScheduleSandboxSlots()
 	ctx := context.Background()
 	first, err := slots.acquire(ctx)
@@ -329,6 +356,7 @@ func (h *customScheduleTeam) save(t *testing.T, c ScheduleConfig) CustomSchedule
 }
 
 func TestCustomScheduleHourlyRunsFailuresMemberRemovalAndRunningOut(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	ctx := context.Background()
 	config := customConfig(weekdayWeekendCode)
@@ -417,6 +445,7 @@ func TestCustomScheduleHourlyRunsFailuresMemberRemovalAndRunningOut(t *testing.T
 // shows it and the next failure is announced again.
 
 func TestCustomScheduleSavedCodeEndsAnEarlierFailure(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	ctx := context.Background()
 	h.save(t, customConfig(weekdayWeekendCode))
@@ -456,6 +485,7 @@ func TestCustomScheduleSavedCodeEndsAnEarlierFailure(t *testing.T) {
 }
 
 func TestCustomScheduleStaleRunIsDiscarded(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	ctx := context.Background()
 	h.save(t, customConfig(weekdayWeekendCode))
@@ -483,6 +513,7 @@ func TestCustomScheduleStaleRunIsDiscarded(t *testing.T) {
 }
 
 func TestCustomScheduleSaveActivatesAndCoverageReadsStoredShifts(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	ctx := context.Background()
 	config := customConfig(weekdayWeekendCode)
@@ -553,6 +584,7 @@ func TestCustomScheduleSaveActivatesAndCoverageReadsStoredShifts(t *testing.T) {
 }
 
 func TestCustomScheduleVersionHistoryKeepsLast20(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	first := h.save(t, customConfig(weekdayWeekendCode))
 	onlyBarbara := customConfig("def on_call(at):\n    return {\"primary_sign_in_email_address\": \"barbara@example.com\"}\n")

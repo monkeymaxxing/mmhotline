@@ -76,6 +76,7 @@ func quotedTask(task string) string {
 // team's task quoted from scheduled_software_review_task.md, and the report
 // command. MMHotline's own former task, OSV.dev's queries, is gone.
 func TestSoftwareReviewStartsEachIntervalWithTheTeamsTask(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newSoftwareReviewRig(t)
 	firstStart := r.a.Now()
 	r.rounds(t)
@@ -135,6 +136,7 @@ func TestSoftwareReviewStartsEachIntervalWithTheTeamsTask(t *testing.T) {
 // JSON, and the page say off. run-software-review still runs one review, so
 // a team learns what a review costs before it turns the schedule on.
 func TestScheduledSoftwareReviewOff(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, setOff := range []bool{false, true} {
 		t.Run(map[bool]string{false: "never set", true: "set to off"}[setOff], func(t *testing.T) {
 			r := newTriageSessionRig(t, true)
@@ -242,6 +244,7 @@ func pushSoftwareReviewTask(t *testing.T, a *App, task string, present bool) {
 // next review, and a change to the copy's files that no commit holds never
 // does, as the agent's own copy never counts.
 func TestSoftwareReviewReadsTheTaskAtItsStartingCommit(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newSoftwareReviewRig(t)
 	const pushed = "Check caddy on app001 against its newest release on GitHub.\n"
 	pushSoftwareReviewTask(t, r.a, pushed, true)
@@ -260,6 +263,7 @@ func TestSoftwareReviewReadsTheTaskAtItsStartingCommit(t *testing.T) {
 // says what to do, show and the page give the reason, and the failed review
 // counts: the next is due one interval later, not at once.
 func TestSoftwareReviewWithoutAUsableTaskFails(t *testing.T) {
+	parallelStartingProcesses(t)
 	const next = ` (see "Turn on the scheduled software review" in MMHotline's documentation, https://github.com/monkeymaxxing/mmhotline/blob/main/docs/how-to/turn-on-the-scheduled-software-review.md), or set software_review_interval_hours to off.`
 	for _, test := range []struct {
 		name, task string
@@ -308,6 +312,7 @@ func TestSoftwareReviewWithoutAUsableTaskFails(t *testing.T) {
 // session's run goes first, and the review starts again once that run ends,
 // with the session still open.
 func TestSoftwareReviewWaitsOnlyWhileATriageRunIsActive(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newSoftwareReviewRig(t)
 	prepareApprovals(t, r.a, "")
 	r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
@@ -350,6 +355,7 @@ func TestSoftwareReviewWaitsOnlyWhileATriageRunIsActive(t *testing.T) {
 // run starts, and the review starts again once that run ends, even when the
 // stop came before the agent reported its session.
 func TestSoftwareReviewStopsForATriageSession(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newSoftwareReviewRig(t)
 	r.rounds(t)
 	review := r.nextReview(t)
@@ -380,6 +386,7 @@ func TestSoftwareReviewStopsForATriageSession(t *testing.T) {
 // its way is a failed review, not a stopped one: it keeps its reason, and it
 // counts, so the next review waits the interval.
 func TestASoftwareReviewThatFailsBeforeTheStopForASessionFailed(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newSoftwareReviewRig(t)
 	r.rounds(t)
 	review := r.nextReview(t)
@@ -407,6 +414,7 @@ func TestASoftwareReviewThatFailsBeforeTheStopForASessionFailed(t *testing.T) {
 // still due the team's interval after the last one started, and a review
 // that a restart cut short starts again at once.
 func TestSoftwareReviewScheduleSurvivesARestart(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("after a finished review", func(t *testing.T) {
 		// The rig's fixture records a review that finished now.
 		r := newTriageSessionRig(t, true)
@@ -449,6 +457,7 @@ func TestSoftwareReviewScheduleSurvivesARestart(t *testing.T) {
 // show gives the interval, who set it, and when the next review is due. Only an administrator, or root through the
 // command, changes it.
 func TestAShorterSoftwareReviewIntervalStartsAReviewAtOnce(t *testing.T) {
+	parallelStartingProcesses(t)
 	// The rig's fixture records a review that finished now.
 	r := newTriageSessionRig(t, true)
 	lastStart := r.a.Now()
@@ -525,6 +534,7 @@ func reportAlert(t *testing.T, a *App, title string) Alert {
 // that wakes the person on call at once, without waiting for the agent; no
 // report starts a session.
 func TestSoftwareReviewReportsBecomeAlerts(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newSoftwareReviewRig(t)
 	r.rounds(t)
 	run := r.nextReview(t)
@@ -571,6 +581,7 @@ func TestSoftwareReviewReportsBecomeAlerts(t *testing.T) {
 // does not stop it. A review started by hand counts: the next is due one
 // interval after it.
 func TestRunSoftwareReviewCommand(t *testing.T) {
+	parallelStartingProcesses(t)
 	// The rig's fixture records a review that finished now.
 	r := newTriageSessionRig(t, true)
 	if err := r.a.SetSoftwareReviewInterval(context.Background(), settingsFilePrincipal, 24); err != nil {
@@ -612,6 +623,7 @@ func TestRunSoftwareReviewCommand(t *testing.T) {
 // ran, its outcome, its token use with the cached input, and how many reports
 // it sent at each alert severity.
 func TestTriageAgentPageShowsTheLatestSoftwareReview(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newSoftwareReviewRig(t)
 	page := func() string {
 		t.Helper()

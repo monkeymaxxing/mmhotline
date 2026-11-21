@@ -11,6 +11,7 @@ import (
 )
 
 func TestContactCardAndItsChangeNotice(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -75,6 +76,7 @@ func TestContactCardAndItsChangeNotice(t *testing.T) {
 // unavailable shows as unavailable and skipped, whatever could wake them:
 // before the redesign the page said "Can be woken for SOS: Yes" for them.
 func TestTheOnCallPageSkipsAnUnavailablePersonWhoCouldBeWoken(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	p := r.s.Principal
 	addMember(t, r.a, "Carol", RoleMember)
@@ -98,6 +100,7 @@ func TestTheOnCallPageSkipsAnUnavailablePersonWhoCouldBeWoken(t *testing.T) {
 }
 
 func TestFailingPhoneCannotBeWoken(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	carol, _ := addMember(t, r.a, "Carol", RoleMember)

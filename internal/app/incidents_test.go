@@ -77,6 +77,7 @@ func newIncidentFixture(t *testing.T, a *App, p Principal) Incident {
 	return i
 }
 func TestOverdueIncidentAdvancesOnceAndConcurrentClaimsCancelSOSEscalation(t *testing.T) {
+	t.Parallel()
 	a, p, members := incidentTeam(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -176,6 +177,7 @@ func TestOverdueIncidentAdvancesOnceAndConcurrentClaimsCancelSOSEscalation(t *te
 	}
 }
 func TestCoverageChangesPreserveTargetUntilIneligible(t *testing.T) {
+	t.Parallel()
 	a, p, m := incidentTeam(t)
 	ctx := context.Background()
 	i := newIncidentFixture(t, a, p)
@@ -215,6 +217,7 @@ func TestCoverageChangesPreserveTargetUntilIneligible(t *testing.T) {
 	}
 }
 func TestTeamMuteNoCoverageFallbackAndUnmuteCoalesceCurrentWork(t *testing.T) {
+	t.Parallel()
 	a, p, m := incidentTeam(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -277,6 +280,7 @@ func TestTeamMuteNoCoverageFallbackAndUnmuteCoalesceCurrentWork(t *testing.T) {
 	_ = mute
 }
 func TestIncidentOperationsPreserveClaimedOwnership(t *testing.T) {
+	t.Parallel()
 	a, p, m := incidentTeam(t)
 	ctx := context.Background()
 	i := newIncidentFixture(t, a, p)
@@ -298,6 +302,7 @@ func TestIncidentOperationsPreserveClaimedOwnership(t *testing.T) {
 }
 
 func TestIncidentHistoryAndNoticesUseNamesAndTitles(t *testing.T) {
+	t.Parallel()
 	a, p, members := coverageFixture(t)
 	ctx := context.Background()
 	for _, m := range members {
@@ -396,6 +401,7 @@ func TestIncidentHistoryAndNoticesUseNamesAndTitles(t *testing.T) {
 }
 
 func TestOnlyMemberFirstContactAndRepeatText(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	person := memberFixture(t, a, "only-member@example.test")
 	giveWakingContactMethod(t, a, "only-member@example.test")
@@ -470,6 +476,7 @@ func (r *escalateIfUnclaimedAfterRig) stepAt(t *testing.T, id string, after time
 // An unclaimed SOS reaches the backup when the window the command set ends,
 // and not before.
 func TestTheEscalateIfUnclaimedAfterSetByTheCommandTimesEachEscalationStep(t *testing.T) {
+	t.Parallel()
 	r := newEscalateIfUnclaimedAfterRig(t)
 	r.setEscalateIfUnclaimedAfter(t, 2)
 	id := newIncidentFixture(t, r.a, r.p).ID
@@ -491,6 +498,7 @@ func TestTheEscalateIfUnclaimedAfterSetByTheCommandTimesEachEscalationStep(t *te
 // A changed window does not move the end of a step already under way; the
 // next step gets the new window.
 func TestAChangedEscalateIfUnclaimedAfterReachesTheStepsThatStartAfterTheChange(t *testing.T) {
+	t.Parallel()
 	r := newEscalateIfUnclaimedAfterRig(t)
 	id := newIncidentFixture(t, r.a, r.p).ID
 	r.now = r.start.Add(time.Minute)
@@ -515,6 +523,7 @@ func TestAChangedEscalateIfUnclaimedAfterReachesTheStepsThatStartAfterTheChange(
 // shared one transaction, so one stored row the code could not handle
 // stopped escalation for all of them, every second.
 func TestOneIncidentThatFailsDoesNotStopTheOthersEscalating(t *testing.T) {
+	t.Parallel()
 	a, p, members := incidentTeam(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -547,6 +556,7 @@ func TestOneIncidentThatFailsDoesNotStopTheOthersEscalating(t *testing.T) {
 // over steps knows, and the CHECK refuses any other step, so a step added in
 // one place only is refused when it is saved.
 func TestEveryEscalationStepIsKnownWhereverStepsAreUsed(t *testing.T) {
+	t.Parallel()
 	a, p, members := incidentTeam(t)
 	ctx := context.Background()
 	at := a.Now().Add(time.Minute)
@@ -594,6 +604,7 @@ func TestEveryEscalationStepIsKnownWhereverStepsAreUsed(t *testing.T) {
 // and never escalated, and the dashboard left it out: MMHotline's own SOS
 // about refused SOS alerts, and each urgent report of a software review.
 func TestMMHotlinesOwnSOSPastTheIncidentLimitEscalatesAndShowsOnTheDashboard(t *testing.T) {
+	t.Parallel()
 	a, p, members := incidentTeam(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -670,6 +681,7 @@ func TestMMHotlinesOwnSOSPastTheIncidentLimitEscalatesAndShowsOnTheDashboard(t *
 // history said "Contacting" them and the incident page said MMHotline woke
 // them, while nothing was sent.
 func TestAPersonWithNoWakingContactMethodIsSkippedAtOnce(t *testing.T) {
+	t.Parallel()
 	a, p, members := incidentTeam(t)
 	ctx := context.Background()
 	now := a.Now()
@@ -720,6 +732,7 @@ func TestAPersonWithNoWakingContactMethodIsSkippedAtOnce(t *testing.T) {
 // not wake, and tells the administrators once; the rounds that follow repeat
 // neither.
 func TestAnSOSThatNobodyCanBeWokenForReachesEveryoneAvailableAndSaysSoOnce(t *testing.T) {
+	t.Parallel()
 	a, p, members := incidentTeam(t)
 	ctx := context.Background()
 	now := a.Now()

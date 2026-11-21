@@ -66,6 +66,7 @@ func settingsByKind(t *testing.T, result CommandResult, inventory string) map[ac
 // of action, and each preset sets every kind as the design lists it,
 // recording who applied it and when.
 func TestAgentPlaybookRulesPresets(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	now := time.Date(2026, 11, 3, 9, 30, 0, 0, time.UTC)
 	a.Now = func() time.Time { return now }
@@ -92,6 +93,7 @@ func TestAgentPlaybookRulesPresets(t *testing.T) {
 // agent-playbook-rules show prints each kind's setting; the rules of a setting
 // refuse bad values, which change nothing.
 func TestAgentPlaybookRulesShowAndSettingRules(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	settings := Principal{SettingsFile: "/etc/mmhotline/mmhotline_settings.yml"}
 	set := func(kind, setting string, wait, approvals int) error {
@@ -157,6 +159,7 @@ func TestAgentPlaybookRulesShowAndSettingRules(t *testing.T) {
 // Every member reads the rules for running the agent's playbooks on the page, which says where they
 // are set; the page changes nothing.
 func TestAgentPlaybookRulesPage(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	h.app.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	admin := h.browser()
@@ -214,6 +217,7 @@ func TestAgentPlaybookRulesPage(t *testing.T) {
 // A playbook takes the strictest setting of its kinds, with the longest wait
 // or the most approvals among the kinds of that setting.
 func TestStrictestAgentPlaybookRule(t *testing.T) {
+	t.Parallel()
 	warn := func(minutes int) AgentPlaybookRule {
 		return AgentPlaybookRule{Rule: "warn_wait_then_act", WarningWaitMinutes: minutes}
 	}

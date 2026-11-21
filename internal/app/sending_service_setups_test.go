@@ -20,6 +20,7 @@ const fakeRotatedTelegramToken = "7000000001:rotated_bot_token_abcdefg"
 const fakeOtherTelegramToken = "7000000002:other_bot_token_abcdefgh"
 
 func TestSendingServiceSetupsCheckStoreAndRestart(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	s := memberFixture(t, a, "setup@example.test")
 	fake := httptest.NewServer(fakesendingservices.New())
@@ -82,6 +83,7 @@ func TestSendingServiceSetupsCheckStoreAndRestart(t *testing.T) {
 }
 
 func TestSendingServiceSetupContactMethodProtection(t *testing.T) {
+	t.Parallel()
 	r := newTelegramRig(t)
 	ctx := context.Background()
 	r.connect(t, r.s.Principal, "personal_chat", barbara, barbaraChat())
@@ -124,6 +126,7 @@ func TestSendingServiceSetupContactMethodProtection(t *testing.T) {
 }
 
 func TestSendingServiceSetupAuthorization(t *testing.T) {
+	t.Parallel()
 	a, admin, members := coverageFixture(t)
 	member := Principal{SignInEmailAddress: members[1].SignInEmailAddress}
 	for _, p := range []Principal{{}, member} {
@@ -143,6 +146,7 @@ func TestSendingServiceSetupAuthorization(t *testing.T) {
 }
 
 func TestSendingServicesCommandHandler(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	fake := httptest.NewServer(fakesendingservices.New())
 	defer fake.Close()
@@ -181,6 +185,7 @@ func TestSendingServicesCommandHandler(t *testing.T) {
 func settingsPageText(page string) string { return pageText(strings.ReplaceAll(page, "<wbr>", "")) }
 
 func TestSendingServiceSetupPages(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	admin := h.browser()
 	admin.addPerson("admin@example.test", "Administrator")
@@ -249,6 +254,7 @@ func TestSendingServiceSetupPages(t *testing.T) {
 }
 
 func TestSendingServiceSetupStartsAndStopsTelegramPolling(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	fake := fakesendingservices.New()
@@ -335,6 +341,7 @@ func TestSendingServiceSetupStartsAndStopsTelegramPolling(t *testing.T) {
 }
 
 func TestSendingServiceSetupConcurrentReaders(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	s := memberFixture(t, a, "concurrent@example.test")
 	fake := httptest.NewServer(fakesendingservices.New())

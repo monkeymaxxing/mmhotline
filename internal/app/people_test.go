@@ -91,6 +91,7 @@ func postForm(t *testing.T, c *http.Client, base, path string, v url.Values, wan
 }
 
 func TestSetupRefusesExistingState(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	s := memberFixture(t, a, "keep@example.test")
 	if err := Setup(context.Background(), a.Store.Dir, "Fixture team"); err == nil {
@@ -114,6 +115,7 @@ func TestSetupAndOpenWithARelativeStateDirectory(t *testing.T) {
 }
 
 func TestSetupTeamNameAndSingleTeam(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, name := range []string{"", "  ", strings.Repeat("x", 101), string([]byte{0xff})} {
 		if err := Setup(ctx, t.TempDir(), name); !errors.Is(err, ErrInvalid) {
@@ -152,6 +154,7 @@ func TestSetupTeamNameAndSingleTeam(t *testing.T) {
 }
 
 func TestOpenRequiresExactlyOneTeam(t *testing.T) {
+	t.Parallel()
 	for _, count := range []int{0, 2} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			a := foundationApp(t)
@@ -302,6 +305,7 @@ func useSignInEmailAddress(client *http.Client, signInEmailAddress string) {
 }
 
 func TestSignInAccessAndRemovalOnNextRequest(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	a.WebURL = "https://util01.example-tailnet.ts.net"
 	memberFixture(t, a, "admin@example.test")
@@ -349,6 +353,7 @@ func TestSignInAccessAndRemovalOnNextRequest(t *testing.T) {
 // MMHotline saves it, and keep an administrator. The role the file gives
 // decides what a person may do at the person's next request.
 func TestPeopleLastAdministratorAndDuplicateSignInEmailAddress(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	ctx := context.Background()
 	admin := memberFixture(t, a, "admin@example.test").Principal
@@ -393,6 +398,7 @@ func TestPeopleLastAdministratorAndDuplicateSignInEmailAddress(t *testing.T) {
 }
 
 func TestPeopleInputValidationAndTransactionRollback(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	ctx := context.Background()
 	admin := memberFixture(t, a, "admin@example.test").Principal
@@ -439,6 +445,7 @@ func TestPeopleInputValidationAndTransactionRollback(t *testing.T) {
 }
 
 func TestRemovingPersonCancelsWorkAndPreservesHistory(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	ctx := context.Background()
 	admin := memberFixture(t, a, "admin@example.test").Principal
@@ -527,6 +534,7 @@ func TestRemovingPersonCancelsWorkAndPreservesHistory(t *testing.T) {
 // form, and a post to it is refused. The page forms people still have keep
 // their CSRF and cross-origin checks.
 func TestPeoplePageIsReadOnlyAndFormsKeepTheirChecks(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	a.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	admin := memberFixture(t, a, "admin@example.test").Principal
@@ -573,6 +581,7 @@ func TestPeoplePageIsReadOnlyAndFormsKeepTheirChecks(t *testing.T) {
 }
 
 func TestCSRFCookieLifetimeAndSecurity(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	p := memberFixture(t, a, "admin@example.test").Principal
 	request := httptest.NewRequest("GET", "https://mmhotline.example.com/on-call", nil)
@@ -591,6 +600,7 @@ func TestCSRFCookieLifetimeAndSecurity(t *testing.T) {
 }
 
 func TestIntakeOnlyHandlerIgnoresSignInIdentityAndSignsBothRoutes(t *testing.T) {
+	t.Parallel()
 	a, _, source := alertFixture(t)
 	handler := a.IntakeHandler()
 	for _, signInEmailAddress := range []string{"", "admin@example.test", "made-up@example.com"} {

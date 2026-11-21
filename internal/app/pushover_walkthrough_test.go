@@ -9,6 +9,7 @@ import (
 )
 
 func TestAddingAPushoverGroupKeyWarnsInCapitalsAndStillSaves(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	add := func(key string) (CommandResult, string) {
 		severities := []string{"sos", "warn", "info"}
@@ -51,6 +52,7 @@ func memberNameFor(t *testing.T, r *pushoverRig, signInEmailAddress string) stri
 }
 
 func TestAnAcknowledgementFromAnotherPushoverUserShowsWhyItDidNotClaim(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	id := r.sos(t, "Database down")

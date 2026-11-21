@@ -16,6 +16,7 @@ import (
 // the agent's report, and an approval request with what it would run. They
 // change nothing in the database.
 func TestReadOnlyCommandsShowWhatHappened(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	r.a.WebURL = "https://ops.example.com"
 	ctx := context.Background()

@@ -76,6 +76,7 @@ func (r *heldWarnRig) resumedRun(t *testing.T, run fakeTriageRun) fakeTriageRun 
 // Two resolve on their own, the SOS resolves, and the agent's report covers
 // the other two. The person hears one warning, the replacement's own.
 func TestJoinedWarnsOfAnOutageTheAgentFixesAreNeverSent(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := &heldWarnRig{replacementRig(t, false)}
 	r.setWaits(t, 3, 7, 3)
 	sos, run, answers, ask := replacementSession(t, r.triageHoldRig)
@@ -153,6 +154,7 @@ func TestJoinedWarnsOfAnOutageTheAgentFixesAreNeverSent(t *testing.T) {
 
 // The run that carried the warn reports at warn: only the report sounds.
 func TestJoinedWarnTheCarryingRunReportsOnIsNotSent(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newHeldWarnRig(t, 3)
 	r.sosArrives(t, "The server db02 stopped answering", "db02")
 	run := r.runStarted(t)
@@ -176,6 +178,7 @@ func TestJoinedWarnTheCarryingRunReportsOnIsNotSent(t *testing.T) {
 // A report from a run that did not carry the joined warn does not take the
 // warn over; the report of the run that carries it does.
 func TestJoinedWarnAnUnrelatedReportDoesNotTakeItOver(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newHeldWarnRig(t, 3)
 	r.sosArrives(t, "The server db02 stopped answering", "db02")
 	run := r.runStarted(t)
@@ -202,6 +205,7 @@ func TestJoinedWarnAnUnrelatedReportDoesNotTakeItOver(t *testing.T) {
 // An SOS of the session wakes the person: the joined warns are delivered then,
 // once, because the person is told everything.
 func TestJoinedWarnIsDeliveredOnceWhenAnSOSWakesThePerson(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := &heldWarnRig{replacementRig(t, true)}
 	r.setWaits(t, 3, 7, 3)
 	_, _, _, ask := replacementSession(t, r.triageHoldRig)
@@ -235,6 +239,7 @@ func TestJoinedWarnIsDeliveredOnceWhenAnSOSWakesThePerson(t *testing.T) {
 // joined warn is delivered once at its deadline, the later of its own wait
 // and the SOS's deadline, and not before.
 func TestJoinedWarnIsDeliveredOnceAtItsDeadline(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newHeldWarnRig(t, 3)
 	r.sosArrives(t, "The server db02 stopped answering", "db02")
 	r.runStarted(t)
@@ -263,6 +268,7 @@ func TestJoinedWarnIsDeliveredOnceAtItsDeadline(t *testing.T) {
 // A warn that joins while no SOS waits for the agent is delivered at once, and
 // with the setting at 0 nothing is held.
 func TestJoinedWarnWithNoSOSWaitingIsDeliveredAtOnce(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("the SOS resolved already", func(t *testing.T) {
 		r := newHeldWarnRig(t, 3)
 		r.sosArrives(t, "The server db02 stopped answering", "db02")
@@ -288,6 +294,7 @@ func TestJoinedWarnWithNoSOSWaitingIsDeliveredAtOnce(t *testing.T) {
 
 // A restart keeps the hold of a joined warn, which then ends exactly once.
 func TestJoinedWarnSurvivesARestart(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newHeldWarnRig(t, 3)
 	r.sosArrives(t, "The server db02 stopped answering", "db02")
 	run := r.runStarted(t)

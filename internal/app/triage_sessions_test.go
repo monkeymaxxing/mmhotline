@@ -64,7 +64,6 @@ func newTriageSessionRig(t *testing.T, withCopy bool) *triageSessionRig {
 func setUpTriageAgentForTest(t *testing.T, a *App, withCopy bool) <-chan fakeTriageRun {
 	t.Helper()
 	if withCopy {
-		t.Setenv("HOME", t.TempDir())
 		root := t.TempDir()
 		origin, seed := filepath.Join(root, "origin.git"), filepath.Join(root, "seed")
 		testGit(t, root, "init", "--quiet", "--bare", "--initial-branch=main", origin)
@@ -228,6 +227,7 @@ func report(t *testing.T, run fakeTriageRun, answers *json.Decoder, requestID, s
 // alert, the last session's note, and the two commands. Nothing else starts
 // one.
 func TestTriageSessionStartsWithAWarnOrSOSAlert(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("a warn alert starts it, an info alert does not", func(t *testing.T) {
 		r := newTriageSessionRig(t, true)
 		r.alert(t, "info", "Nightly backup finished", "")
@@ -289,6 +289,7 @@ func TestTriageSessionStartsWithAWarnOrSOSAlert(t *testing.T) {
 // same agent session when the run ends; one that arrives while no run is
 // active resumes the session at once.
 func TestTriageSessionResumesWithAlertsThatArrived(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	r.alert(t, "warn", "Disk of app002 is 97% full", "")
 	r.drive(t)
@@ -354,6 +355,7 @@ func reportOutcome(t *testing.T, a *App, reportText string) (Alert, []reportDeli
 // reaches people at its alert severity; at sos, the person on call is woken
 // by an incident's SOS escalation.
 func TestTriageAgentReportReachesPeople(t *testing.T) {
+	parallelStartingProcesses(t)
 	const reportText = "# Freed disk space on db001\n\nDeleted old logs; 40% free now.\n"
 	t.Run("warn", func(t *testing.T) {
 		r := newTriageSessionRig(t, true)
@@ -444,6 +446,7 @@ func lastRunID(t *testing.T, a *App) string {
 // it for 30 minutes; its run still going is stopped, and the next alert
 // starts a new session with a new agent session.
 func TestTriageSessionEndsWhenResolvedAndQuiet(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	sos := r.alert(t, "sos", "Database on db001 is down", "db001")
 	r.drive(t)
@@ -545,6 +548,7 @@ func startSessionWithAnOutage(t *testing.T, r *triageSessionRig) Alert {
 // and the agent's report about the warn cites no incident and adds nothing
 // to the resolved incident's history.
 func TestTriageSessionNewProblemAfterItsWorkIsDone(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	outage := startSessionWithAnOutage(t, r)
 	r.resolve(t, outage.IncidentID)
@@ -576,6 +580,7 @@ func TestTriageSessionNewProblemAfterItsWorkIsDone(t *testing.T) {
 // the agent keeps its context. The same key from another alert source, and
 // an alert without a key, are new problems and start a new session.
 func TestTriageSessionKeepsAProblemThatComesBack(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name       string
 		comesBack  func(t *testing.T, r *triageSessionRig, other CreatedSource)
@@ -618,6 +623,7 @@ func TestTriageSessionKeepsAProblemThatComesBack(t *testing.T) {
 // session, as every alert did: while a run is going, and while an alert
 // waits for its first run. The run that carries it reports about it alone.
 func TestTriageSessionNewProblemJoinsWhileWorkGoesOn(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("while a run is going", func(t *testing.T) {
 		r := newTriageSessionRig(t, true)
 		outage := r.alert(t, "sos", "Writes to db001 fail", "db001-writes")
@@ -663,6 +669,7 @@ func TestTriageSessionNewProblemJoinsWhileWorkGoesOn(t *testing.T) {
 // approval request that run made went with that incident too, not with the
 // session's other problem.
 func TestTriageAgentReportAfterAnApprovalResult(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")
 	r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
@@ -700,6 +707,7 @@ func TestTriageAgentReportAfterAnApprovalResult(t *testing.T) {
 // SOS incident of its own that wakes the person on call, though another
 // problem's incident of the session is claimed: its owner has only that one.
 func TestTriageAgentSOSReportAboutAnotherProblemWakes(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	outage := startSessionWithAnOutage(t, r)
 	r.claim(t, outage.IncidentID)
@@ -723,6 +731,7 @@ func TestTriageAgentSOSReportAboutAnotherProblemWakes(t *testing.T) {
 // history of every incident of the session, though the latest run that
 // carried alerts carried only one of them.
 func TestHandOverReportReachesEveryIncidentOfTheSession(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	outage := startSessionWithAnOutage(t, r)
 	app002 := r.alert(t, "sos", "app002 stopped answering", "app002")
@@ -876,6 +885,7 @@ func inOrder(messages []string, want ...string) bool {
 // on call 5 minutes after it arrived. Its repeats and the backup count from
 // then.
 func TestSOSWaitsFiveMinutesForTheTriageAgent(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	sos := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
 	run := r.runStarted(t)
@@ -923,6 +933,7 @@ func TestSOSWaitsFiveMinutesForTheTriageAgent(t *testing.T) {
 // wait: an SOS waits that long for the triage agent. With 0, the person on
 // call is woken at once, and the triage agent still looks into the SOS.
 func TestSOSWaitForTheTriageAgentIsTheSetting(t *testing.T) {
+	parallelStartingProcesses(t)
 	setWait := func(t *testing.T, r *triageHoldRig, minutes int) {
 		t.Helper()
 		outcomes, err := r.a.applySettingsParts(context.Background(), Settings{TriageAgent: &SettingsTriageAgent{SOSWaitsForTheAgentMinutes: minutes}}, nil, []settingsFilePart{settingsSOSWaitsForTheAgentPart})
@@ -964,6 +975,7 @@ func TestSOSWaitForTheTriageAgentIsTheSetting(t *testing.T) {
 
 // An SOS resolved or claimed while it waits for the triage agent wakes nobody.
 func TestSOSResolvedOrClaimedWhileItWaitsWakesNobody(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name   string
 		at     time.Duration
@@ -1007,6 +1019,7 @@ func TestSOSResolvedOrClaimedWhileItWaitsWakesNobody(t *testing.T) {
 // wakes the person on call at once, though it joins the session, and
 // escalating a waiting SOS to another person contacts them at once.
 func TestAPersonDoesNotWaitForTheTriageAgent(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("an SOS created by hand", func(t *testing.T) {
 		r := newTriageHoldRig(t)
 		waiting := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
@@ -1053,6 +1066,7 @@ func TestAPersonDoesNotWaitForTheTriageAgent(t *testing.T) {
 // session has woken nobody yet, or its wake failed to send, a joining SOS
 // waits and wakes as any other.
 func TestSOSJoiningASessionThatAlreadyWokeSomeone(t *testing.T) {
+	parallelStartingProcesses(t)
 	ctx := context.Background()
 	held := func(t *testing.T, r *triageHoldRig, incidentID string) bool {
 		t.Helper()
@@ -1174,6 +1188,7 @@ func TestSOSJoiningASessionThatAlreadyWokeSomeone(t *testing.T) {
 
 // The triage agent's report at sos wakes the person on call at once.
 func TestTriageAgentSOSReportWakesAtOnce(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	sos := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
 	run := r.runStarted(t)
@@ -1191,6 +1206,7 @@ func TestTriageAgentSOSReportWakesAtOnce(t *testing.T) {
 // When the triage agent cannot run, the SOS wakes the person on call at
 // once, and its history says why.
 func TestSOSWakesAtOnceWhenTheTriageAgentCannotRun(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("the run fails", func(t *testing.T) {
 		r := newTriageHoldRig(t)
 		sos := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
@@ -1256,6 +1272,7 @@ func TestSOSWakesAtOnceWhenTheTriageAgentCannotRun(t *testing.T) {
 // The deadline lives in the database: after MMHotline restarts, a waiting
 // SOS wakes the person on call at its deadline, or at once when it passed.
 func TestSOSWaitForTheTriageAgentSurvivesARestart(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name              string
 		restartAt, wakeAt time.Duration
@@ -1302,6 +1319,7 @@ func TestSOSWaitForTheTriageAgentSurvivesARestart(t *testing.T) {
 // they, get one quiet message about it; a resume sends none, and the message
 // starts no session and opens no incident.
 func TestTriageSessionStartMessageIsQuietAndGoesToThePersonOnCall(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	sos := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
 	run := r.runStarted(t)
@@ -1347,6 +1365,7 @@ func TestTriageSessionStartMessageIsQuietAndGoesToThePersonOnCall(t *testing.T) 
 // The incident page says the triage agent works on the incident and when
 // MMHotline wakes the person on call, and its history shows the wait.
 func TestIncidentPageShowsTheWaitForTheTriageAgent(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	sos := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
 	r.runStarted(t)
@@ -1413,6 +1432,7 @@ var restartsDuringARun = []struct {
 // from the team that run carried, whether MMHotline stopped cleanly or its
 // process ended at once.
 func TestTriageSessionResumesAfterARestart(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range restartsDuringARun {
 		t.Run(test.name, func(t *testing.T) {
 			r := newTriageSessionRig(t, true)
@@ -1452,6 +1472,7 @@ func TestTriageSessionResumesAfterARestart(t *testing.T) {
 // resumed run hears that the playbook run started and that MMHotline
 // recorded no outcome, so the agent checks the servers instead of guessing.
 func TestResumeAfterARestartTellsOfAPlaybookRunWithNoOutcome(t *testing.T) {
+	parallelStartingProcesses(t)
 	test := restartsDuringARun[1]
 	r := newTriageSessionRig(t, true)
 	r.alert(t, "sos", "Database on db001 is down", "db001")
@@ -1480,6 +1501,7 @@ func TestResumeAfterARestartTellsOfAPlaybookRunWithNoOutcome(t *testing.T) {
 // keeps its total for the next run. A failed run reports no total, so the
 // next run's own use includes it.
 func TestTriageSessionRunsRecordTheirOwnUse(t *testing.T) {
+	parallelStartingProcesses(t)
 	type usage = triageagent.Usage
 	cost := func(value float64) *float64 { return &value }
 	for _, test := range []struct {
@@ -1592,6 +1614,7 @@ func commitInventories(t *testing.T, a *App, names ...string) {
 // inventory for an instruction: the one inventory goes into the command,
 // and several are listed for the agent to choose from.
 func TestTriageAgentTasksNameTheInventories(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name        string
 		inventories []string
@@ -1646,6 +1669,7 @@ func TestTriageAgentTasksNameTheInventories(t *testing.T) {
 // updates that note, and asks for no new one. The first run says how to reach
 // a server over SSH.
 func TestTriageSessionPromptNotesAndSSH(t *testing.T) {
+	t.Parallel()
 	contains := func(name, prompt string, wanted, unwanted []string) {
 		t.Helper()
 		for _, want := range wanted {
@@ -1678,6 +1702,7 @@ func TestTriageSessionPromptNotesAndSSH(t *testing.T) {
 // A prompt stays within 64 KiB as JSON on the run socket, however many and
 // however long the alerts are, and says how many alerts it left out.
 func TestTriageSessionPromptStaysWithinItsLimit(t *testing.T) {
+	t.Parallel()
 	var alerts []triageSessionPromptAlert
 	for n := range 200 {
 		// '<' takes six bytes in JSON, so only the encoded size keeps the limit.
@@ -1710,6 +1735,7 @@ func TestTriageSessionPromptStaysWithinItsLimit(t *testing.T) {
 // A playbook run's result reports on the problem whose run asked for it, even
 // when a run about another problem came between the request and the result.
 func TestTriageAgentReportAfterAnotherProblemsRun(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	prepareApprovals(t, r.a, "")
 	r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}

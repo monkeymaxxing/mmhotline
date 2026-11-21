@@ -29,6 +29,7 @@ func pageLinkText(page, target string) string {
 }
 
 func TestBrowserErrorsKeepStatusAndOfferAWayBack(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		err             error
 		heading, reason string
@@ -80,6 +81,7 @@ func TestBrowserErrorsKeepStatusAndOfferAWayBack(t *testing.T) {
 }
 
 func TestFetchAndNonPageErrorsKeepTheirResponses(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct{ path, accept, mode string }{
 		{"/alerts/missing", "*/*", "same-origin"}, // refresh.js
 		{"/alerts/missing", "text/html", "cors"},  // a fetch may ask for HTML
@@ -114,6 +116,7 @@ func TestFetchAndNonPageErrorsKeepTheirResponses(t *testing.T) {
 }
 
 func TestUnknownBrowserPathHasAFramed404AndKeepsMethodErrors(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	for _, test := range []struct {
 		method, path, accept string
@@ -148,6 +151,7 @@ func TestUnknownBrowserPathHasAFramed404AndKeepsMethodErrors(t *testing.T) {
 }
 
 func TestBrowserRenderingFailureStillHasAWayBack(t *testing.T) {
+	t.Parallel()
 	request := httptest.NewRequest("GET", "/dashboard", nil)
 	request.Header.Set("Accept", "text/html")
 	response := httptest.NewRecorder()
@@ -159,6 +163,7 @@ func TestBrowserRenderingFailureStillHasAWayBack(t *testing.T) {
 }
 
 func TestNonMemberSettingsPathIsFolded(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	a.UseSettingsFile("/etc/team/mmhotline_settings.yml", nil)
 	request := httptest.NewRequest("GET", "/dashboard", nil)
@@ -174,6 +179,7 @@ func TestNonMemberSettingsPathIsFolded(t *testing.T) {
 }
 
 func TestManualSOSErrorKeepsInputAndOffersRetry(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	person := h.browser()
 	person.addPerson("admin@example.test", "Responder")

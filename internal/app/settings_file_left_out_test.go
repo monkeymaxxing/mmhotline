@@ -13,6 +13,7 @@ import (
 // sending-services list: neither says "applied at" for it, and a first
 // setup that fails does not claim that an earlier setting stays.
 func TestSettingsFileSaysALeftOutPartIsNotSetUp(t *testing.T) {
+	t.Parallel()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()
 

@@ -17,6 +17,7 @@ const reportNotificationExample = "# Test of the alerts on web01: nothing is wro
 const reportNotificationSummary = "The alert came from the test the setup sends. Nothing on web01 needs a fix. Claim it to end the test.\n\nOpen MMHotline for the whole report."
 
 func TestTriageReportNotificationParagraph(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct{ name, report, want string }{
 		{"plain text", "# A report\n\n## What happened\n\nThe **service** on `web01`\nneeds [attention](https://example.com).\n\n## Evidence\nPrivate evidence", "The service on web01 needs attention."},
 		{"no paragraph", "# A report\n\n- Private evidence", ""},
@@ -48,6 +49,7 @@ func TestTriageReportNotificationParagraph(t *testing.T) {
 }
 
 func TestTriageReportNotificationsKeepEvidenceOnPages(t *testing.T) {
+	t.Parallel()
 	for _, severity := range []string{"warn", "info", "sos"} {
 		t.Run(severity, func(t *testing.T) {
 			r := newPushoverRig(t)
@@ -121,6 +123,7 @@ func TestTriageReportNotificationsKeepEvidenceOnPages(t *testing.T) {
 }
 
 func TestOtherActorsKeepWholeNotificationMessage(t *testing.T) {
+	t.Parallel()
 	r := newPushoverRig(t)
 	r.add(t, fakesendingservices.PushoverUserKey)
 	err := r.a.Store.WithTransaction(context.Background(), func(tx *sql.Tx) error {
@@ -139,6 +142,7 @@ func TestOtherActorsKeepWholeNotificationMessage(t *testing.T) {
 }
 
 func TestTriageReportSummaryReachesEveryContactMethodType(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	p := memberFixture(t, a, "ana@example.test").Principal
 	member, err := a.CurrentMember(context.Background(), p)

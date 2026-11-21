@@ -18,6 +18,7 @@ func claimCommand(t *testing.T, r *triageHoldRig, action, id, email, note string
 // Fails without the claim action (the request is refused) or without
 // claimIncidentTx (the backup would wake).
 func TestIncidentsClaimCommandClaimsForAMember(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	real := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
 	id := real.IncidentID
@@ -48,6 +49,7 @@ func TestIncidentsClaimCommandClaimsForAMember(t *testing.T) {
 
 // Fails if resolve is not recorded as the Unix user, or the rules differ.
 func TestIncidentsResolveCommandResolvesAsTheUnixUser(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	id := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk").IncidentID
 	claimCommand(t, r, "claim", id, r.s.Principal.SignInEmailAddress, "", 200)
@@ -66,6 +68,7 @@ func TestIncidentsResolveCommandResolvesAsTheUnixUser(t *testing.T) {
 
 // Fails if the member is not checked.
 func TestIncidentsClaimCommandRefusesMissingOrUnknownMember(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	id := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk").IncidentID
 	missing, _ := claimCommand(t, r, "claim", id, "", "", 400)
@@ -84,6 +87,7 @@ func TestIncidentsClaimCommandRefusesMissingOrUnknownMember(t *testing.T) {
 // "Taken over by" history line. Fails if the take-over is refused or recorded
 // as a first claim.
 func TestIncidentsClaimCommandTakesOverLikeThePage(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	id := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk").IncidentID
 	claimCommand(t, r, "claim", id, r.s.Principal.SignInEmailAddress, "", 200)
@@ -102,6 +106,7 @@ func TestIncidentsClaimCommandTakesOverLikeThePage(t *testing.T) {
 
 // Fails if an unknown or resolved incident is not refused plainly.
 func TestIncidentsClaimAndResolveCommandsRefuseUnknownAndResolvedIncidents(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	unknown, _ := claimCommand(t, r, "claim", "nosuchid", r.s.Principal.SignInEmailAddress, "", 404)
 	if unknown.Message != "no SOS incident has ID nosuchid" {
@@ -126,6 +131,7 @@ func TestIncidentsClaimAndResolveCommandsRefuseUnknownAndResolvedIncidents(t *te
 // page's; send-test-sos's wait reads the claim from the history. Fails if
 // the claim bypasses claimIncidentTx.
 func TestIncidentsClaimCommandResolvesATestSOSAndEndsTheWait(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	id := r.sendTestSOS(t)
 	backgroundRounds(t, r.a)

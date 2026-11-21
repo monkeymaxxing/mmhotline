@@ -74,7 +74,6 @@ const fleetViewFixture = `{
 // last commit holds files, and returns the copy's directory.
 func systemsRepositoryCopy(t *testing.T, a *App, files map[string]string) string {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	origin, seed := filepath.Join(root, "origin.git"), filepath.Join(root, "seed")
 	testGit(t, root, "init", "--quiet", "--bare", "--initial-branch=main", origin)
@@ -172,6 +171,7 @@ what_this_system_does_not_survive: >-
 // done, the next item to do, and the other items that need a person, each
 // with its question to copy.
 func TestDashboardShowsServersChangesAndChecklist(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	person := memberFixture(t, a, "dashboard@example.test")
 	now := time.Date(2026, 10, 27, 10, 0, 30, 0, time.UTC)
@@ -242,6 +242,7 @@ func TestDashboardShowsServersChangesAndChecklist(t *testing.T) {
 // part MMHotline cannot read keeps the item among the setup items that need
 // a person, with the reason, so a typing mistake never hides it.
 func TestDashboardChecklistSeparatesSetupFromLater(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	person := memberFixture(t, a, "dashboard@example.test")
 	a.Now = func() time.Time { return time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC) }
@@ -308,6 +309,7 @@ var foldedDetails = regexp.MustCompile(`(?s)<details.*?</details>`)
 // line; the dashboard itself still opens. A path or the technical cause is
 // folded away, never in the part's text.
 func TestDashboardSaysWhatEachMissingSourceLacks(t *testing.T) {
+	parallelStartingProcesses(t)
 	const noCopy, fold = "MMHotline has no copy of the systems repository", "Details"
 	for _, test := range []struct {
 		name string

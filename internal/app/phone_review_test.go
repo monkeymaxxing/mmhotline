@@ -38,6 +38,7 @@ func fallbacks(t *testing.T, r *phoneRig, contactMethodID string) map[string]int
 }
 
 func TestAnsweredCallReleasesACallWaitingForThisOne(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	r.addPhone(t, r.s.Principal, barbaraNumber)
 	r.sos(t, "Database down")
@@ -57,6 +58,7 @@ func TestAnsweredCallReleasesACallWaitingForThisOne(t *testing.T) {
 }
 
 func TestFallbackForEveryIncidentOfAFailedCall(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	p := r.s.Principal
 	call := r.addPhone(t, p, barbaraNumber)
@@ -79,6 +81,7 @@ func TestFallbackForEveryIncidentOfAFailedCall(t *testing.T) {
 }
 
 func TestFallbackAfterCallsFailOncePerEscalationStep(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -108,6 +111,7 @@ func TestFallbackAfterCallsFailOncePerEscalationStep(t *testing.T) {
 }
 
 func TestNoFallbackWhileTheCallReachedThePhone(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	p := r.s.Principal
 	r.addPhone(t, p, barbaraNumber)
@@ -123,6 +127,7 @@ func TestNoFallbackWhileTheCallReachedThePhone(t *testing.T) {
 }
 
 func TestAClaimedIncidentIsNotListedInTheWaitingCall(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	p := r.s.Principal
@@ -149,6 +154,7 @@ func TestAClaimedIncidentIsNotListedInTheWaitingCall(t *testing.T) {
 }
 
 func TestOnlyAutomatedVoiceCallsReadTheTeamName(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	p := r.s.Principal
 	call := r.addPhone(t, p, barbaraNumber)

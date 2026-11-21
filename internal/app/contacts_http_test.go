@@ -13,6 +13,7 @@ import (
 )
 
 func TestContactPagesExplainOutcomesAndPreserveMessage(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	advance := deliveryTestClock(a)
 	person := memberFixture(t, a, "outcomes@example.test")
@@ -105,6 +106,7 @@ func contactMethodForm(t *testing.T, page, kind string) string {
 }
 
 func TestContactMethodsPageNamesOwnersAndKeepsPersonalFormsPrivate(t *testing.T) {
+	t.Parallel()
 	a, admin, people := coverageFixture(t)
 	owner := Principal{SignInEmailAddress: people[1].SignInEmailAddress}
 	personal := savedEmail(t, a, owner, true)
@@ -146,6 +148,7 @@ func TestContactMethodsPageNamesOwnersAndKeepsPersonalFormsPrivate(t *testing.T)
 }
 
 func TestDeliveryPagesNameThePersonAndMethodAndLinkToTheIncident(t *testing.T) {
+	t.Parallel()
 	a, admin, people := coverageFixture(t)
 	owner := Principal{SignInEmailAddress: people[1].SignInEmailAddress}
 	method := savedEmail(t, a, owner, true)

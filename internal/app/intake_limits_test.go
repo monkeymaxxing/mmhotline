@@ -11,6 +11,7 @@ import (
 )
 
 func TestSOSIsNeverLimitedByRate(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	now := a.Now()
 	for n := range SourceAlertsPerMinute {
@@ -28,6 +29,7 @@ func TestSOSIsNeverLimitedByRate(t *testing.T) {
 }
 
 func TestTeamHourlyWarningAndInfoLimit(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	ctx := context.Background()
 	if err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
@@ -53,6 +55,7 @@ func TestTeamHourlyWarningAndInfoLimit(t *testing.T) {
 }
 
 func TestRejectedRequestReasonsAreCountedInMemory(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	body := `{"sender_alert_id":"x","severity":"warn","title":"Hello","message":""}`
 	wrong := s
@@ -97,6 +100,7 @@ func TestRejectedRequestReasonsAreCountedInMemory(t *testing.T) {
 }
 
 func TestRefusedSignedSOSOpensOneMmhotlineSOS(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	sos := `{"sender_alert_id":"late","sender_incident_key":"disk","severity":"sos","title":"Disk full","message":""}`
 	for range 2 {
@@ -135,6 +139,7 @@ func TestRefusedSignedSOSOpensOneMmhotlineSOS(t *testing.T) {
 // otherwise each resend after the incident is resolved would wake the person
 // on call again.
 func TestAResentSOSThatWasReceivedOpensNoMmhotlineSOS(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	for _, sos := range []string{
 		`{"sender_alert_id":"captured","sender_incident_key":"disk","severity":"sos","title":"Disk full","message":""}`,
@@ -161,6 +166,7 @@ func TestAResentSOSThatWasReceivedOpensNoMmhotlineSOS(t *testing.T) {
 }
 
 func TestMmhotlineSOSOpensAtTheUnresolvedIncidentLimit(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	ctx := context.Background()
 	if err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
@@ -183,6 +189,7 @@ func TestMmhotlineSOSOpensAtTheUnresolvedIncidentLimit(t *testing.T) {
 }
 
 func TestSOSReserveInThePendingDeliveryLimit(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	deliveryTestClock(a)
 	s := memberFixture(t, a, "reserve@example.test")
@@ -237,6 +244,7 @@ func pendingDeliveryCount(t *testing.T, a *App) int64 {
 }
 
 func TestOneAlertSourceCannotUseTheWholeSOSReserve(t *testing.T) {
+	t.Parallel()
 	a, p, flood := alertFixture(t)
 	deliveryTestClock(a)
 	c := savedEmail(t, a, p, true)
@@ -271,6 +279,7 @@ func TestOneAlertSourceCannotUseTheWholeSOSReserve(t *testing.T) {
 }
 
 func TestAlertSourceOverItsSOSShareIsRefusedVisibly(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	deliveryTestClock(a)
 	c := savedEmail(t, a, p, true)
@@ -288,6 +297,7 @@ func TestAlertSourceOverItsSOSShareIsRefusedVisibly(t *testing.T) {
 }
 
 func TestMmhotlineRefusingSOSPersistsWhenTheQueueIsFull(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	deliveryTestClock(a)
 	c := savedEmail(t, a, p, true)
@@ -305,6 +315,7 @@ func TestMmhotlineRefusingSOSPersistsWhenTheQueueIsFull(t *testing.T) {
 }
 
 func TestMmhotlineRefusingSOSAddsNoMessageWhileOneWaits(t *testing.T) {
+	t.Parallel()
 	a, p, s := alertFixture(t)
 	deliveryTestClock(a)
 	savedEmail(t, a, p, true)
@@ -341,6 +352,7 @@ func TestMmhotlineRefusingSOSAddsNoMessageWhileOneWaits(t *testing.T) {
 }
 
 func TestAnotherAlertSourcesSOSGoesBeforeAFloodsBacklog(t *testing.T) {
+	t.Parallel()
 	a, p, flood := alertFixture(t)
 	advance := deliveryTestClock(a)
 	savedEmail(t, a, p, true)
@@ -388,6 +400,7 @@ func TestAnotherAlertSourcesSOSGoesBeforeAFloodsBacklog(t *testing.T) {
 }
 
 func TestAlertSourceLimitPerTeam(t *testing.T) {
+	t.Parallel()
 	a, p, _ := alertFixture(t)
 	for n := 1; n < maxAlertSources; n++ {
 		if _, err := createAlertSource(context.Background(), a, p, fmt.Sprintf("Source %d", n)); err != nil {

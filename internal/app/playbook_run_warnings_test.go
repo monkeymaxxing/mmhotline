@@ -74,6 +74,7 @@ func warningTitle(at string) string {
 // incident, the warning links the Approvals page, and the background loop
 // comes back at the run time by itself.
 func TestWarnedPlaybookRun(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("with the session's incident", func(t *testing.T) {
 		r := newTriageSessionRig(t, true)
 		records := t.TempDir()
@@ -188,6 +189,7 @@ func TestWarnedPlaybookRun(t *testing.T) {
 // history records who and why, and the agent hears who stopped it. From the
 // run time on, Stop is refused and the playbook runs.
 func TestStoppedWarnedPlaybookRun(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("before its time", func(t *testing.T) {
 		r := newTriageSessionRig(t, true)
 		prepareWarnedRun(t, r.a, "", 10)
@@ -249,6 +251,7 @@ func TestStoppedWarnedPlaybookRun(t *testing.T) {
 // A restart before the run time keeps it; a restart after the run time runs
 // the playbook once.
 func TestWarnedPlaybookRunAcrossARestart(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name                      string
 		restartAfter, thenAdvance time.Duration
@@ -289,6 +292,7 @@ func TestWarnedPlaybookRunAcrossARestart(t *testing.T) {
 // and follows the new judgment, a new warning with a new run time, or a run
 // when the rules for running the agent's playbooks now let it run without a person.
 func TestStaleWarnedPlaybookRun(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name       string
 		actWithout bool
@@ -343,6 +347,7 @@ func TestStaleWarnedPlaybookRun(t *testing.T) {
 // reason. A Stop from an incident page returns there; the run's page then
 // says who stopped it, and offers no Stop.
 func TestWarnedPlaybookRunCard(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	judged := prepareWarnedRun(t, r.a, "", 10)
 	r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
@@ -423,6 +428,7 @@ func TestWarnedPlaybookRunCard(t *testing.T) {
 // The card's countdown and the warning's time read plainly, with the date
 // when the run time falls on another day.
 func TestWarnedRunTimeTexts(t *testing.T) {
+	t.Parallel()
 	for left, want := range map[time.Duration]string{
 		10 * time.Minute: "Runs in 10 minutes", 9*time.Minute + 30*time.Second: "Runs in 10 minutes", 30 * time.Second: "Runs in 1 minute",
 		time.Hour: "Runs in 1 hour", 90 * time.Minute: "Runs in 1 hour 30 minutes", 24 * time.Hour: "Runs in 24 hours",

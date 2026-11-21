@@ -77,6 +77,7 @@ type waitingPlaybookRun struct {
 // playbook takes the stricter setting; an inventory with no settings needs
 // permission; a playbook MMX cannot read is refused with MMX's message.
 func TestTriageAgentPlaybookRunDecisions(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	// Each approval request wakes the person on call.
 	memberFixture(t, a, "responder@example.test")
@@ -200,6 +201,7 @@ ask role roles/web/main.yml production
 // is Check only, waits for a person when it saves a file there, and the
 // answer names the file.
 func TestPlaybookThatSavesOnTheControllerMachineWaitsForAPerson(t *testing.T) {
+	parallelStartingProcesses(t)
 	const playbook = "one_time_playbooks/2026-11-03_check_caddy_on_app002.yml"
 	r := newTriageSessionRig(t, true)
 	runner := &fakeRunner{calls: make(chan fakeRunnerCall, 1)}
@@ -239,6 +241,7 @@ func TestPlaybookThatSavesOnTheControllerMachineWaitsForAPerson(t *testing.T) {
 // rather than run it or keep it. Both playbooks here would otherwise run
 // without a person: each reads as the free disk space playbook.
 func TestOversizedPlaybookOrExplainOutputIsRefused(t *testing.T) {
+	parallelStartingProcesses(t)
 	const (
 		longOutput    = "one_time_playbooks/2026-11-03_long_explain_output.yml"
 		largePlaybook = "one_time_playbooks/2026-11-03_large_playbook.yml"
@@ -280,6 +283,7 @@ func TestOversizedPlaybookOrExplainOutputIsRefused(t *testing.T) {
 // Without an mmx program, MMHotline cannot tell what a playbook does, so it
 // runs nothing.
 func TestTriageAgentPlaybookRunWithoutMMX(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	a.triageAgent.mmxSearchPath = t.TempDir()
 	decision := a.DecidePlaybookRun(context.Background(), TriageAgentPlaybookRunRequest{RunID: "run", RequestID: "0123456789abcdef", Playbook: "playbooks/deploy.yml", Inventory: "production"})
@@ -295,6 +299,7 @@ func TestTriageAgentPlaybookRunWithoutMMX(t *testing.T) {
 // MMX names a playbook by its file name, so MMHotline gives mmx the name
 // only when it stands for exactly the file the agent asked for.
 func TestMMXPlaybookName(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		path, name string
 		ok         bool
@@ -320,6 +325,7 @@ func TestMMXPlaybookName(t *testing.T) {
 // real mmx explain and mmx nodes output of a small project, which proves the
 // JSON field names it reads.
 func TestRealMMXOutputIsRead(t *testing.T) {
+	t.Parallel()
 	program := os.Getenv("MMHOTLINE_TEST_MMX_PROGRAM")
 	if program == "" {
 		t.Skip("set MMHOTLINE_TEST_MMX_PROGRAM to an mmx program, such as one built with go build -o $TMPDIR/mmx ./cmd/mmx in MMX's repository")
@@ -366,6 +372,7 @@ func TestRealMMXOutputIsRead(t *testing.T) {
 // read it, names each task MMHotline did not recognize with why, in plain
 // words, and counts those past the first ten.
 func TestPlaybookKindsTextNamesUnrecognizedTasks(t *testing.T) {
+	t.Parallel()
 	recognize := func(count int) actionkinds.Recognition {
 		var tasks []string
 		for number := 1; number <= count; number++ {

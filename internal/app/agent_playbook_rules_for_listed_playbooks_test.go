@@ -62,6 +62,7 @@ func listedPlaybooksRig(t *testing.T) (*triageSessionRig, *fakeRunner) {
 // still need a person. A listed Warn, wait, then act playbook is a warned
 // run whose warning and page say the rule came from the listed playbook.
 func TestAListedPlaybookTakesItsListedRule(t *testing.T) {
+	parallelStartingProcesses(t)
 	r, runner := listedPlaybooksRig(t)
 	const everyServerListed = "The playbook every_server is listed in rules_for_running_agent_playbooks for the inventory “production” with Act, then report"
 
@@ -137,6 +138,7 @@ func TestAListedPlaybookTakesItsListedRule(t *testing.T) {
 // changes a person must approve, and says so; the list decides for a
 // playbook nobody listed.
 func TestAListedRuleOverridesTheServicesList(t *testing.T) {
+	t.Parallel()
 	kinds := []ActionKindAgentPlaybookRule{{ActionKind: actionkinds.StartOrRestartAService, AgentPlaybookRule: AgentPlaybookRule{Rule: actThenReport}}}
 	onTheList := []taskOnAServiceWhoseChangesAPersonMustApprove{{ServiceName: "pgautofailover.service"}}
 	listed := AgentPlaybookRule{Rule: actThenReport}

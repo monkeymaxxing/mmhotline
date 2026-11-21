@@ -143,6 +143,7 @@ func triageAgentPageText(t *testing.T, r *triageSessionRig) string {
 // triage-agent show and the page list them, and the settings file's listed
 // hosts neither add nor remove them.
 func TestTriageAgentRunListsTheVendorPagesHosts(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	ctx := context.Background()
 	administrator := Principal{UnixUser: "administrator"}
@@ -231,6 +232,7 @@ func TestTriageAgentRunListsTheVendorPagesHosts(t *testing.T) {
 // program a person pushed is listed at the next run, and a page moved to
 // another host takes its old host off the list.
 func TestTheNextRunListsTheVendorPagesOfANewCommit(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	pushToOrigin(t, r.a, map[string]string{"software_outside_the_distribution.yml": softwareOutsideTheDistribution})
 	_, run := r.startTriageSessionRun(t)
@@ -262,6 +264,7 @@ func TestTheNextRunListsTheVendorPagesOfANewCommit(t *testing.T) {
 // triage-agent show, and the page say why. A missing file lists nothing and
 // is no problem.
 func TestVendorPagesMMHotlineCannotListAreLeftOut(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name             string
 		file             string // "": no file
@@ -312,6 +315,7 @@ func TestVendorPagesMMHotlineCannotListAreLeftOut(t *testing.T) {
 // has no systems repository, so it reaches neither the vendor pages' hosts
 // nor the inventory servers. Both keep the latest listing.
 func TestOnlyRunsInTheSystemsRepositoryReachItsHosts(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	ctx := context.Background()
 	administrator := Principal{UnixUser: "administrator"}
@@ -372,6 +376,7 @@ func TestOnlyRunsInTheSystemsRepositoryReachItsHosts(t *testing.T) {
 // triage_agent.listed_hosts, as of the latest run. They are not part of the
 // file's value: its fingerprint stays, and the part stays unchanged.
 func TestSettingsShowNamesTheVendorPagesHosts(t *testing.T) {
+	parallelStartingProcesses(t)
 	ctx := context.Background()
 	f := newSettingsFileFixture(t, exampleSettingsYAML)
 	f.start()

@@ -48,6 +48,7 @@ func waitReviewAgentSetupTest(t *testing.T, a *App, id string) ReviewAgentView {
 // only when it passes. Any coding agent may review, the triage agent's own
 // included, either way round.
 func TestReviewAgentSetup(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	admin := memberFixture(t, a, "admin@example.test").Principal
 	member := memberFixture(t, a, "member@example.test").Principal
@@ -132,6 +133,7 @@ func TestReviewAgentSetup(t *testing.T) {
 // The triage agent page and the review-agent command show the review agent
 // and change it through the same operations.
 func TestReviewAgentPageAndCommand(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	admin := h.browser()
 	admin.addPerson("admin@example.test", "Administrator")
@@ -180,6 +182,7 @@ func TestReviewAgentPageAndCommand(t *testing.T) {
 // review reaches only its own coding agent's service, whatever the triage
 // agent's internet access, and the triage run keeps its own hosts.
 func TestReviewRunsReachOnlyTheirCodingAgentsService(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	runs := triageRunFixture(t, a)
 	ctx := context.Background()
@@ -255,6 +258,7 @@ func TestReviewRunsReachOnlyTheirCodingAgentsService(t *testing.T) {
 // are, so a misled agent cannot use up MMHotline's memory with connections
 // that send nothing; the bound frees again as they end.
 func TestProxyConnectionsWithoutARunAreBounded(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	var waiting []net.Conn
 	for range maximumOpenTunnels {
@@ -402,6 +406,7 @@ const freeDiskSpacePlaybook = "one_time_playbooks/2026-11-03_free_disk_space_on_
 // files the triage agent wrote into its own, and reads the playbook as
 // MMHotline judged it.
 func TestReviewAgentApprovedPlaybookRunsAsItsAgentPlaybookRuleSays(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	if err := applyAgentPlaybookRulesPreset(context.Background(), a, Principal{UnixUser: "fixture"}, "production", "routine_fixes_without_permission"); err != nil {
 		t.Fatal(err)
@@ -485,6 +490,7 @@ func TestReviewAgentApprovedPlaybookRunsAsItsAgentPlaybookRuleSays(t *testing.T)
 // A playbook whose rule already waits for a person is not reviewed:
 // the review would gate nothing and only delay the person's request.
 func TestReviewAgentSkipsAPlaybookThatWaitsForAPersonAnyway(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	// The approval request wakes the person on call.
 	memberFixture(t, a, "responder@example.test")
@@ -549,6 +555,7 @@ func TestReviewAgentThatCouldNotReviewSendsTheRequestToAPerson(t *testing.T) {
 // the review agent's reason and the round: nothing runs and no person is
 // asked. An answer with neither word counts as a refusal.
 func TestReviewAgentRefusalGoesBackToTheTriageAgent(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct{ name, reviewAgentScript, review string }{
 		{"refused", `printf '%s\n' '{"type":"result","subtype":"success","result":"REFUSE\nIt also deletes /var/lib/postgresql."}'`, "The review agent refused the playbook: It also deletes /var/lib/postgresql."},
 		{"answered neither word", `printf '%s\n' '{"type":"result","subtype":"success","result":"Looks fine to me"}'`,
@@ -581,6 +588,7 @@ func TestReviewAgentRefusalGoesBackToTheTriageAgent(t *testing.T) {
 // agent's own coding agent session, never the review's, although both are
 // Claude Code sessions.
 func TestReviewAgentOfTheTriageAgentsOwnCodingAgent(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	if err := applyAgentPlaybookRulesPreset(context.Background(), a, Principal{UnixUser: "fixture"}, "production", "routine_fixes_without_permission"); err != nil {
 		t.Fatal(err)
@@ -704,6 +712,7 @@ func refusedAgainText(round int) string {
 // for a person, who sees on the card and in approval-requests show every
 // version, diagnosis, and reason.
 func TestReviewAgentRefusalsInARow(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newReviewRoundsRig(t)
 	versions := []string{
 		"# Free disk space on app002\nfleet_stages: []\n",
@@ -807,6 +816,7 @@ func TestReviewAgentRefusalsInARow(t *testing.T) {
 // could not finish neither counts nor ends them, and still sends its request
 // to a person at once.
 func TestReviewAgentRefusalsInARowEnd(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newReviewRoundsRig(t)
 	version := func(n int) string {
 		return fmt.Sprintf("# Free disk space on app002, version %d\nfleet_stages: []\n", n)

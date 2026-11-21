@@ -78,6 +78,7 @@ func (r *triageSessionRig) setUpWithSubscriptionToken(t *testing.T, role agentRo
 // restart, and at the first visit after a reminder time MMHotline was
 // stopped through. Other members hear nothing.
 func TestSubscriptionTokenExpiryRemindersAt30And7Days(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, role := range agentRoles {
 		t.Run(role.name, func(t *testing.T) {
 			r := newTriageSessionRig(t, false)
@@ -159,6 +160,7 @@ func addEmailContactMethod(t *testing.T, a *App, member Member, severity string)
 // A new set-up starts a new year: the reminders count from it, and the old
 // token's reminders that were not sent never come.
 func TestANewSetUpRestartsTheExpiryReminders(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, false)
 	firstSetUpAt := r.setUpWithSubscriptionToken(t, triageAgentRole)
 	firstTitle := "The triage agent's Claude Code token expires on " + firstSetUpAt.Add(365*24*time.Hour).Format("2006-01-02")
@@ -196,6 +198,7 @@ func TestANewSetUpRestartsTheExpiryReminders(t *testing.T) {
 // succeeded in the last 24 hours: the next check is due a day after the
 // latest run that succeeded. A run that failed does not count.
 func TestSignInCheckSkippedAfterARunSucceededWithin24Hours(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	useCodexAccessToken(t, r.a)
 	// The rig's fixture records a software review that finished now; the
@@ -237,6 +240,7 @@ func TestSignInCheckSkippedAfterARunSucceededWithin24Hours(t *testing.T) {
 // A failure after that is told again. The review agent's check runs as a
 // review runs, after the triage agent's.
 func TestSignInCheckFailsThenWorksAgainWithOneAlertEach(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, role := range agentRoles {
 		t.Run(role.name, func(t *testing.T) {
 			r := newTriageSessionRig(t, false)
@@ -342,6 +346,7 @@ func TestSignInCheckFailsThenWorksAgainWithOneAlertEach(t *testing.T) {
 // runs again once the session's run ends. A stopped check is no failure. An
 // administrator's check is refused while a run is active.
 func TestSignInCheckGivesWayToATriageSession(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	useCodexAccessToken(t, r.a)
 	if err := r.a.SetSoftwareReviewInterval(context.Background(), r.p, 8760); err != nil {
@@ -392,6 +397,7 @@ func TestSignInCheckGivesWayToATriageSession(t *testing.T) {
 // is on its way is a sign-in failure: administrators hear it at once, not
 // after the next check.
 func TestASignInCheckThatFailsBeforeTheStopForASessionIsASignInFailure(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageSessionRig(t, true)
 	useCodexAccessToken(t, r.a)
 	if err := r.a.SetSoftwareReviewInterval(context.Background(), r.p, 8760); err != nil {
@@ -422,6 +428,7 @@ func TestASignInCheckThatFailsBeforeTheStopForASessionIsASignInFailure(t *testin
 // expiry, and "Check the sign-in now", which only an administrator presses;
 // the page refreshes while a check runs.
 func TestTriageAgentPageShowsTheSignIn(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	admin := h.browser()
 	admin.addPerson("admin@example.test", "Administrator")

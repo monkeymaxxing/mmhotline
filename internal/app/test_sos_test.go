@@ -32,6 +32,7 @@ func (r *triageHoldRig) status(t *testing.T, id, want string) {
 // has nothing to look into, so it neither waits nor runs. A real SOS from an
 // alert source waits 5 minutes for the triage agent in this rig.
 func TestTestSOSWakesThePersonOnCallAtOnceAndSkipsTheTriageAgent(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	id := r.sendTestSOS(t)
 	backgroundRounds(t, r.a)
@@ -63,6 +64,7 @@ func TestTestSOSWakesThePersonOnCallAtOnceAndSkipsTheTriageAgent(t *testing.T) {
 // the incident page, or any other claim. MMHotline resolves the test at once
 // and sends nobody a message that it is resolved. A real SOS stays claimed.
 func TestClaimingTheTestSOSResolvesIt(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	id := r.sendTestSOS(t)
 	backgroundRounds(t, r.a)
@@ -123,6 +125,7 @@ func TestClaimingTheTestSOSResolvesIt(t *testing.T) {
 // A test nobody claimed stays open, and the next test closes it, so a second
 // test never leaves two tests ringing a phone.
 func TestANewTestSOSClosesTheUnclaimedEarlierTest(t *testing.T) {
+	parallelStartingProcesses(t)
 	r := newTriageHoldRig(t)
 	first := r.sendTestSOS(t)
 	second := r.sendTestSOS(t)

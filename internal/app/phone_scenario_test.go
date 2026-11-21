@@ -10,6 +10,7 @@ import (
 // A large outage pages many members in one team. Twilio accepts one
 // call per second; all first calls must fit the bound without HTTP 429.
 func TestManyMembersPagedAtOnceUnderSendingServiceLimits(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("scenario")
 	}
@@ -75,6 +76,7 @@ func refusedForRate(t *testing.T, a *App) int {
 // The scenario's rate check can fail: when MMHotline paces itself faster
 // than the sending service allows, the refusals show.
 func TestScenarioRateCheckSeesRefusals(t *testing.T) {
+	t.Parallel()
 	r := newPhoneRig(t)
 	ctx := context.Background()
 	r.fake.SetSendingServiceRateLimit("twilio", "call", 0.25)

@@ -22,6 +22,7 @@ func runProblem(t *testing.T, h *customScheduleTeam, code string) *CustomSchedul
 }
 
 func TestCustomScheduleSandboxAnswersAndLimits(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	preview, err := h.app.PreviewCustomScheduleCode(context.Background(), h.admin, customConfig(weekdayWeekendCode))
 	if err != nil || preview.Problem != nil {
@@ -89,6 +90,7 @@ func TestCustomScheduleSandboxAnswersAndLimits(t *testing.T) {
 // Previews, saves, and activations share one limit, so saving code that
 // fails its test cases cannot run the sandbox without end.
 func TestCustomScheduleRunLimitPerTeam(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	h.save(t, customConfig(weekdayWeekendCode))
 	for range customScheduleRunsPerHour - 1 {
@@ -114,6 +116,7 @@ func TestCustomScheduleRunLimitPerTeam(t *testing.T) {
 // be asked. Around both daylight saving changes in New York, a repeated local
 // time is asked once and never switches back; a skipped one is never asked.
 func TestCustomScheduleWorkedOutAheadAcrossDaylightSaving(t *testing.T) {
+	t.Parallel()
 	h := newCustomScheduleTeam(t)
 	ctx := context.Background()
 	signInEmailAddresses, err := h.app.customScheduleMemberSignInEmailAddresses(ctx)
@@ -201,6 +204,7 @@ def on_call(at):
 }
 
 func TestCustomScheduleRunLimiterCountsInstallationRunsAndExpiresThem(t *testing.T) {
+	t.Parallel()
 	limiter := &customScheduleRunLimiter{}
 	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
 	for range 60 {

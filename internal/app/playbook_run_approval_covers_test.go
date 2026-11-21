@@ -114,6 +114,7 @@ func approvalAlerts(t *testing.T, a *App, playbook string) int {
 // playbook asks a person again, and a request on another inventory is not
 // covered.
 func TestOneApprovalCoversTheNamedPlaybooksOnceInTheSession(t *testing.T) {
+	parallelStartingProcesses(t)
 	r, runner := approvalCoversRig(t, "")
 	sos, _, ask := coversSession(t, r, "db01")
 
@@ -194,6 +195,7 @@ func TestOneApprovalCoversTheNamedPlaybooksOnceInTheSession(t *testing.T) {
 // A refused approval covers nothing: every_server, which the refused
 // approval would have covered, asks a person.
 func TestARefusedApprovalCoversNothing(t *testing.T) {
+	parallelStartingProcesses(t)
 	r, runner := approvalCoversRig(t, "")
 	_, _, ask := coversSession(t, r, "db01")
 	ask(replaceFailedServers, "production")
@@ -214,6 +216,7 @@ func TestARefusedApprovalCoversNothing(t *testing.T) {
 // every_server asks a person, though the earlier approval's cover was
 // never used.
 func TestACoverEndsWithItsSession(t *testing.T) {
+	parallelStartingProcesses(t)
 	r, runner := approvalCoversRig(t, "")
 	sos, run, ask := coversSession(t, r, "db01")
 	ask(replaceFailedServers, "production")
@@ -243,6 +246,7 @@ func TestACoverEndsWithItsSession(t *testing.T) {
 // no trusted key signed waits for review, the covered run does not run, its
 // record says why, and the cover is used.
 func TestACoveredRunStillWaitsForTheCommitCheck(t *testing.T) {
+	parallelStartingProcesses(t)
 	records := t.TempDir()
 	r, _ := approvalCoversRig(t, miniRunMMX(records))
 	_, _, ask := coversSession(t, r, "db01")
@@ -275,6 +279,7 @@ func TestACoveredRunStillWaitsForTheCommitCheck(t *testing.T) {
 // matches the inventory's name, not its servers or the commit, so both still
 // run without asking a person, each at the newest commit.
 func TestACoverHoldsAcrossTheReplacementsInventoryCommit(t *testing.T) {
+	parallelStartingProcesses(t)
 	records := t.TempDir()
 	r, _ := approvalCoversRig(t, miniRunMMX(records))
 	_, _, ask := coversSession(t, r, "app001")
@@ -322,6 +327,7 @@ func TestACoverHoldsAcrossTheReplacementsInventoryCommit(t *testing.T) {
 // every-server covers neither every_server, which a LIKE pattern's "_"
 // would match, nor Every-Server, which a LIKE would match in any case.
 func TestACoverMatchesPlaybookNamesExactly(t *testing.T) {
+	parallelStartingProcesses(t)
 	r, runner := approvalCoversRig(t, "")
 	if _, err := r.a.Store.db.Exec(`UPDATE agent_playbook_rules_for_listed_playbooks SET its_approval_also_approves_in_the_same_session='every-server,Destroy_Replaced_Servers' WHERE playbook_name='replace_failed_servers'`); err != nil {
 		t.Fatal(err)

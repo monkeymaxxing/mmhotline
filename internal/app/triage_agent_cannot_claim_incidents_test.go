@@ -18,6 +18,7 @@ import (
 // action recognizes any of them, or if a preset other than
 // every_fix_without_permission lets an unrecognized task act.
 func TestPlaybooksThatClaimOrResolveIncidentsWaitForAPerson(t *testing.T) {
+	t.Parallel()
 	const (
 		claim   = "mmhotline incidents claim --incident-id 4f2a --sign-in-email-address alex@example.com"
 		resolve = "mmhotline incidents resolve --incident-id 4f2a"

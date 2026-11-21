@@ -152,6 +152,7 @@ func actThenReportApp(t *testing.T) *App {
 
 // A push before execution moves the copy forward without starting MMX.
 func TestMMXRunCopyMovedPastJudgedCommit(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	records := t.TempDir()
 	commitRunMMXInCopy(t, a, fakeRunMMX(records, "exit 0\n"))
@@ -175,6 +176,7 @@ func TestMMXRunCopyMovedPastJudgedCommit(t *testing.T) {
 // message even when the copy moved to a newer trusted commit, so nobody is
 // asked to approve the playbook again at that commit.
 func TestMMXRunRefusedWhenTheCopyMovedAndACommitWaits(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	records := t.TempDir()
 	commitRunMMXInCopy(t, a, fakeRunMMX(records, "exit 0\n"))
@@ -200,6 +202,7 @@ func TestMMXRunRefusedWhenTheCopyMovedAndACommitWaits(t *testing.T) {
 // MMHotline runs mmx run NAME --inventory production in its copy, keeps
 // the whole output with the request, and answers with its end.
 func TestTriageAgentActThenReportRunsMMX(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := actThenReportApp(t)
 	records := t.TempDir()
 	longOutput := "TASK [free disk space]\n" + strings.Repeat("ok: [app002] systemd_journal_vacuum\n", 1000) + "PLAY RECAP app002 ok=1 changed=1 failed=0\n"
@@ -236,6 +239,7 @@ func TestTriageAgentActThenReportRunsMMX(t *testing.T) {
 // Every nonzero exit is ran_and_failed and names MMX's exit code.
 // An MMX program that cannot start runs nothing and is refused.
 func TestMMXRunOutcomes(t *testing.T) {
+	parallelStartingProcesses(t)
 	for _, test := range []struct {
 		name, body, output string
 		outcome            triageagent.RequestOutcome
@@ -268,6 +272,7 @@ func TestMMXRunOutcomes(t *testing.T) {
 
 // A held flock records waiting, blocks MMX, and releases the queued run.
 func TestMMXRunWaitingForAnotherRun(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	records := t.TempDir()
 	commitRunMMXInCopy(t, a, fakeRunMMX(records, "echo 'PLAY RECAP app002 ok=1'\n"))
@@ -308,6 +313,7 @@ func TestMMXRunWaitingForAnotherRun(t *testing.T) {
 }
 
 func TestMMXRunRefusesTrackedChanges(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	records := t.TempDir()
 	commitRunMMXInCopy(t, a, fakeRunMMX(records, "exit 0\n"))
@@ -384,6 +390,7 @@ func TestMMXRunTimeLimit(t *testing.T) {
 // goes on to its end and is recorded, even after the triage run's context
 // ends.
 func TestMMXRunOutlastsAStoppedTriageRun(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := actThenReportApp(t)
 	records := t.TempDir()
 	// The agent reports its session first, so the stopped run can be resumed.
@@ -424,6 +431,7 @@ func TestMMXRunOutlastsAStoppedTriageRun(t *testing.T) {
 // MMHotline runs one MMX run at a time: a second call waits for the first,
 // and its record shows the wait while the first runs.
 func TestMMXRunsOneAtATime(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	records := t.TempDir()
 	order, finish := filepath.Join(records, "order"), filepath.Join(records, "finish")
@@ -456,6 +464,9 @@ func TestMMXRunsOneAtATime(t *testing.T) {
 
 // The shared lock remains held while MMX changes servers and is released at
 // the end, so a person's helper cannot change the working tree midway.
+// Serial: after the run, the check that the copy lock is free fails while
+// another test starts a program, because the new process shares the lock's
+// open file until it runs the program.
 func TestMMXRunHoldsCopyLockThroughExecution(t *testing.T) {
 	a := foundationApp(t)
 	records := t.TempDir()
@@ -516,6 +527,7 @@ func TestMMXRunTimeLimitKillsAnUnresponsiveProcessAfterGrace(t *testing.T) {
 // A copy behind the judged commit or on a different history is never
 // treated as a newer commit that may keep an approval.
 func TestMMXRunRefusesAHeadOutsideTheJudgedHistory(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := foundationApp(t)
 	records := t.TempDir()
 	commitRunMMXInCopy(t, a, fakeRunMMX(records, "exit 0\n"))
@@ -536,6 +548,7 @@ func TestMMXRunRefusesAHeadOutsideTheJudgedHistory(t *testing.T) {
 
 // An unattended run judges again when origin advances before execution.
 func TestTriageAgentPlaybookJudgedAgainWhenTheCopyMoved(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := actThenReportApp(t)
 	records := t.TempDir()
 	run := prepareSystemsRepositoryRunWithRunMMX(t, a, miniRunMMX(records), requestFreeDiskSpace+codexFinishes)
@@ -559,6 +572,7 @@ func TestTriageAgentPlaybookJudgedAgainWhenTheCopyMoved(t *testing.T) {
 // the second request is judged and runs at the newer commit, with no second
 // judging.
 func TestASecondRequestRunsAtTheCommitSomeoneElsePushed(t *testing.T) {
+	parallelStartingProcesses(t)
 	a := actThenReportApp(t)
 	records := t.TempDir()
 	explainCalls := installFakeMMX(t, a, map[string]string{"2026-11-03_free_disk_space_on_app002": freeDiskSpaceExplained})

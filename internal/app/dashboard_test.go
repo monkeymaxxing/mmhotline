@@ -15,6 +15,7 @@ import (
 // Every unresolved SOS the team admitted stays on the dashboard, however
 // many arrive in one outage, and each one nobody claimed offers Claim.
 func TestDashboardRetainsAllAdmittedUnresolvedIncidents(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	browser := h.browser()
 	p := browser.addPerson("burst@example.test", "Barbara")
@@ -71,6 +72,7 @@ func dashboardTeam(t *testing.T, h *workflowRig, week func(daniel, priya string)
 // handled, with who claimed it and when, and offers no Claim. With nothing
 // left, the page says All clear and names the last SOS and who resolved it.
 func TestDashboardSaysWhatNeedsAPerson(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	ctx := context.Background()
 	daniel, _, priyaPrincipal, _ := dashboardTeam(t, h, nil)
@@ -150,6 +152,7 @@ func TestDashboardSaysWhatNeedsAPerson(t *testing.T) {
 // until when and who then, whom MMHotline also wakes when nobody claims in
 // the time to claim, and the team mute while it lasts.
 func TestDashboardOnCallPanel(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	ctx := context.Background()
 	newYork, err := time.LoadLocation("America/New_York")
@@ -187,6 +190,7 @@ func TestDashboardOnCallPanel(t *testing.T) {
 // and "then" for the same team: here a schedule by hour that keeps Daniel on
 // call for the next 17 hours, then Priya.
 func TestDashboardAndOnCallPageAgreeOnUntilAndThen(t *testing.T) {
+	t.Parallel()
 	h := newWorkflowRig(t)
 	daniel, danielMember, _, priya := dashboardTeam(t, h, nil)
 	newYork, err := time.LoadLocation("America/New_York")
@@ -223,6 +227,7 @@ func TestDashboardAndOnCallPageAgreeOnUntilAndThen(t *testing.T) {
 // works from the dashboard. The session's SOS, held for the triage agent,
 // says that nobody is woken yet.
 func TestDashboardListsApprovalsAndWarnedRunsThatWait(t *testing.T) {
+	parallelStartingProcesses(t)
 	t.Run("an approval request", func(t *testing.T) {
 		r := newTriageSessionRig(t, true)
 		prepareApprovals(t, r.a, "")
@@ -265,6 +270,7 @@ func TestDashboardListsApprovalsAndWarnedRunsThatWait(t *testing.T) {
 // administrator's dashboard, with the reason; a member, who cannot change
 // the file, does not see it.
 func TestDashboardShowsSettingsFailuresToAdministrators(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	withBruno := replaced(t, exampleSettingsYAML, "    role: administrator\n", "    role: administrator\n  - name: Bruno Costa\n    sign_in_email_address: bruno@example.com\n    role: member\n")
 	f := newSettingsFileFixture(t, withBruno)
@@ -293,6 +299,7 @@ func TestDashboardShowsSettingsFailuresToAdministrators(t *testing.T) {
 }
 
 func TestIncidentPageListsOnlyItsDeliveriesAndClearPages(t *testing.T) {
+	t.Parallel()
 	a := foundationApp(t)
 	person := memberFixture(t, a, "page@example.test")
 	p := person.Principal
@@ -405,6 +412,7 @@ func TestIncidentPageListsOnlyItsDeliveriesAndClearPages(t *testing.T) {
 }
 
 func TestIncidentPageListsEscalationNotices(t *testing.T) {
+	t.Parallel()
 	for _, automatic := range []bool{false, true} {
 		t.Run(fmt.Sprintf("automatic=%t", automatic), func(t *testing.T) {
 			a := foundationApp(t)
@@ -513,6 +521,7 @@ func TestIncidentPageListsEscalationNotices(t *testing.T) {
 }
 
 func TestIncidentActionLabelsAndSeverityBadges(t *testing.T) {
+	t.Parallel()
 	for kind, label := range map[string]string{"opened": "Opened", "sos_escalation_due": "Contacting", "claimed": "Claimed", "reclaimed": "Taken over", "escalated": "Escalated", "resolved": "Resolved", "related_alert": "Related alert received"} {
 		if got := incidentActionLabel(kind); got != label {
 			t.Fatalf("%s: %s", kind, got)
