@@ -45,10 +45,10 @@ MMHotline keeps people, incidents, and setup.
    ```
 
    **Check:** it prints the running release, such as
-   `mmhotline 0.5.0 (COMMIT, linux/amd64, modified=false)`, with the
+   `mmhotline 0.6.0 (COMMIT, linux/amd64, modified=false)`, with the
    release's full commit hash in place of `COMMIT`. The
    release you upgrade to is the version in the archive's name, such as
-   `mmhotline-0.5.0-linux-amd64.tar.gz`.
+   `mmhotline-0.6.0-linux-amd64.tar.gz`.
 
 2. **Download, check, and unpack the new release,** as steps 1 and 2 of
    [Install a release](install.md#install-a-release) say: paste the block
