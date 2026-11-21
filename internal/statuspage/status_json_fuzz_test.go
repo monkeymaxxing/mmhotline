@@ -13,33 +13,45 @@ import (
 // new notice, an update, or a resolution. A file that does not read gives no
 // notices. A refused post is ErrRefused. After a post the file still holds
 // every notice it held, each with its updates in order; a new notice's ID is
-// one more than the highest so far, and no other notice has it
-// (docs/changing-mmhotline/design/mmhotline-down-alarm-and-status-page.md). The file MMHotline then saves
-// reads back as the same file, and the page renders from it.
+// above every earlier notice's and above next_notice_id, and no other notice
+// has it (docs/changing-mmhotline/design/mmhotline-down-alarm-and-status-page.md).
+// The file MMHotline then saves reads back as the same file, and the page
+// renders from it, also for a notice without updates.
 func FuzzStatusJSON(f *testing.F) {
 	designExample := `{
   "page_title": "Example Inc.",
+  "host_name": "status.example.com",
   "published_at": "2026-10-26T08:09:30Z",
+  "next_notice_id": 2,
   "notices": [
     {
       "notice_id": 1,
+      "title": "Sign-in delays",
+      "impact": "degraded",
       "opened_at": "2026-10-26T08:00:00Z",
+      "updated_at": "2026-10-26T08:09:30Z",
       "resolved_at": null,
+      "next_update_id": 3,
       "updates": [
-        {"message": "We are looking into a problem.", "posted_at": "2026-10-26T08:00:00Z"},
-        {"message": "Sign-in fails for some customers. We are moving the database to its replica.", "posted_at": "2026-10-26T08:09:30Z"}
+        {"update_id": 1, "stage": "investigating", "message": "We are looking into a problem.", "posted_at": "2026-10-26T08:00:00Z"},
+        {"update_id": 2, "message": "Sign-in fails for some customers. We are moving the database to its replica.", "posted_at": "2026-10-26T08:09:30Z", "edited_at": "2026-10-26T08:10:00Z"}
       ]
     }
   ]
 }`
-	f.Add([]byte(designExample), int64(0), "We are looking into a problem.", false)
-	f.Add([]byte(designExample), int64(1), "The database runs on its replica.", false)
-	f.Add([]byte(designExample), int64(1), "", true)
-	f.Add([]byte(`{"page_title":"Example Inc.","notices":[{"notice_id":3,"opened_at":"2026-10-26T08:00:00+05:30","resolved_at":"2026-10-26T09:00:00Z","updates":[]}]}`), int64(3), "Again", false)
-	f.Add([]byte(`{"page_title":"Example Inc.","notices":null}`), int64(0), " \n ", false)
-	f.Add([]byte(`not JSON`), int64(0), "x", false)
+	// The arguments: the file, the notice ID, the message, the stage, the kind
+	// of change (0 new notice, 1 update, 2 resolve), and the new notice's impact.
+	f.Add([]byte(designExample), int64(0), "We are looking into a problem.", "investigating", uint8(0), "outage")
+	f.Add([]byte(designExample), int64(0), "Planned.", "scheduled", uint8(0), "maintenance")
+	f.Add([]byte(designExample), int64(1), "The database runs on its replica.", "identified", uint8(1), "")
+	f.Add([]byte(designExample), int64(1), "", "", uint8(2), "")
+	f.Add([]byte(designExample), int64(1), "Fixed.", "resolved", uint8(2), "")
+	f.Add([]byte(`{"page_title":"Example Inc.","next_notice_id":9,"notices":[{"notice_id":3,"opened_at":"2026-10-26T08:00:00+05:30","resolved_at":"2026-10-26T09:00:00Z","updates":[]}]}`), int64(3), "Again", "", uint8(1), "")
+	f.Add([]byte(`{"page_title":"Example Inc.","notices":[{"notice_id":3,"impact":"outage","opened_at":"2026-10-26T08:00:00Z","resolved_at":null,"updates":[]},{"notice_id":3,"opened_at":"2026-10-26T08:00:00Z","resolved_at":null,"updates":[]}]}`), int64(3), "Twice", "", uint8(1), "")
+	f.Add([]byte(`{"page_title":"Example Inc.","notices":null}`), int64(0), " \n ", "", uint8(0), "outage")
+	f.Add([]byte(`not JSON`), int64(0), "x", "", uint8(0), "outage")
 	now := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
-	f.Fuzz(func(t *testing.T, data []byte, noticeID int64, message string, resolve bool) {
+	f.Fuzz(func(t *testing.T, data []byte, noticeID int64, message, stage string, kind uint8, impact string) {
 		file, err := decodeStatusJSON(data)
 		if err != nil {
 			if file.Notices != nil || file.PageTitle != "" {
@@ -55,9 +67,14 @@ func FuzzStatusJSON(f *testing.F) {
 		if err := json.Unmarshal(before, &earlier); err != nil {
 			t.Fatal(err)
 		}
-		change := Post(noticeID, message)
-		if resolve {
-			change = Resolve(noticeID, message)
+		var change Change
+		switch kind % 3 {
+		case 0:
+			change = PostNotice(PostNoticeInput{Title: "Fuzzed", Impact: Impact(impact), Stage: Stage(stage), Message: message})
+		case 1:
+			change = PostUpdate(PostUpdateInput{NoticeID: noticeID, Stage: Stage(stage), Message: message})
+		default:
+			change = Resolve(ResolveInput{NoticeID: noticeID, Stage: Stage(stage), ClosingMessage: message})
 		}
 		changed, err := change(&file, now)
 		if err != nil {
@@ -78,11 +95,14 @@ func FuzzStatusJSON(f *testing.F) {
 			}
 			next++
 		}
-		if noticeID == 0 && !resolve {
+		if kind%3 == 0 {
 			for _, notice := range earlier.Notices {
 				if notice.NoticeID >= changed {
 					t.Fatalf("the new notice %d is not above notice %d", changed, notice.NoticeID)
 				}
+			}
+			if changed < earlier.NextNoticeID || file.NextNoticeID != changed+1 {
+				t.Fatalf("the new notice %d and next_notice_id %d, from %d", changed, file.NextNoticeID, earlier.NextNoticeID)
 			}
 			if len(file.Notices) != len(earlier.Notices)+1 || file.Notices[0].NoticeID != changed {
 				t.Fatalf("the new notice %d is not the newest of %d", changed, len(file.Notices))
@@ -113,7 +133,7 @@ func keepsUpdates(after, before Notice) bool {
 		return false
 	}
 	for index, update := range before.Updates {
-		if after.Updates[index].Message != update.Message {
+		if after.Updates[index].Message != update.Message || after.Updates[index].UpdateID != update.UpdateID {
 			return false
 		}
 	}

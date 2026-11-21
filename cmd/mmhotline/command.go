@@ -30,7 +30,7 @@ var commandActions = map[string][]string{
 	"alert-sources":        {"list"},
 	"schedules":            {"show", "preview"},
 	// status-page set-up runs on a laptop, without MMHotline.
-	"status-page": {"show", "set-up", "post", "resolve"},
+	"status-page": {"show", "set-up", "post", "resolve", "edit", "delete"},
 	"down-alarm":  {"show", "send-test"},
 	// list and show only read what happened; send-test-sos opens a test;
 	// claim and resolve act like the incident page's buttons.

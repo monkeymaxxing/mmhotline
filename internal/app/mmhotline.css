@@ -455,24 +455,6 @@ pre.step { padding: 8px 10px; font-size: 12px; display: -webkit-box; -webkit-lin
   #incident-state .do > .faint { max-width: none; }
 }
 
-/* The public status page. It is a static file in the team's R2 bucket, not
-   one of MMHotline's pages, so it carries the rules it uses in its own style
-   element: internal/statuspage/status_page.css, a copy of rules from this
-   file that a test keeps identical. The body is a flex column, so .public
-   takes the window's width up to its own. */
-.public { width: 100%; max-width: 680px; margin: 0 auto; padding: 56px 20px 48px; }
-.public h1 { font-size: 30px; }
-.state { padding: 24px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
-.state.sos { border-color: var(--sos-border); box-shadow: 0 0 0 4px var(--sos-ring); }
-.state.ok { border-color: color-mix(in srgb, var(--ok-dot) 40%, var(--border)); }
-.state .big { font-size: 24px; line-height: 1.25; font-weight: 700; margin-top: 10px; }
-.state .big + p { margin-top: 4px; }
-.public .timeline { margin-top: 18px; }
-/* A message keeps its line breaks and wraps a long word. */
-.public .timeline li > div { white-space: pre-wrap; overflow-wrap: anywhere; }
-.public .resolved > h2 { font-size: 13px; font-weight: 650; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
-.public .resolved > .panel { padding: 16px 18px; }
-
 /* Settings pages. Short panels keep their own height;
    the rules for running the agent's playbooks stack on a phone, and copyable examples scroll within
    their own box rather than splitting a settings key. */

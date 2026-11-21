@@ -211,7 +211,7 @@ key paths, in this order:
 | `review_agent` | Saves the review agent's setup after its outside test |
 | `sending_services.pushover`, `sending_services.twilio`, `sending_services.telegram`, `sending_services.slack`, `sending_services.mail_server` | Each saves one sending service's setup after its outside test ([sending services](#sending-services)) |
 | `mmhotline_down_alarm` | Sets up the MMHotline-down alarm in Cloudflare ([the MMHotline-down alarm](#the-mmhotline-down-alarm)) |
-| `status_page` | Saves the status page's setup after MMHotline posts the current page ([the status page](#the-status-page)) |
+| `status_page` | Saves the status page's setup after MMHotline posts the current page: `status.json`, `index.html`, and `feed.xml` ([the status page](#the-status-page)) |
 
 People apply before the schedule that names the people. Each part writes the
 tables the pages and `show` commands read, through each feature's own
@@ -240,7 +240,7 @@ are saved:
 | `sending_services.slack` | Slack's token checks; MMHotline then starts Socket Mode | Removes the Slack setup; refused while contact methods use the Slack setup |
 | `sending_services.mail_server` | Connects to the SMTP server and checks TLS and the sign-in; sends nothing | Removes the mail server setup; refused while contact methods use the mail server setup |
 | `mmhotline_down_alarm` | Uploads the MMHotline-down alarm's program, the Worker, to the team's Cloudflare account, sets the Worker's check-in token, turns on the Worker's workers.dev address, saves, and checks in | Checks in with an empty list of messages to send if check-ins stop, then removes the setup. Refused when the Worker cannot be told |
-| `status_page` | Posts the current page to Cloudflare's R2 object storage with `status_page.r2_access_key_id` and `status_page.r2_secret_access_key` | Removes the setup; the bucket and the page stay in Cloudflare |
+| `status_page` | Posts the current page (`status.json`, `index.html`, and `feed.xml`) to Cloudflare's R2 object storage with `status_page.r2_access_key_id` and `status_page.r2_secret_access_key` | Removes the setup; the bucket and the page stay in Cloudflare |
 
 A part that changed is saved only when its outside test passes. Otherwise
 its earlier setting stays, and `settings apply` exits 1 and names the part
@@ -681,6 +681,29 @@ R2 API token (`r2_access_key_id` and `r2_secret_access_key`).
 “Example Inc. status”: a team names the page as the team wants the title
 read, so MMHotline adds no word to the title.
 
+Three optional keys shape the public page:
+
+- `website_url` and `support_url` add **Website** and **Support** links to
+  the page's header. `website_url` is an `https://` address. `support_url` is
+  an `https://` address or `mailto:` and one email address. Any other kind of
+  address is refused, because a `javascript:` link would run a script on the
+  page and an `http://` link would lead visitors to an unencrypted page.
+- `components` lists the parts of the team's service that a notice can say it
+  affects, such as the website or the API. Each has a `component_id` (lowercase
+  letters, digits, hyphens, and underscores, which the command and the notices
+  use), a `name`, and an optional `description`. The page lists each component
+  with its status, which its open notices give it. At most 50 components keep
+  the page scannable. Without `components`, the page has no components panel
+  and a notice names none.
+
+Reason these live in the settings file and not on the Status page page: the
+settings file is the one place that holds the team's setup, so the team
+reviews it and a deploy tool applies it, as for every other part. The
+Status page page is for what people post. The apply copies `page_title`,
+`host_name`, the links, and the components into `status.json`, because the
+public files must not need MMHotline: the page and the Atom feed are built
+from `status.json` alone, and the feed's links need the host name.
+
 The R2 bucket, public host name, and URL rule are set up once, from a laptop
 (CA8). The command `mmhotline status-page set-up` uses the person's own
 Cloudflare API token. The command creates the R2 bucket and connects the
@@ -699,8 +722,10 @@ key, which the person creates only after set-up, so the first
 `settings apply` with the `status_page` section publishes the page.
 
 The outside test posts the current page with the file's R2 key: it writes
-`status.json` and `index.html` with the file's `page_title`, and creates
-`status.json` when it is missing. A key that cannot write the bucket fails
+`status.json`, `index.html`, and `feed.xml` with the file's `page_title`,
+`host_name`, links, and components, and creates `status.json` when it is
+missing. The notices already in `status.json` stay, including those that name
+a component the file no longer lists. A key that cannot write the bucket fails
 the part and is never saved. A section left out removes the setup; the
 bucket and the page stay in Cloudflare.
 

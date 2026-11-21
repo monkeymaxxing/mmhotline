@@ -2,25 +2,161 @@ package app
 
 import "strconv"
 
-// statusPageNoticeUpdates lists a notice's updates, oldest first.
+// statusPageNoticeUpdates lists a notice's updates, oldest first, each with its
+// update ID and stage.
 templ statusPageNoticeUpdates(frame pageFrame, updates []statusPageUpdateView) {
 	<ol class="settings-updates">
 		for _, update := range updates {
 			<li>
-				<p class="faint small">{ frame.Clock(update.Posted) }</p>
+				<p class="faint small">
+					Update { strconv.FormatInt(update.UpdateID, 10) }, { frame.Clock(update.Posted) }
+					if update.EditedAt != nil {
+						(edited { frame.Clock(*update.EditedAt) })
+					}
+					if update.StageLabel != "" {
+						<span class="tag nodot">{ update.StageLabel }</span>
+					}
+				</p>
 				<p class="result">{ update.Message }</p>
 			</li>
 		}
 	</ol>
 }
 
+// statusPageAffectedComponents are the components a notice says it affects,
+// each as a tag, when it names any.
+templ statusPageAffectedComponents(notice statusPageNoticeView) {
+	if len(notice.AffectedComponents) > 0 {
+		<p class="small">
+			Affects
+			for _, name := range notice.AffectedComponents {
+				<span class="tag nodot">{ name }</span>
+			}
+		</p>
+	}
+}
+
+// statusPagePlannedWindow is a maintenance notice's planned start and end in
+// the team's time zone.
+templ statusPagePlannedWindow(frame pageFrame, notice statusPageNoticeView) {
+	if notice.ScheduledStartAt != nil && notice.ScheduledEnd != nil {
+		<p class="faint small">Planned { frame.Clock(*notice.ScheduledStartAt) } to { frame.Clock(*notice.ScheduledEnd) }</p>
+	} else if notice.ScheduledStartAt != nil {
+		<p class="faint small">Planned start { frame.Clock(*notice.ScheduledStartAt) }</p>
+	} else if notice.ScheduledEnd != nil {
+		<p class="faint small">Planned end { frame.Clock(*notice.ScheduledEnd) }</p>
+	}
+}
+
+// statusPageNoticeAction is the address a form of the notice posts to.
+func statusPageNoticeAction(noticeID int64, suffix string) string {
+	return "/status-page/notices/" + strconv.FormatInt(noticeID, 10) + "/" + suffix
+}
+
+// statusPageUpdateAction is the address a form of one update posts to.
+func statusPageUpdateAction(noticeID, updateID int64, suffix string) string {
+	return "/status-page/notices/" + strconv.FormatInt(noticeID, 10) + "/updates/" + strconv.FormatInt(updateID, 10) + "/" + suffix
+}
+
+// statusPageNoticeFolds are the folds that change a notice after it is posted,
+// open or resolved: edit its details, edit or delete its updates, and delete
+// it. Each form carries the notice's updated_at, so a page that is out of date
+// cannot overwrite or delete a later change. A refused form opens its fold and
+// shows what the person typed.
+templ statusPageNoticeFolds(frame pageFrame, csrf, timeZone string, notice statusPageNoticeView) {
+	<details class="fold" open?={ notice.Draft.Form == "edit_notice" }>
+		<summary>Edit notice details</summary>
+		<form class="stack" method="post" action={ statusPageNoticeAction(notice.NoticeID, "edit") }>
+			<input type="hidden" name="csrf" value={ csrf }/>
+			<input type="hidden" name="expected_updated_at" value={ notice.UpdatedAt }/>
+			<label class="field">Title<input name="title" required maxlength="140" value={ notice.EditTitle }/></label>
+			<label class="field">Impact
+				<select name="impact">
+					for _, option := range notice.EditImpactOptions {
+						<option value={ option.Value } selected?={ option.Selected }>{ option.Label }</option>
+					}
+				</select>
+			</label>
+			if len(notice.EditComponents) > 0 {
+				<div class="field">
+					Affected components
+					<div class="row">
+						for _, component := range notice.EditComponents {
+							<label class="field"><span><input type="checkbox" name="affected_component_ids" value={ component.ComponentID } checked?={ component.Checked }/> { component.Name }</span></label>
+						}
+					</div>
+				</div>
+			}
+			<label class="field">Planned start, used only for scheduled maintenance (optional, { timeZone })<input type="datetime-local" name="scheduled_start_at" value={ notice.EditScheduledStartAt }/></label>
+			<label class="field">Planned end, used only for scheduled maintenance (optional, { timeZone })<input type="datetime-local" name="scheduled_end_at" value={ notice.EditScheduledEnd }/></label>
+			<div>
+				<button class="btn">Save the notice details</button>
+			</div>
+		</form>
+	</details>
+	<details class="fold" open?={ notice.UpdatesFoldOpen }>
+		<summary>Edit or delete updates</summary>
+		<ol class="settings-updates">
+			for _, update := range notice.Updates {
+				<li class="stack">
+					<p class="faint small">Update { strconv.FormatInt(update.UpdateID, 10) }, { frame.Clock(update.Posted) }</p>
+					<form class="stack" method="post" action={ statusPageUpdateAction(notice.NoticeID, update.UpdateID, "edit") }>
+						<input type="hidden" name="csrf" value={ csrf }/>
+						<input type="hidden" name="expected_updated_at" value={ notice.UpdatedAt }/>
+						<label class="field">Stage
+							<select name="stage">
+								for _, option := range update.StageOptions {
+									<option value={ option.Value } selected?={ option.Selected }>{ option.Label }</option>
+								}
+							</select>
+						</label>
+						<label class="field">Message<textarea name="message" required maxlength="5000">{ update.EditMessage }</textarea></label>
+						<div>
+							<button class="btn">Save update { strconv.FormatInt(update.UpdateID, 10) }</button>
+						</div>
+					</form>
+					if notice.CanDeleteUpdates {
+						<form method="post" action={ statusPageUpdateAction(notice.NoticeID, update.UpdateID, "delete") }>
+							<input type="hidden" name="csrf" value={ csrf }/>
+							<input type="hidden" name="expected_updated_at" value={ notice.UpdatedAt }/>
+							<button class="btn">Delete update { strconv.FormatInt(update.UpdateID, 10) }</button>
+						</form>
+					}
+				</li>
+			}
+		</ol>
+		if !notice.CanDeleteUpdates {
+			<p class="faint small">A notice keeps at least one update. To remove the only update, delete the notice.</p>
+		}
+	</details>
+	<details class="fold" open?={ notice.Draft.Form == "delete_notice" }>
+		<summary>Delete this notice</summary>
+		<form class="stack" method="post" action={ statusPageNoticeAction(notice.NoticeID, "delete") }>
+			<input type="hidden" name="csrf" value={ csrf }/>
+			<input type="hidden" name="expected_updated_at" value={ notice.UpdatedAt }/>
+			<p class="small">Deleting removes the notice and all its updates from the public status page. It cannot be undone.</p>
+			<label class="field"><span><input type="checkbox" name="confirm_delete" value="1"/> Yes, delete notice { strconv.FormatInt(notice.NoticeID, 10) }, { notice.Title }</span></label>
+			<div>
+				<button class="btn">Delete this notice</button>
+			</div>
+		</form>
+	</details>
+}
+
 // statusPagePageBody is the Status page's body: the public status page's
 // address, the open notices with forms to update and resolve them, a form to
-// post a new notice, and the recently resolved notices.
+// post a new notice, and the recently resolved notices. After a refused form,
+// the form shows what the person typed.
 templ statusPagePageBody(frame pageFrame, data statusPagePageData) {
 	<div class="settings-page stack">
 		if data.Error != "" {
 			<p class="form-error" role="alert">{ data.Error }</p>
+		}
+		if data.LostDraftText != "" {
+			<label class="field">
+				Your text was not saved, because the page no longer has the form you wrote it in, for example because someone else resolved the notice. Copy it if you still need it.
+				<textarea readonly rows="6">{ data.LostDraftText }</textarea>
+			</label>
 		}
 		if !data.View.IsSetUp {
 			<section class="panel">
@@ -39,7 +175,7 @@ templ statusPagePageBody(frame pageFrame, data statusPagePageData) {
 				</div>
 				<div class="panel-body">
 					<p><a href={ data.View.PageURL }>{ data.View.PageURL }</a></p>
-					<p class="small muted">Customers see only the notices your team posts. The public page shows times in UTC and changes only when someone posts.</p>
+					<p class="small muted">Customers see only the notices your team posts. Visitors see times in their own time zone, or in UTC when their browser runs no JavaScript. The public page changes only when someone posts.</p>
 					if data.View.ReadError != "" {
 						<p class="form-error" role="alert">{ data.View.ReadError }</p>
 					}
@@ -49,27 +185,38 @@ templ statusPagePageBody(frame pageFrame, data statusPagePageData) {
 				for _, notice := range data.Open {
 					<section class="panel">
 						<div class="panel-head">
-							<h2>Open notice { strconv.FormatInt(notice.NoticeID, 10) }</h2>
-							<span class="tag warn">Open</span>
+							<h2>{ notice.Title }</h2>
+							<span class={ "tag", notice.ImpactClass }>{ notice.ImpactLabel }</span>
 						</div>
 						<div class="panel-body">
-							<p class="faint small">Opened { frame.Clock(notice.Opened) }</p>
+							<p class="faint small">Notice { strconv.FormatInt(notice.NoticeID, 10) }, opened { frame.Clock(notice.Opened) }</p>
+							@statusPageAffectedComponents(notice)
+							@statusPagePlannedWindow(frame, notice)
 							@statusPageNoticeUpdates(frame, notice.Updates)
 							<form class="stack" method="post" action={ "/status-page/notices/" + strconv.FormatInt(notice.NoticeID, 10) + "/updates" }>
-								<input type="hidden" name="csrf" value={ data.CSRF }/><label class="field">Add an update<textarea name="message" required maxlength="5000"></textarea></label>
+								<input type="hidden" name="csrf" value={ data.CSRF }/>
+								<label class="field">Stage (optional)
+									<select name="stage">
+										for _, option := range notice.StageOptions {
+											<option value={ option.Value } selected?={ option.Selected }>{ option.Label }</option>
+										}
+									</select>
+								</label>
+								<label class="field">Add an update<textarea name="message" required maxlength="5000">{ notice.AddUpdateMessage }</textarea></label>
 								<div>
 									<button class="btn primary">Post the update</button>
 								</div>
 							</form>
-							<details class="fold">
-								<summary>Resolve this notice</summary>
+							<details class="fold" open?={ notice.Draft.Form == "resolve" }>
+								<summary>{ notice.ResolveLabel }</summary>
 								<form class="stack" method="post" action={ "/status-page/notices/" + strconv.FormatInt(notice.NoticeID, 10) + "/resolve" }>
-									<input type="hidden" name="csrf" value={ data.CSRF }/><label class="field">Closing message (optional)<span class="faint small">The closing message is added as the last update.</span><textarea name="closing_message" maxlength="5000"></textarea></label>
+									<input type="hidden" name="csrf" value={ data.CSRF }/><label class="field">Closing message (optional)<span class="faint small">The closing message is added as the last update.</span><textarea name="closing_message" maxlength="5000">{ notice.Draft.ClosingMessage }</textarea></label>
 									<div>
-										<button class="btn">Resolve this notice</button>
+										<button class="btn">{ notice.ResolveLabel }</button>
 									</div>
 								</form>
 							</details>
+							@statusPageNoticeFolds(frame, data.CSRF, data.TimeZone, notice)
 						</div>
 					</section>
 				}
@@ -86,7 +233,44 @@ templ statusPagePageBody(frame pageFrame, data statusPagePageData) {
 					</div>
 					<div class="panel-body">
 						<form class="stack" method="post" action="/status-page/notices">
-							<input type="hidden" name="csrf" value={ data.CSRF }/><label class="field">Message<textarea name="message" required maxlength="5000">{ StatusPageGenericMessage }</textarea></label>
+							<input type="hidden" name="csrf" value={ data.CSRF }/>
+							<label class="field">Title<input name="title" required maxlength="140" value={ data.NewNotice.Title }/></label>
+							<label class="field">Impact
+								<select name="impact">
+									<option value="outage" selected?={ data.NewNotice.Impact == "outage" }>Outage</option>
+									<option value="degraded" selected?={ data.NewNotice.Impact == "degraded" }>Degraded performance</option>
+									<option value="maintenance" selected?={ data.NewNotice.Impact == "maintenance" }>Scheduled maintenance</option>
+								</select>
+							</label>
+							if len(data.Components) > 0 {
+								<div class="field">
+									Affected components (optional)
+									<div class="row">
+										for _, component := range data.Components {
+											<label class="field"><span><input type="checkbox" name="affected_component_ids" value={ component.ComponentID } checked?={ component.Checked }/> { component.Name }</span></label>
+										}
+									</div>
+								</div>
+							}
+							<label class="field">Planned start, for scheduled maintenance only (optional, { data.TimeZone })<input type="datetime-local" name="scheduled_start_at" value={ data.NewNotice.ScheduledStartAt }/></label>
+							<label class="field">Planned end, for scheduled maintenance only (optional, { data.TimeZone })<input type="datetime-local" name="scheduled_end_at" value={ data.NewNotice.ScheduledEndAt }/></label>
+							<label class="field">Stage of the first update
+								<select name="stage">
+									<option value="" selected?={ data.NewNotice.Stage == "" }>Default: Investigating, or Scheduled for maintenance</option>
+									<optgroup label="For an outage or degraded performance">
+										<option value="investigating" selected?={ data.NewNotice.Stage == "investigating" }>Investigating</option>
+										<option value="identified" selected?={ data.NewNotice.Stage == "identified" }>Identified</option>
+										<option value="monitoring" selected?={ data.NewNotice.Stage == "monitoring" }>Monitoring</option>
+										<option value="resolved" selected?={ data.NewNotice.Stage == "resolved" }>Resolved</option>
+									</optgroup>
+									<optgroup label="For scheduled maintenance">
+										<option value="scheduled" selected?={ data.NewNotice.Stage == "scheduled" }>Scheduled</option>
+										<option value="in_progress" selected?={ data.NewNotice.Stage == "in_progress" }>In progress</option>
+										<option value="completed" selected?={ data.NewNotice.Stage == "completed" }>Completed</option>
+									</optgroup>
+								</select>
+							</label>
+							<label class="field">Message<textarea name="message" required maxlength="5000">{ data.NewNotice.Message }</textarea></label>
 							<div>
 								<button class="btn primary">Post to the status page</button>
 							</div>
@@ -94,13 +278,17 @@ templ statusPagePageBody(frame pageFrame, data statusPagePageData) {
 					</div>
 				</section>
 				if len(data.Resolved) > 0 {
-					<details class="more">
+					<details class="more" open?={ data.ResolvedOpen }>
 						<summary>Recently resolved ({ strconv.Itoa(len(data.Resolved)) })</summary>
 						<div class="body stack">
 							for _, notice := range data.Resolved {
 								<section class="stack">
-									<h3>Notice { strconv.FormatInt(notice.NoticeID, 10) }, resolved { frame.Clock(*notice.Resolved) }</h3>
+									<h3>{ notice.Title }</h3>
+									<p class="faint small">Notice { strconv.FormatInt(notice.NoticeID, 10) }, <span class={ "tag", notice.ImpactClass }>{ notice.ImpactLabel }</span>, resolved { frame.Clock(*notice.Resolved) }</p>
+									@statusPageAffectedComponents(notice)
+									@statusPagePlannedWindow(frame, notice)
 									@statusPageNoticeUpdates(frame, notice.Updates)
+									@statusPageNoticeFolds(frame, data.CSRF, data.TimeZone, notice)
 								</section>
 							}
 						</div>

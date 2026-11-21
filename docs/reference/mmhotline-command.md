@@ -2099,8 +2099,8 @@ explains how the page works.
 
 ## mmhotline status-page show
 
-Shows the status page's setup, its address, and its open and recently
-resolved notices.
+Shows the status page's setup, its address, its components and their
+status, and its open and recently resolved notices.
 
 ```sh
 sudo mmhotline status-page show
@@ -2114,16 +2114,37 @@ Example Inc. status, published at 2026-11-15T07:51:10Z.
 No open notices: the page says that everything is working.
 ```
 
+With a website link, components, and an open notice, it also prints:
+
+```text
+Website link: https://example.com
+Support link: mailto:support@example.com
+Component Website (website): operational
+Component API (api): degraded
+Open notice 1, degraded: Sign-in is slow
+  Affects API.
+  Opened at 2026-11-15T07:51:26Z.
+  Update 1, investigating, at 2026-11-15T07:51:26Z: Sign-in is slow for some customers. We are looking into it.
+```
+
+An open maintenance notice also prints its `Planned start` and
+`Planned end`. Each update shows its number, which `edit` and `delete` take
+as `--update-id`. The command lists the 3 most recently resolved notices as
+`Resolved notice N, IMPACT, resolved at TIME: TITLE`, with the components
+they affect, and lists updates only for open notices. `show --json` lists
+every notice, resolved ones too, with its whole history and each update's ID.
+
 [Post to the status page](../how-to/post-to-the-status-page.md) uses
-`show`, `post`, and `resolve`, on the server and from a laptop.
+`show`, `post`, `resolve`, `edit`, and `delete`, on the server and from a
+laptop.
 
 - **Flags:** the common flags.
 - Any member may post.
 - Without the status page, it prints `The status page is not set up.`
 
 **From a laptop.** With these three environment variables set, `show`,
-`post`, and `resolve` go straight to the R2 bucket, with no MMHotline
-service and no command socket. Their output then starts with
+`post`, `resolve`, `edit`, and `delete` go straight to the R2 bucket, with
+no MMHotline service and no command socket. Their output then starts with
 `Status page in R2 bucket` and the bucket's URL.
 
 | Environment variable | Holds |
@@ -2134,9 +2155,9 @@ service and no command socket. Their output then starts with
 
 The bucket URL alone is refused: the two keys are required with it.
 
-**JSON fields:** `message` and `status_page`; no `web_url`. `post` and
-`resolve` also return `notice_id`, the notice they changed. Results never
-include the R2 Secret Access Key or an API token.
+**JSON fields:** `message` and `status_page`; no `web_url`. `post`,
+`resolve`, `edit`, and `delete` also return `notice_id`, the notice they
+changed. Results never include the R2 Secret Access Key or an API token.
 
 | Field | Meaning |
 | --- | --- |
@@ -2146,16 +2167,20 @@ include the R2 Secret Access Key or an API token.
 | `status_page.bucket_name`, `.r2_bucket_url` | The R2 bucket and its S3 API address |
 | `status_page.r2_access_key_id` | The saved R2 Access Key ID; absent before the section applied |
 | `status_page.set_up_at`, `.set_up_by` | When the section last applied, and `the settings file` and its path |
-| `status_page.published_status_json` | The published `status.json`: `page_title`, `published_at`, and `notices` ([its format](../changing-mmhotline/design/mmhotline-down-alarm-and-status-page.md#two-files-in-an-r2-bucket)) |
-| `status_page.read_error` | Why `status.json` could not be read, or why `index.html` may not show a saved post until the next post |
+| `status_page.published_status_json` | The published `status.json`: `page_title`, `host_name`, `website_url`, `support_url`, `published_at`, `next_notice_id`, `components`, and `notices` ([its format](../changing-mmhotline/design/mmhotline-down-alarm-and-status-page.md#three-files-in-an-r2-bucket)) |
+| `status_page.read_error` | Why `status.json` could not be read, or why `index.html` or `feed.xml` may not show a saved change until the next post |
 
 ## mmhotline status-page post
 
 Opens a notice on the status page, or adds an update to an open notice.
 
 ```sh
-sudo mmhotline status-page post --message "We are looking into a problem."
-sudo mmhotline status-page post --notice-id 1 --message "Sign-in works again for most customers."
+sudo mmhotline status-page post --title "Sign-in is slow" --impact degraded --component api \
+  --stage investigating --message "Sign-in is slow for some customers. We are looking into it."
+sudo mmhotline status-page post --notice-id 1 --stage identified --message "We found the cause: a full disk."
+sudo mmhotline status-page post --title "Database upgrade" --impact maintenance --stage scheduled \
+  --scheduled-start 2026-11-21T02:00:00Z --scheduled-end 2026-11-21T04:00:00Z \
+  --message "We will upgrade the database. Orders pause for a few minutes."
 ```
 
 The output is that of [`status-page show`](#mmhotline-status-page-show),
@@ -2166,9 +2191,18 @@ bucket.` from a laptop.
 | --- | --- |
 | `--message TEXT` | Required. 1 to 5,000 characters |
 | `--notice-id N` | Optional. Add the message as an update to open notice N; without it, a new notice opens |
+| `--title TEXT` | Required for a new notice: 1 to 140 characters on one line. Not with `--notice-id` |
+| `--impact IMPACT` | Optional, a new notice only: `outage` (the default), `degraded`, or `maintenance` |
+| `--component ID` | Optional, a new notice only: a component the notice affects, by the `component_id` the settings file's `status_page` `components` list gives. Repeat the flag for more than one |
+| `--stage STAGE` | Optional. The message's stage: `investigating`, `identified`, `monitoring`, or `resolved` for an outage or degraded notice; `scheduled`, `in_progress`, or `completed` for maintenance. Without it, the message has no stage. A maintenance notice whose latest update has the stage `scheduled` keeps its affected components **Operational** until an update has the stage `in_progress` |
+| `--scheduled-start TIME`, `--scheduled-end TIME` | Optional, a new `maintenance` notice only: the planned window as RFC 3339 times, such as `2026-11-21T02:00:00Z`. The end is after the start. Either may be given alone |
 | Common flags | As above |
 
-- Each post uploads `status.json` and `index.html` to the bucket.
+- Each post uploads `status.json`, `index.html`, and `feed.xml` to the
+  bucket.
+- An update to a resolved notice is refused; open a new notice.
+- A request that fits no rule, such as `--impact` with `--notice-id`, is
+  refused before anything is posted, and the message says why.
 - From a laptop, a post is refused while the bucket has no `status.json`,
   which the first `settings apply` with the `status_page` section
   creates.
@@ -2189,7 +2223,78 @@ bucket.` from a laptop.
 | --- | --- |
 | `--notice-id N` | Required. The notice to resolve |
 | `--closing-message TEXT` | Optional. Added as the notice's last update |
+| `--stage STAGE` | Optional, with `--closing-message`. The closing message's stage; the default is `resolved`, or `completed` for a maintenance notice |
 | Common flags | As above |
+
+## mmhotline status-page edit
+
+Changes a notice's details, or one update's message or stage, on a notice
+that is open or resolved. Only the values you give change.
+
+```sh
+sudo mmhotline status-page edit --notice-id 1 --title "Slow sign-in" --impact degraded --component api
+sudo mmhotline status-page edit --notice-id 1 --update-id 2 --message "We found the cause: a full disk."
+sudo mmhotline status-page edit --notice-id 1 --clear-components
+```
+
+The output is that of [`status-page show`](#mmhotline-status-page-show),
+then `Edited notice 1.` or `Edited update 2 of notice 1.`, or the same with
+`, directly in the R2 bucket.` from a laptop.
+
+| Flag | Meaning |
+| --- | --- |
+| `--notice-id N` | Required. The notice to edit |
+| `--update-id N` | Optional. Edit this update of the notice, with `--message`, `--stage`, or `--clear-stage`. Without it, edit the notice itself |
+| `--title TEXT` | The notice's new title: 1 to 140 characters on one line |
+| `--impact IMPACT` | The notice's new impact: `outage`, `degraded`, or `maintenance`. A change away from `maintenance` removes the planned window |
+| `--component ID` | A component the notice affects; repeat it for more than one. The components you give replace the notice's components |
+| `--clear-components` | Remove all components from the notice. Not with `--component` |
+| `--scheduled-start TIME`, `--scheduled-end TIME` | The maintenance notice's new planned start or end, RFC 3339 |
+| `--clear-schedule` | Remove the planned start and end. Not with `--scheduled-start` or `--scheduled-end` |
+| `--message TEXT` | With `--update-id`: the update's new message, 1 to 5,000 characters |
+| `--stage STAGE` | With `--update-id`: the update's new stage, one that fits the notice's impact |
+| `--clear-stage` | With `--update-id`: remove the update's stage. Not with `--stage` |
+| Common flags | As above |
+
+- Give `edit` at least one value to change. The flags of a notice
+  (`--title`, `--impact`, `--component`, `--clear-components`,
+  `--scheduled-start`, `--scheduled-end`, and `--clear-schedule`) and the
+  flags of an update (`--message`, `--stage`, and `--clear-stage`) are not
+  given together: an update flag needs `--update-id`, and a notice flag
+  refuses it.
+- `--update-id 0` is refused; the numbers start at 1.
+- An edited update shows `(edited)` on the public page and in the feed. An
+  edit never changes when a notice opened or resolved, or when an update was
+  posted.
+- A notice's Atom entry moves to the top of the feed, because an edit
+  updates the notice's `updated_at`.
+- Unlike the Status page page, the command does not check whether someone
+  changed the notice since you looked: it applies your values to the
+  notice as it is now.
+
+## mmhotline status-page delete
+
+Deletes a whole notice with all its updates, or one update of a notice.
+
+```sh
+sudo mmhotline status-page delete --notice-id 3
+sudo mmhotline status-page delete --notice-id 1 --update-id 2
+```
+
+The output is that of [`status-page show`](#mmhotline-status-page-show),
+then `Deleted notice 3.` or `Deleted update 2 of notice 1.`, or the same with
+`, directly in the R2 bucket.` from a laptop.
+
+| Flag | Meaning |
+| --- | --- |
+| `--notice-id N` | Required. The notice to delete, open or resolved, with all its updates |
+| `--update-id N` | Optional. Delete only this update. A notice keeps at least one update, so deleting the only update is refused; delete the notice instead |
+| Common flags | As above |
+
+- A delete is final and the command asks nothing first: the notice or
+  update leaves `status.json`, the public page, and the feed.
+- The numbers of a deleted notice or update are never given to a later one,
+  so an old link or feed entry never points to something else.
 
 ## Commands that read what happened
 

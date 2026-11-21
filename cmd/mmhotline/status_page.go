@@ -97,19 +97,55 @@ type statusPageSetUpInput struct {
 	cloudflareAccountID, hostName, cloudflareAPIToken string
 }
 
+// componentFlag collects each --component given, in order.
+type componentFlag []string
+
+func (c *componentFlag) String() string      { return strings.Join(*c, ",") }
+func (c *componentFlag) Set(id string) error { *c = append(*c, id); return nil }
+
+// statusPageFlags defines the flags of a status-page action. The values of
+// post, resolve, edit, and delete go into in, only those the person gave: flags.Visit says
+// which, so a flag left out is never taken for an empty or zero value.
 func statusPageFlags(flags *flag.FlagSet, action string, in *app.StatusPageCommandRequest, setUp *statusPageSetUpInput) func() error {
 	var tokenPath string
+	var title, impact, stage, message, closingMessage, scheduledStart, scheduledEnd string
+	var noticeID, updateID int64
+	var clearComponents, clearSchedule, clearStage bool
+	var components componentFlag
 	switch action {
 	case "set-up":
 		flags.StringVar(&setUp.cloudflareAccountID, "cloudflare-account-id", "", "the team's Cloudflare account ID, 32 hexadecimal characters")
 		flags.StringVar(&setUp.hostName, "host-name", "", "the page's public host name in one of the account's zones, such as status.example.com")
 		flags.StringVar(&tokenPath, "cloudflare-api-token-file", "", "path to the file containing your Cloudflare API token, readable only by the file owner, or - for standard input; the token is used for set-up only and never stored")
 	case "post":
-		flags.StringVar(&in.Message, "message", "", "the message, 1 to 5,000 characters")
-		flags.Int64Var(&in.NoticeID, "notice-id", 0, "ID of an open notice to update with --message; without --notice-id, post a new notice")
+		flags.StringVar(&message, "message", "", "the message, 1 to 5,000 characters")
+		flags.Int64Var(&noticeID, "notice-id", 0, "ID of an open notice to update with --message and --stage; without --notice-id, post a new notice")
+		flags.StringVar(&title, "title", "", "a new notice's title, 1 to 140 characters on one line (required for a new notice)")
+		flags.StringVar(&impact, "impact", "", "a new notice's impact: outage (the default), degraded, or maintenance")
+		flags.Var(&components, "component", "a component ID the new notice affects, as the settings file's status_page components list it; repeat it for more than one")
+		flags.StringVar(&stage, "stage", "", "optional stage of the message: investigating, identified, monitoring, or resolved for outage and degraded notices; scheduled, in_progress, or completed for maintenance")
+		flags.StringVar(&scheduledStart, "scheduled-start", "", "a new maintenance notice's planned start, RFC 3339, such as 2026-11-21T02:00:00Z")
+		flags.StringVar(&scheduledEnd, "scheduled-end", "", "a new maintenance notice's planned end, RFC 3339, after the planned start")
 	case "resolve":
-		flags.Int64Var(&in.NoticeID, "notice-id", 0, "the notice to resolve")
-		flags.StringVar(&in.ClosingMessage, "closing-message", "", "optional last update, such as \"Sign-in works again.\"")
+		flags.Int64Var(&noticeID, "notice-id", 0, "the notice to resolve")
+		flags.StringVar(&closingMessage, "closing-message", "", "optional last update, such as \"Sign-in works again.\"")
+		flags.StringVar(&stage, "stage", "", "stage of the closing message, which needs --closing-message; the default is resolved, or completed for maintenance")
+	case "edit":
+		flags.Int64Var(&noticeID, "notice-id", 0, "the notice to edit, open or resolved")
+		flags.Int64Var(&updateID, "update-id", 0, "edit this update of the notice, with --message, --stage, or --clear-stage; without --update-id, edit the notice itself")
+		flags.StringVar(&title, "title", "", "the notice's new title, 1 to 140 characters on one line")
+		flags.StringVar(&impact, "impact", "", "the notice's new impact: outage, degraded, or maintenance; a change away from maintenance removes its planned window")
+		flags.Var(&components, "component", "a component ID the notice affects, as the settings file's status_page components list it; repeat it for more than one; the components given replace the notice's components")
+		flags.BoolVar(&clearComponents, "clear-components", false, "remove all components from the notice")
+		flags.StringVar(&scheduledStart, "scheduled-start", "", "the maintenance notice's new planned start, RFC 3339, such as 2026-11-21T02:00:00Z")
+		flags.StringVar(&scheduledEnd, "scheduled-end", "", "the maintenance notice's new planned end, RFC 3339, after the planned start")
+		flags.BoolVar(&clearSchedule, "clear-schedule", false, "remove the notice's planned start and end")
+		flags.StringVar(&message, "message", "", "the update's new message, 1 to 5,000 characters (with --update-id)")
+		flags.StringVar(&stage, "stage", "", "the update's new stage: investigating, identified, monitoring, or resolved for outage and degraded notices; scheduled, in_progress, or completed for maintenance (with --update-id)")
+		flags.BoolVar(&clearStage, "clear-stage", false, "remove the update's stage (with --update-id)")
+	case "delete":
+		flags.Int64Var(&noticeID, "notice-id", 0, "the notice to delete, open or resolved, with all its updates")
+		flags.Int64Var(&updateID, "update-id", 0, "delete only this update of the notice; a notice keeps at least one update")
 	}
 	return func() error {
 		var err error
@@ -121,13 +157,49 @@ func statusPageFlags(flags *flag.FlagSet, action string, in *app.StatusPageComma
 				}
 			}
 			setUp.cloudflareAPIToken, err = readSecret(tokenPath, "cloudflare-api-token-file")
-		case "post":
-			if in.Message == "" {
-				return errors.New("--message is required")
-			}
-		case "resolve":
-			if in.NoticeID == 0 {
-				return errors.New("--notice-id is required")
+		case "post", "resolve", "edit", "delete":
+			flags.Visit(func(given *flag.Flag) {
+				switch given.Name {
+				case "notice-id":
+					in.NoticeID = &noticeID
+				case "update-id":
+					in.UpdateID = &updateID
+				case "clear-components":
+					in.ClearComponents = clearComponents
+				case "clear-schedule":
+					in.ClearSchedule = clearSchedule
+				case "clear-stage":
+					in.ClearStage = clearStage
+				case "title":
+					in.Title = &title
+				case "impact":
+					in.Impact = &impact
+				case "component":
+					affected := []string(components)
+					in.AffectedComponentIDs = &affected
+				case "stage":
+					in.Stage = &stage
+				case "message":
+					in.Message = &message
+				case "closing-message":
+					in.ClosingMessage = &closingMessage
+				case "scheduled-start":
+					in.ScheduledStartAt = &scheduledStart
+				case "scheduled-end":
+					in.ScheduledEndAt = &scheduledEnd
+				}
+			})
+			// The same check the server and a laptop's direct post make, so a
+			// bad request fails here, before either.
+			switch action {
+			case "post":
+				_, err = in.PostChange()
+			case "resolve":
+				_, err = in.ResolveChange()
+			case "edit":
+				_, err = in.EditChange()
+			case "delete":
+				_, err = in.DeleteChange()
 			}
 		}
 		return err
@@ -167,8 +239,9 @@ const (
 // server may be down, given only an R2 access key for that one bucket.
 func statusPageWithoutService() bool { return os.Getenv(statusPageBucketURLEnvVar) != "" }
 
-// runStatusPageWithoutService does show, post, and resolve with the same
-// statuspage.Publish that MMHotline's service uses.
+// runStatusPageWithoutService does show, post, resolve, edit, and delete with the same
+// statuspage.Publish, and the same changes from the request, that MMHotline's
+// service uses.
 func runStatusPageWithoutService(action string, in app.StatusPageCommandRequest) (app.CommandResult, error) {
 	var result app.CommandResult
 	bucketURL, err := statuspage.CheckBucketURL(os.Getenv(statusPageBucketURLEnvVar))
@@ -188,12 +261,26 @@ func runStatusPageWithoutService(action string, in app.StatusPageCommandRequest)
 	switch action {
 	case "show":
 		file, err = statuspage.Read(ctx, bucket)
-	case "post":
-		file, noticeID, err = statuspage.Publish(ctx, bucket, statuspage.Post(in.NoticeID, in.Message), "", time.Now())
-		result.Message = fmt.Sprintf("Posted to notice %d, directly in the R2 bucket.", noticeID)
-	case "resolve":
-		file, noticeID, err = statuspage.Publish(ctx, bucket, statuspage.Resolve(in.NoticeID, in.ClosingMessage), "", time.Now())
-		result.Message = fmt.Sprintf("Notice %d is resolved, directly in the R2 bucket.", noticeID)
+	case "post", "resolve", "edit", "delete":
+		build, doneMessage := in.PostChange, func() string { return fmt.Sprintf("Posted to notice %d, directly in the R2 bucket.", noticeID) }
+		switch action {
+		case "resolve":
+			build, doneMessage = in.ResolveChange, func() string { return fmt.Sprintf("Notice %d is resolved, directly in the R2 bucket.", noticeID) }
+		case "edit", "delete":
+			build = in.EditChange
+			if action == "delete" {
+				build = in.DeleteChange
+			}
+			doneMessage = func() string {
+				return strings.TrimSuffix(in.EditOrDeleteDoneMessage(action, noticeID), ".") + ", directly in the R2 bucket."
+			}
+		}
+		change, refusal := build()
+		if refusal != nil {
+			return result, commandError{refusal}
+		}
+		file, noticeID, err = statuspage.Publish(ctx, bucket, change, "", time.Now())
+		result.Message = doneMessage()
 	}
 	if err != nil && file.PageTitle == "" {
 		if errors.Is(err, statuspage.ErrRefused) {

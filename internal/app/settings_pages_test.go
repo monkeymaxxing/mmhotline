@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"mmhotline/internal/statuspage"
 )
 
 // Settings pages distinguish the saved setup from a later failed check.
@@ -51,11 +53,11 @@ func TestSettingsPagesShowSavedSetupsAndFailedChecks(t *testing.T) {
 	}
 	// Notice history also uses the team's time zone; the public page keeps UTC.
 	p := Principal{SignInEmailAddress: "ana@example.com"}
-	if _, _, err := f.a.PostToStatusPage(context.Background(), p, 0, "Investigating delayed orders."); err != nil {
+	if _, _, err := f.a.PostToStatusPage(context.Background(), p, statuspage.PostNoticeInput{Title: "Delayed orders", Impact: statuspage.ImpactOutage, Message: "Investigating delayed orders."}); err != nil {
 		t.Fatal(err)
 	}
-	check("/status-page", "Open notice 1", "Opened 13:45", "Investigating delayed orders.", "Add an update", "Resolve this notice")
-	if _, _, err := f.a.ResolveStatusPageNotice(context.Background(), p, 1, "Orders work again."); err != nil {
+	check("/status-page", "Delayed orders", "Notice 1, opened 13:45", "Investigating delayed orders.", "Add an update", "Resolve this notice")
+	if _, _, err := f.a.ResolveStatusPageNotice(context.Background(), p, statuspage.ResolveInput{NoticeID: 1, ClosingMessage: "Orders work again."}); err != nil {
 		t.Fatal(err)
 	}
 	check("/status-page", "No open notices", "Recently resolved", "resolved 13:45", "Orders work again.")

@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// R2Bucket reads and writes the status page's two files through R2's
+// R2Bucket reads and writes the status page's three files through R2's
 // S3-compatible API, whose key can be limited to this one bucket's objects
 // and whose conditional writes keep two posts from overwriting each other.
 type R2Bucket struct {

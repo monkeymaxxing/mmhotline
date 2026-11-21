@@ -292,9 +292,9 @@ templ incidentBody(frame pageFrame, page incidentPage) {
 							<p>Notice { page.StatusPageNoticeID }, posted from this incident, is open on the status page.</p>
 							<a class="btn block" href="/status-page">Update or resolve notice { page.StatusPageNoticeID }</a>
 						} else {
-							<p class="small muted">Your customers see only what someone posts. Posting publishes “{ StatusPageGenericMessage }”, and you can add your own words next.</p>
+							<p class="small muted">Your customers see only what someone posts. Posting publishes an outage notice titled “{ StatusPageGenericTitle }” that says “{ StatusPageGenericMessage }”. You can add your own words next, or post a different notice on the Status page.</p>
 							<form method="post" action="/status-page/notices">
-								<input type="hidden" name="csrf" value={ page.CSRF }/><input type="hidden" name="incident_id" value={ page.Incident.ID }/><input type="hidden" name="message" value={ StatusPageGenericMessage }/><button class="btn block">Post to the status page</button>
+								<input type="hidden" name="csrf" value={ page.CSRF }/><input type="hidden" name="incident_id" value={ page.Incident.ID }/><button class="btn block">Post to the status page</button>
 							</form>
 						}
 					</div>

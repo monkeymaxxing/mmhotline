@@ -217,6 +217,22 @@ type SettingsStatusPage struct {
 	R2BucketURL       string `yaml:"r2_bucket_url"`
 	R2AccessKeyID     string `yaml:"r2_access_key_id" settings:"secret"`
 	R2SecretAccessKey string `yaml:"r2_secret_access_key" settings:"secret"`
+	// WebsiteURL and SupportURL are the optional links in the public page's
+	// header: an https:// address, and for support also mailto: and an email
+	// address.
+	WebsiteURL string `yaml:"website_url" settings:"optional"`
+	SupportURL string `yaml:"support_url" settings:"optional"`
+	// Components are the optional parts of the service a notice can say it
+	// affects; the public page lists each with its status.
+	Components []SettingsStatusPageComponent `yaml:"components" settings:"optional"`
+}
+
+// SettingsStatusPageComponent is one component of the status page, such as
+// the website or the API.
+type SettingsStatusPageComponent struct {
+	ComponentID string `yaml:"component_id"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description" settings:"optional"`
 }
 
 // SettingsPerson is one person on the team, identified by the sign-in email
@@ -390,6 +406,14 @@ type settingsProblems struct {
 
 func (problems *settingsProblems) note(keyPath, note string) {
 	problems.notes = append(problems.notes, SettingsNote{KeyPath: keyPath, Note: note})
+}
+
+// hasProblemUnder reports whether a problem is already reported for the key
+// path or a key inside it.
+func (problems *settingsProblems) hasProblemUnder(keyPath string) bool {
+	return slices.ContainsFunc(problems.list, func(existing SettingsProblem) bool {
+		return existing.KeyPath == keyPath || strings.HasPrefix(existing.KeyPath, keyPath+".") || strings.HasPrefix(existing.KeyPath, keyPath+"[")
+	})
 }
 
 func (problems *settingsProblems) add(keyPath, problem string) {

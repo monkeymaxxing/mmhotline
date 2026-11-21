@@ -803,8 +803,35 @@ bucket.
 | `r2_bucket_url` | Yes | The bucket's S3 API address, as the laptop's `status-page set-up` printed it | `the R2 bucket URL must be the bucket's S3 API address, such as https://ACCOUNT_ID.r2.cloudflarestorage.com/BUCKET_NAME` (or `... must end with the bucket's name, ...`) |
 | `r2_access_key_id` | Yes, secret | The Access Key ID of an R2 API token with Object Read & Write on that bucket only: letters and digits | `must be letters and digits, as Cloudflare shows the R2 Access Key ID` |
 | `r2_secret_access_key` | Yes, secret | That token's Secret Access Key: one line, at most 4,096 bytes | `required`; `must be at most 4,096 bytes`; `must be one line` |
+| `website_url` | Optional | A **Website** link in the page's header: an `https://` address with a host name and no user name or password, at most 500 characters, such as `https://example.com`. Left out, the page has no Website link. | `the website URL must be an https:// address with a host name and no user name or password, such as https://example.com` |
+| `support_url` | Optional | A **Support** link in the page's header: an `https://` address, or `mailto:` and one email address with no name or query, at most 500 characters, such as `mailto:support@example.com`. Left out, the page has no Support link. | `the support URL must be an https:// address or mailto: and one email address, such as https://example.com/support or mailto:support@example.com` |
+| `components` | Optional | A list of at most 50 parts of your service that a notice can say it affects, such as `[{component_id: website, name: Website}, {component_id: api, name: API, description: "Orders and sign-in"}]`. The page lists each with its status. Left out, the page has no components panel, and a notice names none. | `at most 50 components are allowed, ...` |
+| `components[].component_id` | Yes | 1 to 64 lowercase letters, digits, hyphens, and underscores, starting with a letter or digit. Unique. The command's `--component` flag takes it. | `components[N].component_id must have 1 to 64 lowercase letters, digits, hyphens, and underscores, starting with a letter or digit`; `components[N].component_id "api" is used twice` |
+| `components[].name` | Yes | The name the page shows: 1 to 100 characters on one line | `components[N].name must have 1 to 100 characters on one line` |
+| `components[].description` | Optional | One line under the name on the page, at most 200 characters | `components[N].description must have at most 200 characters on one line` |
+
+```yaml
+status_page:
+  page_title: Example Inc. status
+  host_name: status.example.com
+  r2_bucket_url: https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/mmhotline-status-status-example-com-18a8ea11
+  r2_access_key_id: "YOUR_ACCESS_KEY_ID"
+  r2_secret_access_key: "YOUR_SECRET_ACCESS_KEY"
+  website_url: https://example.com
+  support_url: mailto:support@example.com
+  components:
+    - component_id: website
+      name: Website
+      description: Main site and customer dashboard
+    - component_id: api
+      name: API
+```
 
 The part applies after MMHotline publishes the current page with the
-file's R2 key.
+file's R2 key. The apply writes `page_title`, `host_name`, the links, and
+the components into `status.json`, and uploads `index.html` and `feed.xml`
+built from it. The notices already on the page stay, even those that name a
+component you removed from the list: the page then shows that component's
+ID where it would show its name.
 
 Set up in [Publish a status page](../how-to/publish-a-status-page.md).

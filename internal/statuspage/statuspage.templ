@@ -1,82 +1,171 @@
 package statuspage
 
-import "time"
+import "fmt"
 
 // statusPage is index.html. Its heading is page_title exactly as written.
-// An open notice is a problem now, with its updates newest first; with
-// none, everything is working. The most recently resolved notices follow.
-templ statusPage(pageTitle string, publishedAt time.Time, open, resolved []Notice) {
+// The overall status comes first: everything is working, scheduled
+// maintenance, degraded service, or an outage. Each open notice follows with
+// its updates newest first, then the components and their status when the
+// team lists any, then the most recently resolved notices. Every time is UTC
+// text in a <time> element; local_time.js shows it in the visitor's time zone.
+// A page with a host name also links its Atom feed, feed.xml, in the head, the
+// header, and the footer.
+templ statusPage(file File, open, resolved []Notice) {
+	{{ status := file.OverallStatus() }}
+	{{ websiteURL, supportURL := headerLinks(file) }}
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ pageTitle }</title>
+			<title>{ file.PageTitle }</title>
+			if file.HostName != "" {
+				<link rel="alternate" type="application/atom+xml" title={ file.PageTitle } href="feed.xml"/>
+			}
+			@statusFavicon(status)
 			@inlineStylesheet()
 		</head>
 		<body>
 			<main class="public stack">
-				<h1>{ pageTitle }</h1>
+				<header class="public-header">
+					<h1>{ file.PageTitle }</h1>
+					if websiteURL != "" || supportURL != "" || file.HostName != "" {
+						<nav class="links small" aria-label="Page links">
+							if websiteURL != "" {
+								<a href={ templ.URL(websiteURL) }>Website</a>
+							}
+							if supportURL != "" {
+								<a href={ templ.URL(supportURL) }>Support</a>
+							}
+							if file.HostName != "" {
+								<a href="feed.xml">Subscribe</a>
+							}
+						</nav>
+					}
+				</header>
+				<section class={ "state", banners[status].class }>
+					<span class={ "tag", banners[status].class }>{ banners[status].tag }</span>
+					<p class="big">{ banners[status].sentence }</p>
+					<p class="faint small">Last updated <time datetime={ isoTime(file.PublishedAt) } data-format="full">{ publishedTime(file.PublishedAt) }</time> <span class="tz">UTC</span></p>
+				</section>
 				for _, notice := range open {
-					@openNotice(notice)
+					@openNotice(file, notice)
 				}
-				if len(open) == 0 {
-					<section class="state ok">
-						<span class="tag ok">Working</span>
-						<p class="big">Everything is working.</p>
-						<p class="faint small">Last updated <time datetime={ isoTime(publishedAt) }>{ publishedTime(publishedAt) }</time></p>
+				if len(file.Components) > 0 {
+					<section class="panel" aria-label="Components">
+						<ul class="components">
+							for _, c := range file.ComponentStatuses() {
+								<li>
+									<div>
+										<span class="name">{ c.Component.Name }</span>
+										if c.Component.Description != "" {
+											<p class="faint small">{ c.Component.Description }</p>
+										}
+									</div>
+									<span class={ "tag", componentStatusClass(c.Status) }>{ componentStatusLabel(c.Status) }</span>
+								</li>
+							}
+						</ul>
 					</section>
 				}
 				if len(resolved) > 0 {
 					<section class="resolved stack">
 						<h2>Recently resolved</h2>
 						for _, notice := range resolved {
-							@resolvedNotice(notice)
+							@resolvedNotice(file, notice)
 						}
 					</section>
 				}
-				<footer class="faint small">Times are in UTC. The same notices for programs: <a href="status.json">status.json</a></footer>
+				if file.HostName != "" {
+					<footer class="faint small"><span id="time-zone-note">Times are in UTC.</span> <a href="feed.xml">Atom feed</a> · <a href="status.json">status.json</a></footer>
+				} else {
+					<footer class="faint small"><span id="time-zone-note">Times are in UTC.</span> <a href="status.json">status.json</a></footer>
+				}
 			</main>
+			@inlineLocalTimeScript()
 		</body>
 	</html>
 }
 
-templ openNotice(notice Notice) {
+templ openNotice(file File, notice Notice) {
 	{{ updates := newestFirst(notice.Updates) }}
-	<section class="state sos">
-		<span class="tag sos">Problem now</span>
-		<p class="big">We are working on a problem.</p>
+	<article class="panel notice stack" id={ fmt.Sprintf("notice-%d", notice.NoticeID) }>
+		<div class="row">
+			<span class={ "tag", impactClass(notice.Impact) }>{ impactTag(notice.Impact) }</span>
+			<h2>{ notice.Title }</h2>
+		</div>
+		@affectedComponents(file, notice)
+		@plannedWindow(notice)
 		<p class="faint small">
-			Started <time datetime={ isoTime(notice.OpenedAt) }>{ publishedTime(notice.OpenedAt) }</time>
+			Started <time datetime={ isoTime(notice.OpenedAt) } data-format="full">{ publishedTime(notice.OpenedAt) }</time> <span class="tz">UTC</span>
 			if len(updates) > 1 {
-				· last update <time datetime={ isoTime(updates[0].PostedAt) }>{ updateTime(updates[0].PostedAt, notice.OpenedAt) } UTC</time>
+				· last update <time datetime={ isoTime(updates[0].PostedAt) } data-format="update" data-day-ref={ isoTime(notice.OpenedAt) }>{ updateTime(updates[0].PostedAt, notice.OpenedAt) }</time> <span class="tz">UTC</span>
 			}
 		</p>
-		<ol class="timeline">
-			for index, update := range updates {
-				<li
-					if index == 0 {
-						class="sos"
-					}
-				><time datetime={ isoTime(update.PostedAt) }>{ updateTime(update.PostedAt, notice.OpenedAt) }</time><span class="dot"></span><div>{ update.Message }</div></li>
-			}
-		</ol>
-	</section>
+		@timeline(notice, updates, impactClass(notice.Impact))
+	</article>
 }
 
-templ resolvedNotice(notice Notice) {
-	<article class="panel">
-		<div class="row spread"><span class="tag">Resolved</span><span class="faint small">{ timeSpan(notice.OpenedAt, *notice.ResolvedAt) }</span></div>
-		<ol class="timeline">
-			for index, update := range newestFirst(notice.Updates) {
-				<li
-					if index == 0 {
-						class="person"
-					}
-				><time datetime={ isoTime(update.PostedAt) }>{ updateTime(update.PostedAt, notice.OpenedAt) }</time><span class="dot"></span><div>{ update.Message }</div></li>
-			}
-		</ol>
+templ resolvedNotice(file File, notice Notice) {
+	<article class="panel notice stack" id={ fmt.Sprintf("notice-%d", notice.NoticeID) }>
+		<div class="row">
+			<span class={ "tag", impactClass(notice.Impact) }>{ impactTag(notice.Impact) }</span>
+			<span class="tag ok">{ resolvedTag(notice.Impact) }</span>
+			<h2>{ notice.Title }</h2>
+		</div>
+		@affectedComponents(file, notice)
+		@plannedWindow(notice)
+		<p class="faint small"><time datetime={ isoTime(notice.OpenedAt) } data-format="full">{ publishedTime(notice.OpenedAt) }</time> to <time datetime={ isoTime(*notice.ResolvedAt) } data-format="update" data-day-ref={ isoTime(notice.OpenedAt) }>{ updateTime(*notice.ResolvedAt, notice.OpenedAt) }</time> <span class="tz">UTC</span></p>
+		@timeline(notice, newestFirst(notice.Updates), "ok")
 	</article>
+}
+
+// affectedComponents are the names of the components a notice affects, a
+// retired component by its ID, when the notice names any.
+templ affectedComponents(file File, notice Notice) {
+	if len(notice.AffectedComponentIDs) > 0 {
+		<div class="chips">
+			for _, id := range notice.AffectedComponentIDs {
+				<span class="chip">{ file.ComponentName(id) }</span>
+			}
+		</div>
+	}
+}
+
+// plannedWindow is a maintenance notice's planned start and end, when it has
+// either. A planned end on the start's day shows only its time of day.
+templ plannedWindow(notice Notice) {
+	if notice.ScheduledStartAt != nil && notice.ScheduledEndAt != nil {
+		<p class="small">Planned: <time datetime={ isoTime(*notice.ScheduledStartAt) } data-format="full">{ publishedTime(*notice.ScheduledStartAt) }</time> to <time datetime={ isoTime(*notice.ScheduledEndAt) } data-format="update" data-day-ref={ isoTime(*notice.ScheduledStartAt) }>{ updateTime(*notice.ScheduledEndAt, *notice.ScheduledStartAt) }</time> <span class="tz">UTC</span></p>
+	} else if notice.ScheduledStartAt != nil {
+		<p class="small">Planned start: <time datetime={ isoTime(*notice.ScheduledStartAt) } data-format="full">{ publishedTime(*notice.ScheduledStartAt) }</time> <span class="tz">UTC</span></p>
+	} else if notice.ScheduledEndAt != nil {
+		<p class="small">Planned end: <time datetime={ isoTime(*notice.ScheduledEndAt) } data-format="full">{ publishedTime(*notice.ScheduledEndAt) }</time> <span class="tz">UTC</span></p>
+	}
+}
+
+// timeline lists a notice's updates, newest first. The newest one's dot has
+// the color class. An update's stage is a label before its message, inside
+// the message's <div>, so the message keeps its line breaks. An edited update
+// has a quiet (edited) note after its stage, in the same <div>.
+templ timeline(notice Notice, updates []Update, newestClass string) {
+	<ol class="timeline">
+		for index, update := range updates {
+			<li
+				if index == 0 {
+					class={ newestClass }
+				}
+			><time datetime={ isoTime(update.PostedAt) } data-format="update" data-day-ref={ isoTime(notice.OpenedAt) }>{ updateTime(update.PostedAt, notice.OpenedAt) }</time><span class="dot"></span><div>
+				if update.Stage != "" {
+					<span class="stage">{ StageLabel(update.Stage) }</span>
+				}
+				if update.EditedAt != nil {
+					<span class="edited">(edited)</span>
+				}
+				{ update.Message }
+			</div></li>
+		}
+	</ol>
 }
 
 // inlineStylesheet writes the page's styles as one <style> element. The
@@ -84,4 +173,19 @@ templ resolvedNotice(notice Notice) {
 // characters (quotes, >) that HTML escaping would change, so it is written raw.
 templ inlineStylesheet() {
 	@templ.Raw("<style>\n" + pageStylesheet + "</style>")
+}
+
+// statusFavicon writes the page's icon, a colored dot for the overall status.
+// The four links are fixed constants in statuspage.go, not user input. A
+// data: URL in an href that templ computes is removed by templ's URL
+// sanitizer, so the whole <link> is written raw.
+templ statusFavicon(status OverallStatus) {
+	@templ.Raw(faviconLinks[status])
+}
+
+// inlineLocalTimeScript writes local_time.js as the page's one <script>
+// element. The script is our own embedded file and no user input is put in it.
+// Raw output keeps its quotes and comparison operators as written.
+templ inlineLocalTimeScript() {
+	@templ.Raw("<script>\n" + localTimeScript + "</script>")
 }

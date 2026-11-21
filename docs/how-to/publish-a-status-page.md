@@ -12,12 +12,15 @@ Cloudflare from your laptop, then connect MMHotline to it.
 
 **Terms:**
 
-- The **status page** is two files, `index.html` and `status.json`, in an
-  R2 bucket, Cloudflare's object storage, in your own Cloudflare account,
-  served at a host name such as `status.example.com`. It stays readable
-  while the MMHotline server is down.
-- A **notice** is one problem on the page, with its updates, open until
-  someone resolves it.
+- The **status page** is three files in an R2 bucket, Cloudflare's object
+  storage, in your own Cloudflare account, served at a host name such as
+  `status.example.com`: `index.html`, the page; `feed.xml`, an Atom feed that
+  customers can subscribe to in a feed reader; and `status.json`, the same
+  notices for programs. It stays readable while the MMHotline server is down.
+- A **notice** is one problem or planned maintenance on the page, with a
+  title, its updates, and open until someone resolves it.
+- A **component** is a part of your service, such as the website or the API,
+  that a notice can say it affects. Components are optional.
 
 Setup is optional.
 
@@ -103,27 +106,59 @@ server by hand, or through your deploy tool's vault.
    `r2_bucket_url` is the line step 2 printed. A team whose deploy tool
    writes the settings file keeps the key in its vault.
 
+   Three optional keys make the page more useful; add the ones you want:
+
+   ```yaml
+   status_page:
+     website_url: https://example.com
+     support_url: mailto:support@example.com
+     components:
+       - component_id: website
+         name: Website
+         description: Main site and customer dashboard
+       - component_id: api
+         name: API
+   ```
+
+   `website_url` and `support_url` add **Website** and **Support** links to
+   the page's header; they must be `https://` addresses, and `support_url`
+   may also be `mailto:` and one email address. `components` lists the parts
+   of your service that a notice can name; the page shows each with its
+   status. A `component_id` uses lowercase letters, digits, hyphens, and
+   underscores, and the posting form and the `--component` flag use it. Keep
+   these keys inside the same `status_page` section.
+
 5. **Apply the file:**
 
    ```sh
    sudo mmhotline settings apply
    ```
 
-   **Check:** `status_page: applied.` The first apply publishes the page,
-   and MMHotline saves the setup only once that worked.
+   **Check:** `status_page: applied.` The first apply publishes the page
+   and its feed, and MMHotline saves the setup only once that worked.
    `sudo mmhotline status-page show` then says:
 
    ```text
    Status page: https://status.example.com/
+   R2 bucket: mmhotline-status-status-example-com-18a8ea11 (https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/mmhotline-status-status-example-com-18a8ea11)
+   Set up by the settings file /etc/mmhotline/mmhotline_settings.yml at 2026-11-15T07:51:11Z.
    Example Inc. status, published at 2026-11-15T07:51:10Z.
    No open notices: the page says that everything is working.
    ```
 
+   With the optional keys from step 4, `show` also lists the links and each
+   component, such as `Component Website (website): operational`.
+
 6. **Open the page** at `https://status.example.com/`.
 
    **Check:** it shows the title, **Working**, and
-   `Everything is working.` Right after setup, Cloudflare may answer
-   `403` for a few minutes, until the host name's certificate is ready.
+   `Everything is working.` With the optional keys, it also shows the
+   **Website** and **Support** links and a panel that lists each component
+   as **Operational**. The header's **Subscribe** link and the footer's
+   **Atom feed** link open `https://status.example.com/feed.xml`, which shows
+   a feed with no entries. Right after setup, Cloudflare may answer `403` for
+   a few minutes, until the host name's certificate is ready. The feed needs
+   no extra Cloudflare setup.
 
 Next, set up each responder's laptop to post when the server is down, as
 [Post to the status page](post-to-the-status-page.md) says.
@@ -131,6 +166,10 @@ Next, set up each responder's laptop to post when the server is down, as
 ## Change or remove the page
 
 - **A new R2 key:** put it in the settings file and apply.
+- **A new title, link, or component:** change it in the `status_page`
+  section and apply. The apply publishes the page again with the new values
+  and keeps every notice. A component you remove stays named on the old
+  notices that used it, by its `component_id`.
 - **Turn it off in MMHotline:** delete the `status_page` section and apply;
   the line says `status_page: not set up, because the settings file leaves it out.`
   The bucket and the page stay in Cloudflare. Delete them in the

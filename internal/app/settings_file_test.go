@@ -68,6 +68,14 @@ status_page:
   r2_bucket_url: https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/status
   r2_access_key_id: "0123456789abcdef0123456789abcdef"
   r2_secret_access_key: "example-r2-secret-access-key"
+  website_url: https://example.com
+  support_url: mailto:support@example.com
+  components:
+    - component_id: website
+      name: Website
+      description: Main site and customer dashboard
+    - component_id: api
+      name: API
 
 people:
   - name: Ana Silva
@@ -126,6 +134,35 @@ func TestTheExampleSettingsFileHasNoProblems(t *testing.T) {
 	s := file.Settings
 	if s.TeamName != "Example Operations" || s.TriageAgent.Model != "opus" || *s.OnCallSchedule.FirstStartDate != "2026-11-02" || s.AlertSources[0].WarnAfterNoCheckInForMinutes != "2" || !slices.Equal(s.FleetViewCommand, []string{"/usr/local/bin/MONITORING_TOOL", "fleet", "--json"}) {
 		t.Fatalf("read %+v", s)
+	}
+}
+
+// The status_page section's website_url, support_url, and components are
+// optional, and a component's description is optional inside the list.
+func TestSettingsStatusPageLinksAndComponentsAreOptional(t *testing.T) {
+	file, problems := ReadSettingsFile(writeSettingsFile(t, exampleSettingsYAML), nil)
+	if len(problems) != 0 {
+		t.Fatalf("problems in the example: %q", problemTexts(problems))
+	}
+	page := file.Settings.StatusPage
+	if page.WebsiteURL != "https://example.com" || page.SupportURL != "mailto:support@example.com" || len(page.Components) != 2 ||
+		page.Components[0] != (SettingsStatusPageComponent{ComponentID: "website", Name: "Website", Description: "Main site and customer dashboard"}) ||
+		page.Components[1] != (SettingsStatusPageComponent{ComponentID: "api", Name: "API"}) {
+		t.Fatalf("status_page %+v", page)
+	}
+	without := strings.NewReplacer("  website_url: https://example.com\n", "", "  support_url: mailto:support@example.com\n", "",
+		"  components:\n    - component_id: website\n      name: Website\n      description: Main site and customer dashboard\n    - component_id: api\n      name: API\n", "").Replace(exampleSettingsYAML)
+	if without == exampleSettingsYAML {
+		t.Fatal("the example holds no links or components to remove")
+	}
+	file, problems = ReadSettingsFile(writeSettingsFile(t, without), nil)
+	if len(problems) != 0 || file.Settings.StatusPage.WebsiteURL != "" || file.Settings.StatusPage.SupportURL != "" || len(file.Settings.StatusPage.Components) != 0 {
+		t.Fatalf("a status_page section without links and components: %q, %+v", problemTexts(problems), file.Settings.StatusPage)
+	}
+	// An https:// support link and an empty components list are good too.
+	withHTTPS := strings.Replace(exampleSettingsYAML, "  support_url: mailto:support@example.com\n", "  support_url: https://example.com/support\n", 1)
+	if _, problems := ReadSettingsFile(writeSettingsFile(t, withHTTPS), nil); len(problems) != 0 {
+		t.Errorf("an https:// support link: %q", problemTexts(problems))
 	}
 }
 
@@ -248,6 +285,24 @@ func TestEachSettingsProblemNamesItsKeyPath(t *testing.T) {
 			[]string{"systems_repository_commits.paths_only_a_person_may_approve[0]: \"/etc/sudoers\" must be relative to the systems repository, as Git names the path, such as roles/every_server/files/sudoers_triage",
 				"systems_repository_commits.paths_only_a_person_may_approve[1]: \"roles/../AGENTS.md\" must not have an empty, \".\", or \"..\" part, because Git never names a path so",
 				"systems_repository_commits.paths_only_a_person_may_approve[5]: AGENTS.md is listed twice"}},
+		{"website URL over http", "  website_url: https://example.com\n", "  website_url: http://example.com\n",
+			[]string{"status_page.website_url: the website URL must be an https:// address with a host name and no user name or password, such as https://example.com"}},
+		{"website URL that runs a script", "  website_url: https://example.com\n", "  website_url: \"javascript:alert(1)\"\n",
+			[]string{"status_page.website_url: the website URL must be an https:// address with a host name and no user name or password, such as https://example.com"}},
+		{"support URL with a name", "  support_url: mailto:support@example.com\n", "  support_url: \"mailto:support@example.com,other@example.com\"\n",
+			[]string{"status_page.support_url: the support URL must have one email address after mailto:, such as mailto:support@example.com, with no name or query"}},
+		{"support URL over http", "  support_url: mailto:support@example.com\n", "  support_url: http://example.com/support\n",
+			[]string{"status_page.support_url: the support URL must be an https:// address or mailto: and one email address, such as https://example.com/support or mailto:support@example.com"}},
+		{"a component ID used twice", "    - component_id: api\n", "    - component_id: website\n",
+			[]string{"status_page.components: components[1].component_id \"website\" is used twice"}},
+		{"a component ID with capitals", "    - component_id: api\n", "    - component_id: Api\n",
+			[]string{"status_page.components: components[1].component_id must have 1 to 64 lowercase letters, digits, hyphens, and underscores, starting with a letter or digit"}},
+		{"a component without a name", "      name: API\n", "",
+			[]string{"status_page.components[1].name: required"}},
+		{"a component with an unknown key", "      name: API\n", "      name: API\n      detail: x\n",
+			[]string{"status_page.components[1].detail: unknown key"}},
+		{"components that are not a list", "  components:\n    - component_id: website\n      name: Website\n      description: Main site and customer dashboard\n    - component_id: api\n      name: API\n", "  components: website\n",
+			[]string{"status_page.components: must be a list, such as [a, b], or [] for none"}},
 		{"unknown coding agent", "  coding_agent: codex", "  coding_agent: gemini",
 			[]string{"review_agent.coding_agent: must be claude_code or codex"}},
 		{"model with a space (CA6)", "  model: opus", "  model: claude opus",

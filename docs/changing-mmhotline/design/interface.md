@@ -156,9 +156,16 @@ The Triage agent page leads with setup and sign-in status. Setup test output,
 software review details, and network details stay folded to keep actions visible.
 The page of rules for running the agent's playbooks lists each action's rule and change details together.
 The list stacks on phones, so the change details never disappear past the edge.
-The Status page settings show the public link, open notice updates and forms,
-and a folded list of recently resolved notices. Resolving a notice opens a
-closing form, so posting updates remains the main action.
+The Status page settings show the public link, each open notice with its
+impact, components, planned window, and updates, a form to add an update, and
+a folded list of recently resolved notices. A form posts a new notice with a
+title, an impact, components, a planned window for maintenance, a stage, and a
+message. Resolving a notice opens a closing form, so posting updates remains
+the main action. Each notice, open or resolved, has three folded forms:
+**Edit notice details**, **Edit or delete updates**, and **Delete this
+notice**, which needs a ticked confirmation. An edit or delete from a page
+that is out of date is refused with a message to reload, and the form keeps
+what the person typed.
 The MMHotline-down alarm test result lists each recipient and the sending result; an
 accepted send does not prove the person heard the alert.
 

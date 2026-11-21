@@ -384,15 +384,28 @@ gives the details.
 ## The status page
 
 The optional status page tells the team's customers that the team knows
-about a problem, what it is doing, and when it is over. It is two files,
-`status.json` and `index.html`, in an R2 bucket in the team's Cloudflare
-account, served at the team's host name.
+about a problem, what it is doing, and when it is over. It is three files,
+`index.html` (the page), `feed.xml` (an Atom feed that readers can subscribe
+to), and `status.json` (the notices for programs), in an R2 bucket in the
+team's Cloudflare account, served at the team's host name.
 
+- **What a notice holds:** a title, an impact (outage, degraded, or
+  scheduled maintenance), the components it affects, for maintenance a
+  planned window, and updates, each with an optional stage such as
+  "Investigating" or "In progress". The settings file lists the components
+  and two optional header links, Website and Support. The page shows the
+  overall status, the open notices, a panel with each component's status,
+  and the latest resolved notices. A visitor sees times in their own time
+  zone, or in UTC without scripts.
+- **Fixing a mistake:** any member can edit a notice or one of its updates,
+  or delete either, from the Status page page or the command. The page marks
+  an edited update "(edited)".
 - **Why files in a bucket:** the page stays up when the MMHotline server is
   down, and a responder can post from a laptop with the same `mmhotline`
   program and an R2 key limited to that one bucket.
-- Two posts at once never overwrite each other: each write is conditional
-  on the version it read.
+- Two posts at once never overwrite each other: each write of
+  `status.json` is conditional on the version it read, and the page and the
+  feed are rebuilt from the latest `status.json` before a post finishes.
 
 [Publish a status page](how-to/publish-a-status-page.md) and
 [Post to the status page](how-to/post-to-the-status-page.md) cover it.

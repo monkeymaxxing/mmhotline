@@ -20,6 +20,7 @@ import (
 	"mmhotline/internal/cloudflareaccess"
 	"mmhotline/internal/fakesendingservices"
 	"mmhotline/internal/htmlgolden"
+	"mmhotline/internal/statuspage"
 )
 
 // goldenPages lists every HTML render in this package: each renderPage call
@@ -92,8 +93,9 @@ var goldenPages = []goldenPage{
 	{render: "sources_http.go sourcesPage (GET /alert-sources)", page: "alert_sources",
 		states: []string{"none", "one_from_the_settings_file", "one_with_check_ins", "one_in_planned_downtime"}},
 	{render: "status_page_http.go renderStatusPagePage (GET /status-page)", page: "status_page_settings",
-		states:     []string{"not_set_up", "set_up", "open_notice", "resolved_notice"},
-		notCovered: map[string]string{"post_error": "needs the fake Cloudflare bucket to refuse a post"}},
+		states: []string{"not_set_up", "set_up", "open_notice", "new_notice_error_keeps_the_draft", "update_error_keeps_the_draft", "open_notice_and_maintenance_with_a_window", "resolved_notice",
+			"edit_notice_error_keeps_the_draft", "edit_update_error_keeps_the_draft", "delete_update_error_stale_form", "delete_notice_error_needs_confirmation"},
+		notCovered: map[string]string{"resolve_error_keeps_the_draft": "needs a closing message over 5,000 characters; TestStatusPageFormsKeepWhatWasTypedAfterARefusal checks it"}},
 	{render: "triage_agent_http.go renderTriageAgentPage (GET /triage-agent)", page: "triage_agent",
 		states:     []string{"off", "on_with_setup_test_runs", "on_after_a_software_review", "on_with_a_session_run"},
 		notCovered: map[string]string{"sign_in_check_failed": "needs a failing setup test run", "action_error": "needs a failing action on the page"}},
@@ -329,16 +331,43 @@ func TestGoldenPages(t *testing.T) {
 		g.advance(10 * time.Minute)
 		g.get("dashboard", "down_alarm_not_checking_in", "/dashboard", ana)
 		g.advance(time.Minute)
-		if _, _, err := g.a.PostToStatusPage(ctx, p, 0, "Orders are delayed.\nWe are looking into it."); err != nil {
+		if _, _, err := g.a.PostToStatusPage(ctx, p, statuspage.PostNoticeInput{Title: "Orders are delayed", Impact: statuspage.ImpactDegraded, AffectedComponentIDs: []string{"website", "api"}, Stage: statuspage.StageInvestigating, Message: "Orders are delayed.\nWe are looking into it."}); err != nil {
 			t.Fatal(err)
 		}
 		g.advance(time.Minute)
-		if _, _, err := g.a.PostToStatusPage(ctx, p, 1, "We found the cause."); err != nil {
+		if _, _, err := g.a.PostStatusPageUpdate(ctx, p, statuspage.PostUpdateInput{NoticeID: 1, Stage: statuspage.StageIdentified, Message: "We found the cause."}); err != nil {
 			t.Fatal(err)
 		}
 		g.get("status_page_settings", "open_notice", "/status-page", ana)
+		// A refused form shows again what the person typed.
+		g.check("status_page_settings", "new_notice_error_keeps_the_draft", "POST", "/status-page/notices", ana, url.Values{"title": {"Database upgrade"}, "impact": {"maintenance"}, "stage": {"in_progress"}, "affected_component_ids": {"api"},
+			"scheduled_start_at": {"2026-11-22T21:00"}, "scheduled_end_at": {"2026-11-22T20:00"}, "message": {"We will upgrade the database.\nOrders pause for a few minutes."}}, 400)
+		g.check("status_page_settings", "update_error_keeps_the_draft", "POST", "/status-page/notices/1/updates", ana, url.Values{"stage": {"scheduled"}, "message": {"We are still working on it."}}, 400)
+		// A refused edit or delete reopens its fold with what was typed, and a
+		// form from an out-of-date page is refused.
+		view, err := g.a.StatusPage(ctx, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		version := view.PublishedStatusJSON.Notices[0].UpdatedAt.UTC().Format(time.RFC3339)
+		g.check("status_page_settings", "edit_notice_error_keeps_the_draft", "POST", "/status-page/notices/1/edit", ana, url.Values{"expected_updated_at": {version}, "title": {"Orders are very late"}, "impact": {"maintenance"}, "affected_component_ids": {"api"},
+			"scheduled_start_at": {"2026-11-22T21:00"}, "scheduled_end_at": {"2026-11-22T20:00"}}, 400)
+		g.check("status_page_settings", "edit_update_error_keeps_the_draft", "POST", "/status-page/notices/1/updates/2/edit", ana, url.Values{"expected_updated_at": {version}, "stage": {"scheduled"}, "message": {"We found the cause.\nIt was a full disk."}}, 400)
+		g.check("status_page_settings", "delete_update_error_stale_form", "POST", "/status-page/notices/1/updates/2/delete", ana, url.Values{"expected_updated_at": {"2026-01-01T00:00:00Z"}}, 409)
+		g.check("status_page_settings", "delete_notice_error_needs_confirmation", "POST", "/status-page/notices/1/delete", ana, url.Values{"expected_updated_at": {version}}, 400)
+		// The clock stands still from here to the resolves: later pages of this
+		// team show the same times as before the maintenance notice.
+		start := g.a.Now().Add(24 * time.Hour)
+		end := start.Add(2 * time.Hour)
+		if _, _, err := g.a.PostToStatusPage(ctx, p, statuspage.PostNoticeInput{Title: "Database upgrade", Impact: statuspage.ImpactMaintenance, Stage: statuspage.StageScheduled, Message: "We will upgrade the database.", ScheduledStartAt: &start, ScheduledEndAt: &end}); err != nil {
+			t.Fatal(err)
+		}
+		g.get("status_page_settings", "open_notice_and_maintenance_with_a_window", "/status-page", ana)
 		g.advance(time.Minute)
-		if _, _, err := g.a.ResolveStatusPageNotice(ctx, p, 1, "Orders work again."); err != nil {
+		if _, _, err := g.a.ResolveStatusPageNotice(ctx, p, statuspage.ResolveInput{NoticeID: 2, ClosingMessage: "The upgrade is done."}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := g.a.ResolveStatusPageNotice(ctx, p, statuspage.ResolveInput{NoticeID: 1, ClosingMessage: "Orders work again."}); err != nil {
 			t.Fatal(err)
 		}
 		g.get("status_page_settings", "resolved_notice", "/status-page", ana)

@@ -177,16 +177,35 @@ func sendingServiceFields(definition SendingServiceSetupDefinition, section refl
 	return fields
 }
 
+// pageConfig is the public page's configuration, as status.json holds it.
+func (page SettingsStatusPage) pageConfig() statuspage.PageConfig {
+	config := statuspage.PageConfig{PageTitle: page.PageTitle, HostName: page.HostName, WebsiteURL: page.WebsiteURL, SupportURL: page.SupportURL}
+	for _, c := range page.Components {
+		config.Components = append(config.Components, statuspage.Component{ComponentID: c.ComponentID, Name: c.Name, Description: c.Description})
+	}
+	return config
+}
+
 // applyStatusPageSettings posts the current page with the file's R2 key,
 // then saves the setup. The post writes status.json and index.html with the
-// file's page_title, creating status.json when the bucket has none, so a
-// key that cannot write the bucket is refused and never saved. Without the
-// section, the setup is removed; the bucket and its page stay in Cloudflare,
-// where a laptop with the key can still post.
+// file's page_title, host_name, website_url, support_url, and components,
+// creating status.json when the bucket has none (only this apply does; an
+// ordinary post to a bucket without one is refused), so a key that cannot
+// write the bucket is refused and never saved. When the file names another
+// bucket than the saved setup, the links from incidents to notices are
+// removed with the setup: notice IDs start again at 1 in a new bucket, and
+// an old link would point at another notice. Without the section, the setup
+// and the links are removed; the bucket and its page stay in Cloudflare, where a laptop with
+// the key can still post.
 func (a *App) applyStatusPageSettings(ctx context.Context, page *SettingsStatusPage) error {
 	if page == nil {
 		return a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `DELETE FROM status_page_setup`)
+			// The links go with the setup: enabling the page again, perhaps on
+			// another bucket where notice IDs start at 1, must not find them.
+			if _, err := tx.ExecContext(ctx, `DELETE FROM status_page_setup`); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, `DELETE FROM status_page_incident_notices`)
 			return err
 		})
 	}
@@ -204,10 +223,22 @@ func (a *App) applyStatusPageSettings(ctx context.Context, page *SettingsStatusP
 	}
 	accountID, bucketName := r2BucketURLParts(bucketURL)
 	setup := statusPageSetup{accountID: accountID, hostName: hostName, bucketName: bucketName, bucketURL: bucketURL, pageTitle: pageTitle, accessKeyID: strings.TrimSpace(page.R2AccessKeyID), secretAccessKey: strings.TrimSpace(page.R2SecretAccessKey)}
-	if _, _, err := statuspage.Publish(ctx, a.statusPageBucket(setup), statuspage.SetPageTitle(pageTitle), pageTitle, a.Now()); err != nil {
+	config := page.pageConfig()
+	config.PageTitle, config.HostName = pageTitle, hostName
+	if _, _, err := statuspage.Publish(ctx, a.statusPageBucket(setup), statuspage.ApplyPageConfig(config), pageTitle, a.Now()); err != nil {
 		return fmt.Errorf("%w: posting the current status page with the settings file's R2 key failed: %s", errSettingsPartRefused, strings.TrimSuffix(err.Error(), "."))
 	}
 	return a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+		var previousBucketURL string
+		switch err := tx.QueryRowContext(ctx, `SELECT r2_bucket_url FROM status_page_setup WHERE id=1`).Scan(&previousBucketURL); {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return err
+		case previousBucketURL != setup.bucketURL:
+			if _, err := tx.ExecContext(ctx, `DELETE FROM status_page_incident_notices`); err != nil {
+				return err
+			}
+		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO status_page_setup(id,cloudflare_account_id,host_name,bucket_name,r2_bucket_url,page_title,r2_access_key_id,r2_secret_access_key,set_up_at,set_up_by) VALUES(1,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET cloudflare_account_id=excluded.cloudflare_account_id,host_name=excluded.host_name,bucket_name=excluded.bucket_name,r2_bucket_url=excluded.r2_bucket_url,page_title=excluded.page_title,r2_access_key_id=excluded.r2_access_key_id,r2_secret_access_key=excluded.r2_secret_access_key,set_up_at=excluded.set_up_at,set_up_by=excluded.set_up_by`,
 			setup.accountID, setup.hostName, setup.bucketName, setup.bucketURL, setup.pageTitle, setup.accessKeyID, setup.secretAccessKey, a.Now().Unix(), a.settingsPrincipalName())
 		return err

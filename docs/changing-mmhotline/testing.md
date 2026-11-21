@@ -32,7 +32,7 @@ contacting the next person.
 | A18 Commit check | `internal/systemsrepository`: `TestCommitsThatNeedReview` (trusted, triage notes, triage outside its folders, a triage root and merge, unsigned, unknown key, lost checkpoints, every changed path once), `TestATrustedMergeOfAnUnsignedCommitIsTrustedOnlyBeforeTheMerge`, `TestARunFromABaseBehindOriginGetsNothingNewerAndStillPushes`. `internal/app`: `TestMMXWaitsForEveryCommitNoTrustedKeySigned` (one warning, one review, then MMX runs), `TestMMXRefusesTriageSignedCommitUntilMemberReviews`, `TestMemberCanReviewRefusedCommitOnApprovalsPage`, `TestChangedKeysKeepTheCheckedThroughCommit`, `TestTheCheckoutStopsAtTheTrustedCommit`, `TestAWaitingInventoryChangeAddsNoSSHTarget`, `TestThePromptsNoteComesFromTheTrustedCommit`, `TestJudgingWhileACommitWaitsUsesTheTrustedCommitAndMMXWaits`, `TestTrustThroughVouchesForEveryEarlierCommit` (a removed key's and an unsigned old commit trusted, one info alert, a later commit still checked, a commit off the branch refused, a commit behind the checkpoint changing nothing). The triage agent's approval, in `triage_agent_commit_review_runs_test.go` with the fake sandbox and real signatures: `TestTheTriageAgentApprovesAnOrdinaryCommit` (no alert before the review, one run from the trusted commit with the commit quoted as data, approve records the agent and run, one info alert and nothing else, checkpoint and checkout move, MMX then runs, the page, Approvals list, Triage agent page, and `commit-reviews list`/`show` text and JSON), `TestCommitsTheTriageAgentMayNotApproveWaitForAPerson` (a person-only path and the triage key's own commit get the warning at once, never reach the prompt, approve refused naming the paths, playbook requests refused), `TestNeedsAPersonSendsTheAgentsReportAsTheOneAlert` (the report at sos with the review link, no warning, the commit waits), `TestAFailedCommitReviewSendsTheWarningOnce` (once, with the reason, also after a restart), `TestWithAPersonNoCommitReviewStarts` (today's warning, no run; a setting changed mid-review refuses approve and warns), `TestACommitReviewStopsForATriageSession`, `TestTheCommitReviewPromptQuotesTheDiffAndIsCut`; `internal/triageagent`: `TestAgentRequestCommandArgumentChecks`, `TestSandboxRelaysACommitReview`; settings: `TestEachSettingsProblemNamesItsKeyPath` | `TestARunStartsFromTheTrustedCommitWhileACommitWaits`: a run while an unsigned commit waits gets the trusted base, its copy lacks the commit, its commits reach origin, and MMX still waits. Fixture commits are signed with a fixed test key the team trusts; the agent signs with the triage key |
 | A29 Read what happened | `TestReadOnlyCommandsShowWhatHappened` drives a triage session through the fake sandbox: a warn alert with no incident, two runs with steps and usage, the agent's report, and an approval request, then reads each through the command handler, with refusals of unknown IDs and alert sources, and checks that the database's change count did not move; `TestReadOnlyCommandFlags` checks each command's flags in the request and the refusals before connecting; `TestCommitReviewsCommands` checks `commit-reviews check`, `list`, `show`, and `mark-reviewed` through the command handler, with text and JSON giving the same facts, refusals of a missing commit and a name that is no commit ID, and an older commit leaving the checkpoint; `TestCommitReviewsCheckExitCode` checks the exit codes 0 and 1 | `TestCLISetupCommandsEndToEnd` lists a signed info alert with no incident and the empty incident list from a running `serve` |
 | A30 Settings file | See [Settings file checks](#settings-file-checks) for validation, applying parts, secret handling, and sandbox requests. | See [Settings file checks](#settings-file-checks) for command and process workflows. |
-| A26 Status page | Signer against AWS's example, `status.json` history and fields, page rendering, refusals, posts at the same time, an older `index.html` that arrives last, bucket names | The laptop's `status-page set-up` against the fake Cloudflare API; the settings file's `status_page` part, saved only after it published the current page with the file's key and `page_title`; posts from the incident page, the Status page page, the command, and a laptop process with only env vars |
+| A26 Status page | Signer against AWS's example, `status.json` history and fields, page rendering in golden files, the page's local-time script under `node --test`, the Atom feed's structure and golden files, refusals, edits and deletes, posts at the same time, older `index.html` and `feed.xml` files that arrive last, a failed upload of one file, bucket names | The laptop's `status-page set-up` against the fake Cloudflare API; the settings file's `status_page` part, saved only after it published the current page with the file's key and `page_title`; posts from the incident page, the Status page page, the command, and a laptop process with only env vars |
 
 ## Settings file checks
 
@@ -124,6 +124,25 @@ The package tests the following behavior against
   and arrival of the first post's older `index.html`. The final page uses
   the latest `status.json`
   (`TestPageShowsTheLatestStatusJSONAfterPostsAtTheSameMoment`).
+  A second post that completes between the uploads of `index.html` and
+  `feed.xml` leaves both files matching the latest `status.json`
+  (`TestPageAndFeedShowTheLatestStatusJSONAfterAPostBetweenTheirUploads`),
+  and a post that keeps being overtaken says so and keeps the change
+  (`TestAPostThatKeepsBeingOvertakenSaysSoAndKeepsTheChange`).
+- A failed upload of `index.html` does not stop the upload of `feed.xml`, and
+  the reverse; the error names the file that failed and says the change is
+  saved in `status.json` (`feed_test.go`).
+- `feed.xml` is read back as Atom 1.0: the feed's ID, title, author,
+  updated time, and links, an empty feed, entries with the state in the title,
+  plain text with components, planned window, stages, and `(edited)`, the
+  cap of 20 entries in order of change with ties broken by notice number, and
+  escaping of `<`, `&`, and `>`. Two golden files in
+  `internal/statuspage/testdata/feeds/` pin the exact XML; run
+  `go test ./internal/statuspage -run TestFeedGolden -update` to rewrite
+  them.
+- `local_time_test.go` runs `node --test local_time_test.mjs`, so
+  `go test ./internal/statuspage` also tests the page's local-time script
+  when `node` is installed, and skips that test when it is not.
 
 `internal/app/status_page_test.go` checks the Worker and bucket names: the
 same for the same host name, different for host names that differ only in

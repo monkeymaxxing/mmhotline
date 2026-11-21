@@ -137,6 +137,16 @@ func checkSettings(s Settings, problems *settingsProblems) {
 			problems.add("status_page.r2_access_key_id", "must be letters and digits, as Cloudflare shows the R2 Access Key ID")
 		}
 		checkSecretSettings("status_page.r2_secret_access_key", page.R2SecretAccessKey, problems)
+		if _, err := statuspage.CheckWebsiteURL(page.WebsiteURL); err != nil {
+			problems.add("status_page.website_url", strings.TrimPrefix(err.Error(), statuspage.ErrRefused.Error()+": "))
+		}
+		if _, err := statuspage.CheckSupportURL(page.SupportURL); err != nil {
+			problems.add("status_page.support_url", strings.TrimPrefix(err.Error(), statuspage.ErrRefused.Error()+": "))
+		}
+		// A component with a key missing or unknown is already a problem of its own.
+		if _, err := statuspage.CheckComponents(page.pageConfig().Components); err != nil && !problems.hasProblemUnder("status_page.components") {
+			problems.add("status_page.components", strings.TrimPrefix(err.Error(), statuspage.ErrRefused.Error()+": "))
+		}
 	}
 	people := checkPeopleSettings(s.People, problems)
 	checkOnCallScheduleSettings(s.OnCallSchedule, people, problems)
