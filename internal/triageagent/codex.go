@@ -49,12 +49,7 @@ func (codex) env(request Request, home string) []string {
 	return []string{"CODEX_API_KEY=" + request.Credential}
 }
 
-// plantablePaths: config.toml can add MCP servers, a notify command, and
-// instructions; MMHotline passes every setting Codex needs with -c. Session
-// files in ~/.codex/sessions/ stay for resume.
-func (codex) plantablePaths() []string {
-	return []string{".codex/AGENTS.md", ".codex/AGENTS.override.md", ".codex/config.toml", ".codex/hooks.json", ".codex/prompts", ".codex/skills", ".codex/rules"}
-}
+func (codex) sessionDirectory() string { return ".codex/sessions" }
 
 // serviceHosts: with an API key Codex calls OpenAI's API. With a ChatGPT
 // sign-in or a Codex access token it calls ChatGPT's Codex service, and

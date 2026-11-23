@@ -95,17 +95,24 @@ then steer every later run. So each run limits what reaches the next:
   `/tmp`, with the agent's copy of the systems repository inside it, as a
   [review agent's run](#how-a-review-runs) does. A commit review decides
   which commits MMX may run, so nothing an earlier run planted may reach it.
-- **Every other run in the agent's home removes, before the coding agent
-  starts,** each supported coding agent's instructions and settings:
-  `CLAUDE.md` and `CLAUDE.local.md` in the home, and `CLAUDE.md`, `rules/`,
-  `settings.json` (with its hooks), `agents/`, `commands/`, `skills/`,
-  `output-styles/`, and `plugins/` in `~/.claude/`; `AGENTS.md`,
-  `AGENTS.override.md`, `config.toml`, `hooks.json`, `prompts/`, `skills/`,
-  and `rules/` in `~/.codex/`. Every supported agent's files go, because the
-  team may switch agents.
-- **Claude Code starts with `--strict-mcp-config`,** so no MCP server that a
-  run added to `~/.claude.json` starts, and with
-  `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. The agent's notes belong in
+- **Every other run in the agent's home clears that home before the coding
+  agent starts.** Everything goes except the short list under "What stays"
+  below. Clearing the whole home, not a list of known files, matters because
+  the coding agents change every week: a newer Claude Code or Codex can read
+  instructions, settings, skills, or memories from a place no earlier
+  version read, such as Codex's `~/.codex/memories/` or `~/.agents/skills/`.
+  A list of known files would miss such a place without anyone noticing.
+  Only the agent's home and the run's private `/tmp` are writable
+  ([the run's sandbox](#one-systemd-service-instance-per-run)), and systemd
+  discards the private `/tmp`, so nothing a run writes outside the list
+  reaches the next run. The home is the fixed path
+  `/var/lib/mmhotline-triage-agent`, never `$HOME`, so a person who runs
+  `mmhotline triage-agent run-inside-sandbox` by hand never clears their
+  own home.
+- **Claude Code starts with `--strict-mcp-config`,** so no MCP server
+  starts except those MMHotline names, which is none, and with
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, because Claude Code keeps its auto
+  memory beside the session files, which stay. The agent's notes belong in
   `triage_agent_notes/`, where the [commit check](#checking-commits-before-mmx-and-triage-agent-runs)
   judges them.
 - **The agent's copy of the systems repository is made new** at the start
@@ -120,18 +127,20 @@ What stays, and why:
 
 - The coding agents' session files, `~/.claude/projects/` and
   `~/.codex/sessions/`, because the next run of a triage session resumes
-  its session from them.
-- The agent's SSH key and Git settings, `~/.ssh/id_ed25519` and
-  `~/.gitconfig`, which the team's setup made. Only the coding agent's own
-  Git reads `~/.gitconfig`, for the agent's commit name, email address, and
-  signing key.
+  its session from them. On 2026-11-23, Claude Code 2.1.330 and Codex
+  0.171.0 each resumed a session in a home that held nothing else.
+- The agent's SSH key and Git settings, `~/.ssh/` and `~/.gitconfig`, which
+  the team's setup made. Only the coding agent's own Git reads
+  `~/.gitconfig`, for the agent's commit name, email address, and signing
+  key. MMHotline writes `~/.ssh/config` new for each run.
 - No sign-in: a credential reaches each run in its request, and a ChatGPT
   sign-in's `auth.json` is deleted when the run ends
   ([Codex with a ChatGPT sign-in](#codex-with-a-chatgpt-sign-in)).
 
-A run could still leave other files, such as a shell's `~/.profile`, for
-later triage runs. Those runs already have the same powers as the run that
-planted them. Only the commit review crosses a line, and it starts empty.
+A run can still change the kept files, such as `~/.gitconfig`, for later
+triage runs. Those runs already have the same powers as the run that changed
+them, and no coding agent reads `~/.gitconfig` or `~/.ssh/` as instructions.
+Only the commit review crosses a line, and it starts empty.
 
 ### Every connection goes through MMHotline's logging proxy
 
@@ -540,7 +549,7 @@ OpenAI's API. With a ChatGPT sign-in or a Codex access token, Codex calls
 ChatGPT's Codex service at `chatgpt.com`, and OpenAI's sign-in service at
 `auth.openai.com`, where it refreshes a sign-in or checks an access token. It
 never needs `api.openai.com` then, so that host is not listed. The source is
-Codex's own code at the version this was built against (`openai/codex` tag
+Codex's own code at its oldest supported version (`openai/codex` tag
 `rust-v0.166.0`: `model-provider-info/src/lib.rs`, and the refresh URL in
 `login/src/auth/manager.rs`).
 
@@ -1653,6 +1662,33 @@ as `chatgpt.com` with an API key; the proxy refuses and records them. Codex
 sends an `error` event for a retry Codex recovers from. An `error` event
 alone fails a run only when the Codex turn never completes. Codex's error items,
 such as a missing helper program, appear as message steps.
+
+### Supported coding agent versions
+
+MMHotline supports **Codex 0.166.0 or newer** and **Claude Code 2.1.325 or
+newer**. A team moves its coding agent to a newer version when it wants a
+newer model, without waiting for an MMHotline release. Codex 0.166.0 is the
+version whose source the Codex access token and ChatGPT sign-in support was
+built from ([triage agent setup](#triage-agent-setup)). Real runs used Codex
+0.164.0, 0.169.0, and 0.171.0, and Claude Code 2.1.325 and 2.1.330
+([validation](../validation.md)).
+
+What MMHotline relies on in each coding agent, and what a newer version
+that changed it does:
+
+| What MMHotline relies on | A newer version that changed it |
+| --- | --- |
+| The command-line options in [the connection](#the-connection-to-each-coding-agent) | The coding agent exits with an error. The run fails with "Codex exited unexpectedly" and the end of the coding agent's standard error |
+| The JSON events: for Codex `thread.started`, `item.started`, `item.completed` with `agent_message`, `turn.completed`, and `turn.failed`; for Claude Code `system` with the session ID and `result` | A missing final event fails the run with "Codex exited without reporting a result". A missing answer fails the setup test and the sign-in check, which look for the test sentence. Event and item types MMHotline does not know are ignored or shown as tool steps |
+| The hosts listed for each credential type | The proxy refuses an unlisted host and records it with the run, and the triage agent page offers to add it. The run fails with the coding agent's connection error |
+| The session files' place, `~/.codex/sessions/` or `~/.claude/projects/` | A resumed run fails with the coding agent's own error, so the SOS wakes the person on call ([when the agent cannot run](#when-the-agent-cannot-run)) |
+| The fields of Codex's `auth.json` | The copy fails MMHotline's check and is not saved; the run's record names the reason |
+| Nothing about where the coding agent reads settings | Each run clears the agent's home, so a new settings place cannot carry over ([what a run leaves for the next](#what-a-run-leaves-for-the-next)) |
+
+Each change shows as a failed run with a reason; none goes unnoticed. The
+guide to setting up the triage agent lists what a team checks when it moves
+its coding agent's version
+([moving to a newer coding agent](../../how-to/set-up-the-triage-agent.md#moving-to-a-newer-coding-agent-version)).
 
 ### What a run used
 

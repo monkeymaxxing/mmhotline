@@ -261,8 +261,8 @@ func TestSandboxSendsARefreshWhileCodexStillRuns(t *testing.T) {
 	half := refreshed[:len(refreshed)/2]
 	request := testRequest("codex")
 	request.CredentialType, request.Credential = "chatgpt_sign_in", firstSignIn(t)
-	home := t.TempDir()
-	if err := os.WriteFile(filepath.Join(home, "codex"), []byte("#!/bin/sh\n"+fakeCodexWithSignIn(results, refreshed, "/bin/sleep 1.5\nprintf '%s' '"+half+"' > \"$CODEX_HOME/auth.json\"\n"+waitForTermination)+"\n"), 0o700); err != nil {
+	home, searchPath := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(searchPath, "codex"), []byte("#!/bin/sh\n"+fakeCodexWithSignIn(results, refreshed, "/bin/sleep 1.5\nprintf '%s' '"+half+"' > \"$CODEX_HOME/auth.json\"\n"+waitForTermination)+"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	input, inputWriter := io.Pipe()
@@ -271,7 +271,7 @@ func TestSandboxSendsARefreshWhileCodexStillRuns(t *testing.T) {
 	t.Cleanup(func() { kill(); _ = inputWriter.Close(); _ = output.Close() })
 	done := make(chan error, 1)
 	go func() {
-		done <- RunInsideSandbox(ctx, input, outputWriter, SandboxSettings{Home: home, SearchPath: home, MMHotlineProgram: testMMHotlineProgram(t)})
+		done <- RunInsideSandbox(ctx, input, outputWriter, SandboxSettings{Home: home, SearchPath: searchPath, MMHotlineProgram: testMMHotlineProgram(t)})
 		_ = outputWriter.Close()
 	}()
 	if err := json.NewEncoder(inputWriter).Encode(request); err != nil {

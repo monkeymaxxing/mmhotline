@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -129,7 +130,7 @@ func RunInsideSandbox(ctx context.Context, in io.Reader, out io.Writer, settings
 		}
 		defer os.RemoveAll(home)
 		workingDirectory = home
-	} else if err := removePlantablePaths(home); err != nil {
+	} else if err := clearAgentHome(home); err != nil {
 		return fail(err)
 	}
 	if request.SystemsRepositoryBaseCommitID != "" {
@@ -354,18 +355,48 @@ func checkRequest(request Request) error {
 	return nil
 }
 
-// removePlantablePaths removes, from the agent's home at a run's start, each
-// supported coding agent's files that would steer every later run, such as
-// ~/.claude/CLAUDE.md, hooks in ~/.claude/settings.json, and
-// ~/.codex/AGENTS.md: a run that a log misled could have written them
+// clearAgentHome removes, at the start of a run in the agent's home,
+// everything in that home except the team's SSH key and Git settings and
+// each supported coding agent's session files. A run that a log misled can
+// write any file in its home, and a coding agent reads some of them at every
+// start: instructions, settings with hooks, skills, memories, and MCP
+// servers. Clearing the whole home, not a list of known files, means a
+// settings file that a newer coding agent version reads also cannot carry
+// over to the next run
 // (docs/changing-mmhotline/design/triage-agent.md#what-a-run-leaves-for-the-next).
-// Every supported agent's, since the team may switch agents.
-func removePlantablePaths(home string) error {
+// Every supported agent's session files stay, since the team may switch
+// agents. MMHotline makes the systems repository copy, ~/.ssh/config, and
+// ~/.mmhotline new for each run.
+func clearAgentHome(home string) error {
+	kept := []string{".ssh", ".gitconfig"}
 	for _, agent := range codingAgents() {
-		for _, path := range agent.plantablePaths() {
-			if err := os.RemoveAll(filepath.Join(home, path)); err != nil {
-				return fmt.Errorf("remove %s from the agent's home: %w", path, err)
+		kept = append(kept, agent.sessionDirectory())
+	}
+	return clearDirectoryExcept(home, "", kept)
+}
+
+// clearDirectoryExcept removes each entry of root/directory whose path,
+// relative to root, is not kept and leads to nothing kept. A directory on
+// the way to a kept path is cleared the same way; anything else on the way,
+// such as a symbolic link, is removed.
+func clearDirectoryExcept(root, directory string, kept []string) error {
+	entries, err := os.ReadDir(filepath.Join(root, directory))
+	if err != nil {
+		return fmt.Errorf("clear the agent's home: %w", err)
+	}
+	for _, entry := range entries {
+		path := filepath.Join(directory, entry.Name())
+		if slices.Contains(kept, path) {
+			continue
+		}
+		if entry.IsDir() && slices.ContainsFunc(kept, func(keptPath string) bool { return strings.HasPrefix(keptPath, path+"/") }) {
+			if err := clearDirectoryExcept(root, path, kept); err != nil {
+				return err
 			}
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(root, path)); err != nil {
+			return fmt.Errorf("remove %s from the agent's home: %w", path, err)
 		}
 	}
 	return nil

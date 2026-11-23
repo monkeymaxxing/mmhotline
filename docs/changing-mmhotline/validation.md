@@ -292,6 +292,16 @@ the test server itself, reached at its private address.
 | A triage session | A warn alert reached the agent, which read the server over SSH through the proxy, wrote and validated a one-time playbook, and asked to run it; the review agent approved it, MMHotline pushed the agent's signed commit and ran MMX, the service ran again, and the agent sent an Info report |
 | Software review | Without `scheduled_software_review_task.md`, the review failed at once with the documented reason and no cost. With the software review guide's example task: 3 minutes 33 seconds, $0.99, one warn and five info reports, and a playbook request for security fixes, which waited as an unrecognized task and was refused on its page with a reason |
 
+On 2026-11-23, on a Mac, Codex 0.171.0 (model `gpt-6-astra`, an OpenAI
+API key) and Claude Code 2.1.330 (model `haiku`, a Claude subscription
+token) each ran once with the options MMHotline passes (Claude Code without
+`--effort`) in a new empty home.
+Then everything in the home except `.codex/sessions/` or
+`.claude/projects/` was removed, and each resumed its session and gave back
+the word from the first run. Each run of a triage session clears the
+agent's home this way
+([what a run leaves for the next](design/triage-agent.md#what-a-run-leaves-for-the-next)).
+
 The first runs of the session failed on setup the team's server setup owns,
 and each failure named its cause: no `/etc/hosts` name for the server, the
 agent's commits unsigned without its `~/.gitconfig`, MMHotline's copy
@@ -491,8 +501,9 @@ The three subscription credentials, Claude Code's subscription token,
 Codex's access token, and Codex's ChatGPT sign-in, follow the vendors'
 documented behavior: Claude Code's `claude setup-token` documentation,
 OpenAI's Codex authentication, access token, and CI/CD authentication
-guides, and Codex's source at tag `rust-v0.166.0`, the version these were
-built against. They are proven against a fake `claude` and a fake `codex`
+guides, and Codex's source at tag `rust-v0.166.0`, the oldest Codex
+version MMHotline supports
+([supported coding agent versions](design/triage-agent.md#supported-coding-agent-versions)). They are proven against a fake `claude` and a fake `codex`
 that act as those documents describe, not with a real token or sign-in. The
 sign-in check has not run with a real Anthropic or OpenAI API key either.
 

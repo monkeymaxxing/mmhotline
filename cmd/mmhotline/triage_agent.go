@@ -94,5 +94,8 @@ func runTriageAgentInsideSandbox(args []string) error {
 	if err != nil {
 		return fmt.Errorf("find the mmhotline program's own path: %w", err)
 	}
-	return triageagent.RunInsideSandbox(context.Background(), os.Stdin, os.Stdout, triageagent.SandboxSettings{ProxySocketPath: *socket, Home: os.Getenv("HOME"), SearchPath: "/usr/local/bin:/usr/bin:/bin", MMHotlineProgram: program})
+	// The agent's home is its fixed path, not $HOME: a run clears the
+	// agent's home, so a person who ran this command by hand must not lose
+	// their own.
+	return triageagent.RunInsideSandbox(context.Background(), os.Stdin, os.Stdout, triageagent.SandboxSettings{ProxySocketPath: *socket, Home: triageAgentHome, SearchPath: "/usr/local/bin:/usr/bin:/bin", MMHotlineProgram: program})
 }

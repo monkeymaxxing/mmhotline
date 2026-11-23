@@ -448,7 +448,9 @@ has the inventory address `203.0.113.11` and the private address
    **Check:** `/usr/local/bin/claude --version` prints the version, such as
    `2.1.325 (Claude Code)`. For Codex, `codex --version` prints such as
    `codex-cli 0.169.0`, and `rg --version` prints such as
-   `ripgrep 15.2.0 (rev e89fff89ac)`.
+   `ripgrep 15.2.0 (rev e89fff89ac)`. MMHotline needs Codex 0.166.0 or
+   newer, or Claude Code 2.1.325 or newer; a newer version is fine
+   ([moving to a newer coding agent version](#moving-to-a-newer-coding-agent-version)).
 
 2. **Get the agent's credential.** An API key is the most dependable
    choice for an agent that must work at night: it never expires and has
@@ -705,6 +707,50 @@ key.
    Each review runs in the triage agent's sandbox, in a new empty home, and
    reaches only its own coding agent's service. Leaving the section out of
    the file removes the review agent, and playbooks are no longer reviewed.
+
+## Moving to a newer coding agent version
+
+Move the coding agent to a newer version whenever you want a newer model;
+MMHotline needs no release for it. Codex warns "Model metadata for `MODEL`
+not found" when its version is older than the model, and still runs.
+
+Each run clears the agent's home except the session files, the SSH key,
+and the Git settings, so a newer version that reads its settings from a
+new place cannot carry a planted file from one run to the next. A newer
+version that changed what MMHotline relies on shows as a failed run with
+a reason, never silently
+([what MMHotline relies on](../changing-mmhotline/design/triage-agent.md#supported-coding-agent-versions)).
+
+1. **Before moving Codex, read the release notes** from your version to the
+   new one for three kinds of change: a removed or renamed option of
+   `codex exec` or `codex exec resume`, a change to the `--json` events, and
+   a new service host that Codex must reach for the model or the sign-in.
+   If one appears, wait for an MMHotline release that names that Codex
+   version. Claude Code updates itself from Anthropic's repository; its
+   changes show in the check below.
+2. **Install the new version** in `/usr/local/bin`, as in
+   [step 1 of setting up the agent](#set-up-the-agent).
+3. **Run the coding agent once.** With a subscription token, a Codex
+   access token, or a ChatGPT sign-in:
+
+   ```sh
+   sudo mmhotline triage-agent check-sign-in
+   ```
+
+   With an API key that check asks only the vendor's models list and does
+   not start the coding agent, so run one software review instead, which
+   costs one review's run and needs the review's task file
+   ([the scheduled software review](turn-on-the-scheduled-software-review.md)):
+
+   ```sh
+   sudo mmhotline triage-agent run-software-review
+   ```
+
+   **Check:** `sudo mmhotline triage-agent show` shows the check passed or
+   the review finished. A failure names its reason, such as "Codex exited
+   unexpectedly" with Codex's own error, or a refused host in the
+   connection log. Move back to the earlier version and wait for an
+   MMHotline release.
 
 ## What a triage session looks like
 

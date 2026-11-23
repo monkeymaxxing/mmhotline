@@ -390,9 +390,9 @@ them each time:
 | `systems_repository/` | | The agent's own copy of the systems repository, made new at the commit MMHotline hands the run; the agent's new commits go back to MMHotline from here |
 | `.codex/` | | Codex's own files, with Codex as the coding agent |
 
-Each run also removes the coding agents' instruction and settings files
-from the home, such as `~/.claude/CLAUDE.md`, `~/.claude/settings.json`,
-and `~/.codex/AGENTS.md`, so a run that a log misled cannot steer the next
+Each run first clears the home of everything except `.ssh/`, `.gitconfig`,
+and the coding agents' session files, `.claude/projects/` and
+`.codex/sessions/`, so a run that a log misled cannot steer the next
 ([what a run leaves for the next](../changing-mmhotline/design/triage-agent.md#what-a-run-leaves-for-the-next)).
 A commit review starts in a new empty home in its private `/tmp`.
 

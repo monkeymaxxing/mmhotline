@@ -31,11 +31,11 @@ type codingAgent interface {
 	env(request Request, home string) []string
 	serviceHosts(string) []ListedHost
 	readLine([]byte, *agentStream) ([]Event, error)
-	// plantablePaths are the coding agent's files and directories in the
-	// agent's home, relative to it, that would steer every later run in that
-	// home: instructions, settings with hooks, skills, commands, and
-	// MCP servers. Each run in the agent's home removes them at its start.
-	plantablePaths() []string
+	// sessionDirectory is where the coding agent keeps its session files,
+	// relative to the agent's home. It is the only part of the coding
+	// agent's own files that a run in the agent's home keeps, because the
+	// next run of a triage session resumes its session from it.
+	sessionDirectory() string
 }
 
 func codingAgents() []codingAgent { return []codingAgent{claudeCode{}, codex{}} }

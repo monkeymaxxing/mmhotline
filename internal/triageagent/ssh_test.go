@@ -271,13 +271,15 @@ func TestSandboxWritesTheAgentsSSHSettings(t *testing.T) {
 	if err != nil {
 		t.Skip("this test reads the settings with OpenSSH's ssh, which is not installed")
 	}
-	home := t.TempDir()
+	// results is outside the agent's home, which each run clears, as the
+	// run's private /tmp is.
+	home, results := t.TempDir(), t.TempDir()
 	settingsFile := filepath.Join(home, ".ssh", "config")
 	// The first run, a setup test, keeps what it was given and then changes
 	// it: a symlink to settings that trust any host key.
-	first := startFakeRunInHome(t, home, "codex", `/bin/cp "$HOME/.ssh/config" "$HOME/first_run_ssh_config"
-printf 'Host *\n  StrictHostKeyChecking no\n' > "$HOME/changed_ssh_config"
-/bin/ln -sf "$HOME/changed_ssh_config" "$HOME/.ssh/config"
+	first := startFakeRunInHome(t, home, "codex", `/bin/cp "$HOME/.ssh/config" '`+results+`/first_run_ssh_config'
+printf 'Host *\n  StrictHostKeyChecking no\n' > '`+results+`/changed_ssh_config'
+/bin/ln -sf '`+results+`/changed_ssh_config' "$HOME/.ssh/config"
 `+codexFinishes, testRequest("codex"))
 	for event := first.next(t); event.Event == "session" || event.Event == "step"; event = first.next(t) {
 	}
@@ -295,7 +297,7 @@ printf 'Host *\n  StrictHostKeyChecking no\n' > "$HOME/changed_ssh_config"
 	if info, err := os.Lstat(settingsFile); err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
 		t.Fatalf("the second run's ~/.ssh/config: %v %v", info, err)
 	}
-	if changed := readTestFile(t, filepath.Join(home, "changed_ssh_config")); changed != "Host *\n  StrictHostKeyChecking no\n" {
+	if changed := readTestFile(t, filepath.Join(results, "changed_ssh_config")); changed != "Host *\n  StrictHostKeyChecking no\n" {
 		t.Fatalf("the file the first run's symlink named was changed: %q", changed)
 	}
 	wantEverywhere := map[string]string{
@@ -322,8 +324,8 @@ printf 'Host *\n  StrictHostKeyChecking no\n' > "$HOME/changed_ssh_config"
 			}
 		}
 	}
-	check("the setup test", filepath.Join(home, "first_run_ssh_config"), "app001", "", "")
-	if strings.Contains(readTestFile(t, filepath.Join(home, "first_run_ssh_config")), "UserKnownHostsFile") {
+	check("the setup test", filepath.Join(results, "first_run_ssh_config"), "app001", "", "")
+	if strings.Contains(readTestFile(t, filepath.Join(results, "first_run_ssh_config")), "UserKnownHostsFile") {
 		t.Error("the setup test, which has no copy of the systems repository, names a known hosts file")
 	}
 	knownHosts := filepath.Join(home, "systems_repository", "ssh", "known_hosts")
@@ -340,7 +342,7 @@ printf 'Host *\n  StrictHostKeyChecking no\n' > "$HOME/changed_ssh_config"
 func TestSandboxPutsTheAgentsSSHFirst(t *testing.T) {
 	home := t.TempDir()
 	// The real ssh, on the run's search path, records its arguments.
-	if err := os.WriteFile(filepath.Join(home, "ssh"), []byte("#!/bin/sh\nfor argument in \"$@\"; do printf '%s\\n' \"$argument\"; done > \"$HOME/ssh-arguments\"\n"), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(fakeSearchPath(t, home), "ssh"), []byte("#!/bin/sh\nfor argument in \"$@\"; do printf '%s\\n' \"$argument\"; done > \"$HOME/ssh-arguments\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	// The first run, a setup test, changes its ssh and the file BASH_ENV names.

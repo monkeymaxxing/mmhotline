@@ -31,12 +31,9 @@ func (claudeCode) env(request Request, _ string) []string {
 	return append(values, "CLAUDE_CODE_OAUTH_TOKEN="+request.Credential)
 }
 
-// plantablePaths: Claude Code reads the CLAUDE.md files of the working
-// directory's parents, and the agent's copy is in its home. Session files in
-// ~/.claude/projects/ stay for resume.
-func (claudeCode) plantablePaths() []string {
-	return []string{"CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", ".claude/rules", ".claude/settings.json", ".claude/agents", ".claude/commands", ".claude/skills", ".claude/output-styles", ".claude/plugins"}
-}
+// sessionDirectory: Claude Code's auto memory is also kept there, so env
+// turns it off.
+func (claudeCode) sessionDirectory() string { return ".claude/projects" }
 
 func (claudeCode) serviceHosts(string) []ListedHost {
 	return []ListedHost{{Host: "api.anthropic.com", Port: 443, ListedBecause: "Claude Code's model API"}}
