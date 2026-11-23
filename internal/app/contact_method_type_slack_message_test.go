@@ -421,7 +421,7 @@ func TestSlackAcknowledgesWhileSendingServiceReplyWaits(t *testing.T) {
 		copyContactMethodTypes[kind] = contactMethodType
 	}
 	copyContactMethodTypes["slack_message"] = &replacement
-	r.a.publishContactMethodTypes(copyContactMethodTypes)
+	r.publishSlackAndWaitForItsConnection(t, copyContactMethodTypes)
 	defer close(blocker.release)
 	code := r.code(t, r.member.Principal, "personal_direct_message")
 	first := r.fake.SlackSendMessage(fakesendingservices.SlackUser{ID: "U0001"}, fakesendingservices.SlackConversation{ID: "D0001"}, code.Code, false)
@@ -568,6 +568,20 @@ func TestSlackSendingKeepsTextEscapingAndResults(t *testing.T) {
 	}
 }
 
+// publishSlackAndWaitForItsConnection publishes contactMethodTypes and waits
+// until Socket Mode has reconnected with the new Slack setup. A message the
+// old connection received is refused as a setup that changed meanwhile, so a
+// test that sends before then fails by timing.
+func (r *slackRig) publishSlackAndWaitForItsConnection(t *testing.T, contactMethodTypes map[string]ContactMethodType) {
+	t.Helper()
+	openedBefore, _ := r.fake.SlackConnections()
+	r.a.publishContactMethodTypes(contactMethodTypes)
+	slackWait(t, "Socket Mode reconnects with the new Slack setup", func() bool {
+		opened, active := r.fake.SlackConnections()
+		return opened > openedBefore && active == 1
+	})
+}
+
 func TestSlackFailedReplyKeepsAcknowledgedConnections(t *testing.T) {
 	t.Parallel()
 	r := newSlackRig(t, true)
@@ -575,7 +589,7 @@ func TestSlackFailedReplyKeepsAcknowledgedConnections(t *testing.T) {
 	replacement := *current
 	blocker := &slackBlockingTransport{base: http.DefaultTransport, entered: make(chan struct{}), release: make(chan struct{}), failFirst: true}
 	replacement.Client = &http.Client{Transport: blocker}
-	r.a.publishContactMethodTypes(map[string]ContactMethodType{"slack_message": &replacement})
+	r.publishSlackAndWaitForItsConnection(t, map[string]ContactMethodType{"slack_message": &replacement})
 	personal := r.code(t, r.member.Principal, "personal_direct_message")
 	shared := r.code(t, r.member.Principal, "shared_channel")
 	first := r.fake.SlackSendMessage(fakesendingservices.SlackUser{ID: "U0001"}, fakesendingservices.SlackConversation{ID: "D0001"}, personal.Code, false)
