@@ -350,13 +350,13 @@ mmhotline triage-agent request-playbook-run --playbook ` + playbook + ` --invent
 	results := t.TempDir()
 	script := "#!/bin/sh\n/bin/cat > '" + results + "/prompt'\n/bin/ls -A \"$HOME\" > '" + results + "/home-listing'\nprintf '%s\\n' '{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"review-session\"}'\n" + reviewAgentScript + "\n"
 	if triageCodingAgent == "claude_code" {
-		script = "#!/bin/sh\nif [ \"$HOME\" = '" + run.agentHome + "' ]; then\nprintf '%s\\n' '{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"triage-session\"}'\n" + triage +
+		script = "#!/bin/sh\nif [ \"$HOME\" = '" + run.agentHome + "' ]; then\n" + copyDiagnosisIntoHome(run.programs) + "printf '%s\\n' '{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"triage-session\"}'\n" + triage +
 			"printf '%s\\n' '{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"Done.\",\"total_cost_usd\":0.02}'\nexit 0\nfi\n" + strings.TrimPrefix(script, "#!/bin/sh\n")
 		if _, err := a.Store.db.Exec(`UPDATE triage_agent_setup SET coding_agent='claude_code' WHERE id=1`); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(run.agentHome, "claude"), []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(run.programs, "claude"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.Store.db.Exec(`INSERT INTO review_agent_setup(id,coding_agent,credential_type,credential,model,reasoning_effort,set_up_at,set_up_by) VALUES(1,'claude_code','api_key','review-key','test-model','high',1,'administrator')`); err != nil {

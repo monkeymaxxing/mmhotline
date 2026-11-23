@@ -27,14 +27,25 @@ type systemsRepositoryRun struct {
 	app               *App
 	id                string
 	origin, agentHome string
-	sandbox           chan error
+	// programs is the runs' PATH, beside the agent's home, which each run
+	// clears: the fake coding agents, git, mmhotline, and the diagnosis that
+	// the fake codex copies into the home.
+	programs string
+	sandbox  chan error
 	// Each later connection is a review run, through its own real
 	// RunInsideSandbox with the agent's home, as on the team's server; its
-	// review agent's program is in the agent's home, which is the PATH.
+	// review agent's program is in programs.
 	reviewSandboxes chan error
 	// triageRunStatesDuringReviews has the state of the triage session's
 	// run as each review run started.
 	triageRunStatesDuringReviews chan string
+}
+
+// copyDiagnosisIntoHome is a fake coding agent's first line: it writes the
+// diagnosis its playbook requests name into its home, as a real agent
+// would, after the run cleared that home.
+func copyDiagnosisIntoHome(programs string) string {
+	return "/bin/cp '" + filepath.Join(programs, "diagnosis.md") + "' \"$HOME/diagnosis.md\"\n"
 }
 
 func startSystemsRepositoryRun(t *testing.T, a *App, script string) *systemsRepositoryRun {
@@ -95,16 +106,18 @@ func prepareSystemsRepositoryRunWithFiles(t *testing.T, a *App, files map[string
 	// The agent's home, as the team's server setup leaves it, with the
 	// diagnosis its playbook requests name. The agent signs its commits
 	// with its own key.
-	agentHome := t.TempDir()
+	agentHome, programs := t.TempDir(), t.TempDir()
 	signing := testSigning(t)
+	if err := os.WriteFile(filepath.Join(agentHome, ".gitconfig"), []byte(signingGitConfig("MMHotline triage agent", "mmhotline-triage-agent@example.com", signing.triageAgentKey, signing.sshKeygen)), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for name, content := range map[string]string{
-		".gitconfig":   signingGitConfig("MMHotline triage agent", "mmhotline-triage-agent@example.com", signing.triageAgentKey, signing.sshKeygen),
 		"diagnosis.md": testDiagnosis,
-		"codex":        "#!/bin/sh\n" + script + "\n",
+		"codex":        "#!/bin/sh\n" + copyDiagnosisIntoHome(programs) + script + "\n",
 		"git":          "#!/bin/sh\nexec '" + gitProgram + "' \"$@\"\n",
 		"mmhotline":    "#!/bin/sh\nexec '" + testBinary + "' \"$@\"\n",
 	} {
-		if err := os.WriteFile(filepath.Join(agentHome, name), []byte(content), 0o700); err != nil {
+		if err := os.WriteFile(filepath.Join(programs, name), []byte(content), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -131,8 +144,8 @@ func prepareSystemsRepositoryRunWithFiles(t *testing.T, a *App, files map[string
 	if err := a.InitializeTriageAgent(context.Background(), socket, socket, filepath.Join(directory, "proxy.sock")); err != nil {
 		t.Fatal(err)
 	}
-	run := &systemsRepositoryRun{app: a, origin: origin, agentHome: agentHome, sandbox: make(chan error, 1), reviewSandboxes: make(chan error, 8), triageRunStatesDuringReviews: make(chan string, 8)}
-	settings := triageagent.SandboxSettings{ProxySocketPath: filepath.Join(directory, "proxy.sock"), Home: agentHome, SearchPath: agentHome, MMHotlineProgram: filepath.Join(agentHome, "mmhotline")}
+	run := &systemsRepositoryRun{app: a, origin: origin, agentHome: agentHome, programs: programs, sandbox: make(chan error, 1), reviewSandboxes: make(chan error, 8), triageRunStatesDuringReviews: make(chan string, 8)}
+	settings := triageagent.SandboxSettings{ProxySocketPath: filepath.Join(directory, "proxy.sock"), Home: agentHome, SearchPath: programs, MMHotlineProgram: filepath.Join(programs, "mmhotline")}
 	go func() {
 		connection, err := listener.Accept()
 		if err != nil {
