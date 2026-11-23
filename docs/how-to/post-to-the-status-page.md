@@ -145,23 +145,23 @@ page.
 ### Install mmhotline on your laptop
 
 Use the release that runs on the server, which `mmhotline version` on the
-server names; the commands below use `0.6.0`. A Mac with Apple silicon uses
+server names; the commands below use `0.6.1`. A Mac with Apple silicon uses
 the `macos-arm64` archive, an Intel Mac `macos-amd64`; `uname -m` prints
 `arm64` or `x86_64`. A Linux laptop uses the Linux archives, as
 [Install MMHotline](install.md#install-a-release) says. On the Mac:
 
 ```sh
 curl --fail --location --remote-name-all \
-  https://github.com/monkeymaxxing/mmhotline/releases/download/v0.6.0/mmhotline-0.6.0-macos-arm64.tar.gz \
-  https://github.com/monkeymaxxing/mmhotline/releases/download/v0.6.0/SHA256SUMS
+  https://github.com/monkeymaxxing/mmhotline/releases/download/v0.6.1/mmhotline-0.6.1-macos-arm64.tar.gz \
+  https://github.com/monkeymaxxing/mmhotline/releases/download/v0.6.1/SHA256SUMS
 shasum -a 256 --check --ignore-missing SHA256SUMS
-tar -xzf mmhotline-0.6.0-macos-arm64.tar.gz
+tar -xzf mmhotline-0.6.1-macos-arm64.tar.gz
 sudo install -d -m 0755 /usr/local/bin
-sudo install -m 0755 mmhotline-0.6.0-macos-arm64/mmhotline /usr/local/bin/mmhotline
+sudo install -m 0755 mmhotline-0.6.1-macos-arm64/mmhotline /usr/local/bin/mmhotline
 mmhotline version
 ```
 
-**Check:** `shasum` prints `mmhotline-0.6.0-macos-arm64.tar.gz: OK`;
+**Check:** `shasum` prints `mmhotline-0.6.1-macos-arm64.tar.gz: OK`;
 otherwise stop. Download with `curl`, not a browser. Reason: macOS refuses
 to open a program a browser downloaded, because Apple has not notarized
 it. After each upgrade of the server, install the new release here too.
