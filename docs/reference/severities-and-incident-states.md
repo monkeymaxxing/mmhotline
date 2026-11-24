@@ -213,7 +213,8 @@ or while the agent replaces a server, for
 
 - The page says `The triage agent looks first, so MMHotline has woken nobody yet.`
 - Email and chat get the SOS at once.
-- The wait ends early when the agent sends a report at SOS, cannot help,
+- The wait ends early when the agent sends a report at SOS about it, or
+  one that names no alert, cannot help,
   or a person presses **Take over from the agent**. Then `primary` starts.
 - An SOS that a person raises by hand never waits.
 - An SOS that joins a triage session that already woke the person on call

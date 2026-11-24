@@ -159,6 +159,13 @@ func ReceiveAgentCommits(ctx context.Context, directory string, bundle []byte, b
 	if lockErr != nil {
 		return ReceivedAgentCommits{}, lockErr
 	}
+	// A git command that MMHotline's stop cut short reads as a refusal or
+	// a wait, such as an unusable bundle or an unsigned merge; MMHotline
+	// could not finish, so the caller keeps the commits to handle again.
+	if err == nil && result.Outcome != Pushed && ctx.Err() != nil {
+		err = fmt.Errorf("handle the agent's commits: %w", ctx.Err())
+		result.Outcome, result.Reason, result.PathsThatWait = "", "", nil
+	}
 	return result, err
 }
 

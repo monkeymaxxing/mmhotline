@@ -2282,7 +2282,12 @@ sends its email and chat to nobody, as it wakes nobody. MMHotline queues
 them in a step of its own after the wake, not in the wake's transaction, so
 the alert source's share of SOS deliveries
 ([notifications](notifications.md)) can never undo a wake: with the share
-full, they wait for room, also across a restart. An SOS that joins a session
+full, those that fit go and the rest wait for room, each contact method's
+once, also across a restart, so a team with more contact methods subscribed
+to SOS than the share still gets them all. An SOS that resolves after
+its wait is over, before that step queues them, sends them followed by its
+resolved message: the resolve told only those who had heard of it then, and
+nobody is left with an SOS that never ends. An SOS that joins a session
 which already woke its people sends its email and chat at once, as its
 waking step starts at once.
 
@@ -2326,8 +2331,8 @@ Barbara Example for this triage session", and its page says the same. The
 time to claim runs as usual, and an SOS still unclaimed then escalates to
 the backup, or wakes again where there is no backup, so it is never left
 unseen. Before then, the events that end a wait wake its people at once, as
-for a waiting SOS: the agent reports at sos or cannot help, or a person
-takes the session over. When the earlier wake failed to send or has an unknown outcome, or
+for a waiting SOS: the agent reports at sos about it or covering no alert,
+or cannot help, or a person takes the session over. When the earlier wake failed to send or has an unknown outcome, or
 the earlier incident is resolved, the wake may have reached nobody, so the
 new SOS waits and wakes as any other: a rare second wake is better than a
 dropped SOS. An SOS that joins a session that has woken nobody yet waits as
@@ -2485,7 +2490,9 @@ deadline, each in its own transaction, at most 100 a visit. So a full
 delivery queue never undoes an SOS's wake, the session's work, or a
 person's Stop: a warn that meets a full queue stays marked and goes at a
 later visit, also after a restart. A marked warn can no longer be taken over
-or resolved: MMHotline has decided to tell people. The background loop
+or resolved: MMHotline has decided to tell people. Nor can a warn past its
+deadline that the step has not marked yet, and a server replacement or a
+waiting SOS no longer moves its deadline: it is due. The background loop
 visits at the earliest deadline, so a deadline passes within a second.
 
 The alert's page and the dashboard say while the warn is held: "MMHotline
@@ -2530,12 +2537,17 @@ alert, once per alert ([requests from the agent](#requests-from-the-agent)).
   adds for an sos report's own incident joins the session as sent by the
   run, but it is MMHotline's own and was never shown, so it does not count.
 
-With named alerts, the incident a report goes with, the incident's history,
-and the SOS escalation of an sos report follow the named alerts' problems,
-not every problem the run carried ([reports to people](#reports-to-people)).
-A report at sos that names a warn-only problem opens an incident of its own,
-as a report about a problem with no incident does, even when the run also
-carried a claimed incident of another problem.
+When a report covers alerts, named or the one alert its run carried, the
+incident a report goes with, the incident's history, and the SOS escalation
+of an sos report follow the covered alerts' problems, not every problem the
+run carried, nor the problem of a playbook result it carried
+([reports to people](#reports-to-people)). A report at sos that covers a
+warn-only problem opens an incident of its own, as a report about a problem
+with no incident does, even when the run also carried a claimed incident of
+another problem. A later report about the same problem goes with that
+incident, so two reports about one warn open one incident and wake once:
+MMHotline records the alert each report sent in
+`triage_agent_requests.report_alert_id`.
 
 MMHotline records what each item covers in
 `triage_agent_covered_alerts(run_id, item_kind, item_id, alert_id)`:
@@ -2903,16 +2915,18 @@ keeps its notes.
 
 ### Reports to people
 
-A report that names alerts with `--about-alert-id` concerns the session's
-alerts about the named alerts' problems: their alert source and
-`sender_incident_key`, or the named alert alone without a key
+A report that covers alerts, named with `--about-alert-id` or the one alert
+its run carried, concerns the session's alerts about the covered alerts'
+problems: their alert source and `sender_incident_key`, or the covered alert
+alone without a key, and the incident an earlier report about the same
+problem opened
 ([reports and requests name their alerts](#reports-and-requests-name-their-alerts)).
-A report at sos that names only a warn-only problem then opens an incident
+A report at sos that covers only a warn-only problem then opens an incident
 of its own, even when the run also carried a claimed incident of another
 problem. Named alerts the run did not carry count for nothing; when the
-report names none the run carried, it is handled as a report without names.
+report covers none, it is handled as a report without names.
 
-A report without named alerts from a session's run concerns two groups of
+A report that covers no alert, from a session's run, concerns two groups of
 alerts:
 
 - alerts carried to the agent by the reporting run;
@@ -2974,10 +2988,13 @@ At sos, the person on call is woken through an incident's SOS escalation:
   later reports go with the new SOS incident, and the session stays open
   until a person resolves the new SOS incident.
 
-Every incident of the session that
-[waits for the agent](#an-sos-waits-for-the-agent) stops waiting at an sos
-report, and its escalation contacts the person on call at once, because the
-agent asks for a person.
+At an sos report, the incidents it concerns that
+[wait for the agent](#an-sos-waits-for-the-agent) stop waiting, and their
+escalation contacts the person on call at once, because the agent asks for
+a person about their problem. Another problem's waiting SOS keeps waiting
+until its own deadline. A report that covers no alert cannot say which
+problem needs a person, so every incident of the session that waits for the
+agent stops waiting.
 
 A report alert's title starts with "The AI triage agent reports: ".
 MMHotline first converts the report's first line to plain text.

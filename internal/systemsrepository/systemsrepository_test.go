@@ -582,6 +582,27 @@ func TestCommitsThatAreRefused(t *testing.T) {
 	})
 }
 
+// MMHotline stopping while it handles the agent's commits says it could not
+// finish, so the caller keeps the saved bundle; a refusal would lose them.
+func TestStoppingWhileReceivingIsAnErrorNotARefusal(t *testing.T) {
+	r := setUpRepositories(t)
+	base := r.startRun(t)
+	r.agentWritesPlaybookAndNote(t)
+	bundle, err := AgentCommitsBundle(t.Context(), r.agent, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopping, stop := context.WithCancel(t.Context())
+	stop()
+	result, err := ReceiveAgentCommits(stopping, r.mmhotline, bundle, base, originIsTrusted, r.owned)
+	if !errors.Is(err, context.Canceled) || result.Outcome == Refused || result.Outcome == WaitsForAPerson {
+		t.Fatalf("result: %+v, %v", result, err)
+	}
+	if main := r.originMain(t); main != base {
+		t.Fatalf("origin changed to %s", main)
+	}
+}
+
 func TestOriginMovedDuringTheRun(t *testing.T) {
 	t.Run("unrelated change", func(t *testing.T) {
 		r := setUpRepositories(t)

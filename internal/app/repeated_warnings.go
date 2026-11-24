@@ -60,9 +60,10 @@ const (
 	foldedRepeatRetryIdentityKeptFor = 24 * time.Hour
 	// maxFoldedRepeatRetryIdentitiesPerAlertSource bounds the table: 5,000
 	// servers each sending 4 findings in a day, at about 500 bytes a row,
-	// about 10 MB per folding source. Past it a repeat is still folded and
-	// counted, without its retry identity: a retry of it is then folded
-	// again and counted twice, which changes only the repeat count.
+	// about 10 MB per folding source. Past it a repeat is not folded: it
+	// is admitted as its own warning, whose row keeps its retry identity,
+	// because a repeat folded without one would come back as a new warning
+	// when its sender retries after a resolved-warn.
 	maxFoldedRepeatRetryIdentitiesPerAlertSource = 20000
 )
 
@@ -143,13 +144,21 @@ func retryOfFoldedRepeat(ctx context.Context, tx *sql.Tx, sourceID, replayKey st
 // of that source and key arrived after it, as resolvesOnlyWarnsNeverSent
 // matches. The earlier warn's repeat count goes up and keeps the repeat's
 // title; the repeat adds no alert row and is delivered to nobody. It
-// returns the earlier warn, or found false when the alert is not a repeat.
+// returns the earlier warn, or found false when the alert is not a repeat
+// or the source keeps as many retry identities as it may.
 func foldRepeatedWarning(ctx context.Context, tx *sql.Tx, sourceID, replayKey string, in GenericAlert, now time.Time) (earlier Alert, found bool, err error) {
 	if in.SenderIncidentKey == "" || in.Severity != "" && in.Severity != "warn" {
 		return Alert{}, false, nil
 	}
 	var setting string
 	if err = tx.QueryRowContext(ctx, `SELECT repeated_warnings FROM sources WHERE id=?`, sourceID).Scan(&setting); err != nil || setting != repeatedWarningsFold {
+		return Alert{}, false, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM folded_warning_repeats WHERE source_id=? AND received_at<=?`, sourceID, now.Add(-foldedRepeatRetryIdentityKeptFor).Unix()); err != nil {
+		return Alert{}, false, err
+	}
+	var kept int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM folded_warning_repeats WHERE source_id=?`, sourceID).Scan(&kept); err != nil || kept >= maxFoldedRepeatRetryIdentitiesPerAlertSource {
 		return Alert{}, false, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT `+alertColumns+` FROM alerts e WHERE source_id=? AND sender_incident_key=? AND severity='warn' AND received_at>?
@@ -178,23 +187,9 @@ func foldRepeatedWarning(ctx context.Context, tx *sql.Tx, sourceID, replayKey st
 	}
 	earlier.RepeatCount++
 	earlier.LastRepeatTitle = in.Title
-	return earlier, true, recordFoldedRepeatRetryIdentity(ctx, tx, sourceID, replayKey, earlier.ID, in, now)
-}
-
-// recordFoldedRepeatRetryIdentity keeps the folded repeat's replay key and
-// content for 24 hours, up to the per-source bound, and drops the source's
-// expired ones.
-func recordFoldedRepeatRetryIdentity(ctx context.Context, tx *sql.Tx, sourceID, replayKey, alertID string, in GenericAlert, now time.Time) error {
-	expired := now.Add(-foldedRepeatRetryIdentityKeptFor).Unix()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM folded_warning_repeats WHERE source_id=? AND received_at<=?`, sourceID, expired); err != nil {
-		return err
-	}
-	var kept int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM folded_warning_repeats WHERE source_id=?`, sourceID).Scan(&kept); err != nil || kept >= maxFoldedRepeatRetryIdentitiesPerAlertSource {
-		return err
-	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO folded_warning_repeats(source_id,replay_key,alert_id,content_sha256,received_at) VALUES(?,?,?,?,?)`, sourceID, replayKey, alertID, alertContentSHA256(in), now.Unix())
-	return err
+	// Its replay key and content, kept 24 hours.
+	_, err = tx.ExecContext(ctx, `INSERT INTO folded_warning_repeats(source_id,replay_key,alert_id,content_sha256,received_at) VALUES(?,?,?,?,?)`, sourceID, replayKey, earlier.ID, alertContentSHA256(in), now.Unix())
+	return earlier, err == nil, err
 }
 
 // repeatsSentence tells a person about the repeats folded into a warn, for

@@ -138,7 +138,7 @@ func startServerReplacement(ctx context.Context, tx *sql.Tx, request TriageAgent
 		}
 	}
 	// Every held warn of the session waits as long as the SOS does.
-	if _, err = tx.ExecContext(ctx, `UPDATE held_warn_alerts SET held_until=max(held_until,?) WHERE ended_at=0 AND release_requested_at=0 AND triage_session_id=?`, until.Unix(), sessionID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE held_warn_alerts SET held_until=max(held_until,?) WHERE `+heldWarnStillWaits+` AND triage_session_id=?`, until.Unix(), now.Unix(), sessionID); err != nil {
 		return err
 	}
 	// The person is woken at the later of the two waits: an SOS whose own

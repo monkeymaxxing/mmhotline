@@ -356,8 +356,10 @@ different alert". Reason for 24 hours: a sender retries until its retry
 deadline, minutes or hours after the first attempt. Each alert source keeps
 at most 20,000 such identities, about 10 MB at about 500 bytes each: room
 for 5,000 servers each sending 4 findings in a day. Past the bound a repeat
-is still folded and counted, without its retry identity. A retry of it is
-then folded again, which only adds one to the repeat count.
+is not folded: it is admitted as its own warning, through the intake
+limits, and its row keeps its retry identity as any alert's does. A repeat
+folded without its identity would come back as a new warning when its
+sender retried after a `resolved-warn` ended the window.
 
 ## Alert source signing
 
@@ -562,8 +564,8 @@ create SOS incidents. MMHotline also opens an SOS when it refuses an SOS
 ([intake limits](#intake-limits-and-rejected-requests)).
 
 The triage agent's reports are alerts from MMHotline too, at the severity
-the agent chose. A report at sos opens an SOS incident only when the run's work has no
-unresolved incident ([triage agent](triage-agent.md#reports-to-people)).
+the agent chose. A report at sos opens an SOS incident only when the incidents it concerns
+include no unresolved one ([triage agent](triage-agent.md#reports-to-people)).
 
 ## Acceptance evidence
 

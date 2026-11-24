@@ -232,6 +232,56 @@ func TestHeldWarnAnSOSReportAboutAWarnOnlyProblemOpensItsOwnIncident(t *testing.
 	}
 }
 
+// A second sos report about the same warn-only problem goes with the
+// incident the first one opened: one problem, one incident, one wake.
+func TestHeldWarnTwoSOSReportsAboutOneWarnOpenOneIncident(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	warn := admitSignedAlert(t, r.a, r.source, "warn", loadWarning, "app002-load")
+	run := r.runStarted(t)
+	answers := json.NewDecoder(run.connection)
+	for _, requestID := range []string{"0000000000000001", "0000000000000002"} {
+		if answer := agentRequest(t, run, answers, reportEvent(requestID, "sos", "# app002 is overloaded and needs a person now\n", warn.ID)); answer.Outcome != triageagent.ReportRecorded {
+			t.Fatalf("answer: %+v", answer)
+		}
+	}
+	if opened := countRows(t, r.a, `SELECT count(*) FROM incidents i JOIN alerts o ON o.id=i.opening_alert_id WHERE o.actor='triage_agent'`); opened != 1 {
+		t.Fatalf("the two reports opened %d incidents; want 1", opened)
+	}
+	if incidents := countRows(t, r.a, `SELECT count(DISTINCT incident_id) FROM alerts WHERE actor='triage_agent'`); incidents != 1 {
+		t.Fatalf("the two reports went with %d incidents; want the one", incidents)
+	}
+}
+
+// An sos report that names one waiting SOS's problem wakes the person on
+// call for that SOS only; another problem's SOS keeps waiting for the agent
+// until its own deadline.
+func TestHeldWarnAnSOSReportWakesOnlyTheSOSItNames(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	db02 := r.sosArrives(t, "The server db02 stopped answering", "db02")
+	app002 := admitSignedAlert(t, r.a, r.source, "sos", "The server app002 stopped answering", "app002")
+	run := r.runStarted(t)
+	if answer := agentRequest(t, run, json.NewDecoder(run.connection), reportEvent("0000000000000001", "sos", "# db02 needs a person now\n", db02.ID)); answer.Outcome != triageagent.ReportRecorded {
+		t.Fatalf("answer: %+v", answer)
+	}
+	waits := func(incidentID string) bool {
+		var step string
+		if err := r.a.Store.db.QueryRow(`SELECT step FROM incidents WHERE id=?`, incidentID).Scan(&step); err != nil {
+			t.Fatal(err)
+		}
+		return step == triageAgentStep
+	}
+	r.at(t, time.Minute)
+	if waits(db02.IncidentID) || !waits(app002.IncidentID) {
+		t.Fatalf("db02 waits: %v, app002 waits: %v; want only app002 waiting", waits(db02.IncidentID), waits(app002.IncidentID))
+	}
+	r.at(t, 5*time.Minute)
+	if waits(app002.IncidentID) {
+		t.Fatal("app002's SOS still waits after its deadline")
+	}
+}
+
 // Without --about-alert-id, a run that carried two warns of one problem
 // covers neither: one key is not one alert, as two affected versions of one
 // CVE share it. An SOS report without the option in such a run still goes
@@ -307,6 +357,33 @@ func TestHeldWarnOtherEndings(t *testing.T) {
 		}
 		if outcome, reason, _, _ := r.holdOf(t, warn.ID); outcome != "resolved" || reason != warnResolvedWhileHeldReason {
 			t.Fatalf("hold: %q %q", outcome, reason)
+		}
+	})
+	// Past its deadline a warn is due, though the background step has not
+	// marked it yet: a resolve or a report that comes then must not end it
+	// unsent.
+	t.Run("its alert resolves after its deadline, before it is marked", func(t *testing.T) {
+		r := newHeldWarnRig(t, 15)
+		warn := r.warnArrives(t, loadWarning, "app002-load")
+		r.runStarted(t)
+		r.advance(r.start.Add(16 * time.Minute).Sub(r.a.Now()))
+		admitSignedAlert(t, r.a, r.source, "resolved-warn", loadWarning, "app002-load")
+		backgroundRounds(t, r.a)
+		if outcome, _, _, _ := r.holdOf(t, warn.ID); outcome != "delivered" {
+			t.Fatalf("hold: %q; want delivered", outcome)
+		}
+	})
+	t.Run("a report names it after its deadline, before it is marked", func(t *testing.T) {
+		r := newHeldWarnRig(t, 15)
+		warn := r.warnArrives(t, loadWarning, "app002-load")
+		run := r.runStarted(t)
+		r.advance(r.start.Add(16 * time.Minute).Sub(r.a.Now()))
+		if answer := agentRequest(t, run, json.NewDecoder(run.connection), reportEvent("0000000000000001", "info", "# app002 is fine\n", warn.ID)); answer.Outcome != triageagent.ReportRecorded {
+			t.Fatalf("answer: %+v", answer)
+		}
+		backgroundRounds(t, r.a)
+		if outcome, _, _, _ := r.holdOf(t, warn.ID); outcome != "delivered" {
+			t.Fatalf("hold: %q; want delivered", outcome)
 		}
 	})
 	t.Run("a server replacement moves its deadline", func(t *testing.T) {
@@ -537,6 +614,71 @@ func TestHeldSOSEmailWaitsWithTheWakingStep(t *testing.T) {
 			}
 		}
 	})
+	// The claim ends the wait, and the resolve comes before the background
+	// step queues the email: the email still goes, and its end follows it.
+	t.Run("sent with its end when it resolves before the email is queued", func(t *testing.T) {
+		r := newHeldWarnRig(t, 15)
+		r.addEmail(t)
+		sos := r.sosArrives(t, "The server db02 stopped answering", "db02")
+		r.runStarted(t)
+		r.at(t, 2*time.Minute)
+		ctx := context.Background()
+		i, err := r.a.GetIncident(ctx, r.s.Principal, sos.IncidentID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i, err = r.a.ClaimIncident(ctx, r.s.Principal, i.ID, i.Revision, ""); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = r.a.ResolveIncident(ctx, r.s.Principal, i.ID, i.Revision, ""); err != nil {
+			t.Fatal(err)
+		}
+		r.at(t, 3*time.Minute)
+		states := r.emailStates(t, sos.IncidentID)
+		if len(states) < 2 || states[len(states)-2] != "sos not suppressed" || states[len(states)-1] != "resolved-sos not suppressed" {
+			t.Fatalf("emails %q; want the SOS, then its end", states)
+		}
+	})
+}
+
+// A held SOS's email to more contact methods than the alert source's share
+// of SOS deliveries goes out in parts as the queue drains, each contact
+// method once: the share never holds back all of it for good.
+func TestHeldSOSEmailToMoreThanTheAlertSourcesShare(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	const emails = maxPendingSOSDeliveriesPerAlertSource + 50
+	for range emails {
+		r.addEmail(t)
+	}
+	sos := r.sosArrives(t, "The server db02 stopped answering", "db02")
+	r.runStarted(t)
+	// A few visits, not until the loop runs out of work: each visit tries
+	// one of the hundreds of emails.
+	r.advance(r.start.Add(5 * time.Minute).Sub(r.a.Now()))
+	for range 3 {
+		r.a.backgroundRound(context.Background(), func(err error) { t.Errorf("background work: %v", err) })
+	}
+	queued := func() (all, distinct int) {
+		all = countRows(t, r.a, `SELECT count(*) FROM deliveries WHERE incident_id=? AND contact_method_type='email' AND severity='sos'`, sos.IncidentID)
+		distinct = countRows(t, r.a, `SELECT count(DISTINCT contact_method_id) FROM deliveries WHERE incident_id=? AND contact_method_type='email' AND severity='sos'`, sos.IncidentID)
+		return all, distinct
+	}
+	if all, _ := queued(); all == 0 || all >= emails {
+		t.Fatalf("%d emails queued at the wake; want the part that fits the share", all)
+	}
+	for round := 0; round < 5; round++ {
+		// The sending service takes what waits.
+		if _, err := r.a.Store.db.Exec(`UPDATE deliveries SET state='delivered',attempts=1,next_attempt=0 WHERE incident_id=? AND contact_method_type='email'`, sos.IncidentID); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.a.DeliverReleasedHeldAlerts(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if all, distinct := queued(); all != emails || distinct != emails {
+		t.Fatalf("%d emails to %d contact methods; want one to each of %d", all, distinct, emails)
+	}
 }
 
 // A run carries only the alerts its prompt shows; the rest wait for the

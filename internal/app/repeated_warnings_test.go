@@ -233,6 +233,34 @@ func TestARetryOfAFoldedRepeatIsADuplicate(t *testing.T) {
 	}
 }
 
+// Past the bound of kept retry identities a repeat is not folded: it is
+// admitted as its own warning, whose row keeps its identity, so a retry of
+// it after a resolved-warn is still the duplicate it is, not a new warning.
+func TestPastTheRetryIdentityBoundARepeatIsNotFolded(t *testing.T) {
+	t.Parallel()
+	a, p, s := alertFixture(t)
+	savedEmail(t, a, p, true)
+	foldingSource(t, a, s)
+	if _, err := a.Store.db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?) INSERT INTO folded_warning_repeats(source_id,replay_key,alert_id,content_sha256,received_at) SELECT ?,'earlier-'||i,'',x'00',? FROM n`, maxFoldedRepeatRetryIdentitiesPerAlertSource, s.Source.ID, a.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	readIntakeAnswer(t, a, p, s, nodeWarn("w1", "disk", "/var is 95% full", "web-1"))
+	repeat := nodeWarn("w2", "disk", "/var is 95% full", "web-2")
+	admitted := readIntakeAnswer(t, a, p, s, repeat)
+	if admitted.RecordedAsRepeatOfEarlierAlert || admitted.AlreadyReceived {
+		t.Fatalf("answer to a repeat past the bound: %+v; want it admitted as its own warning", admitted)
+	}
+	readIntakeAnswer(t, a, p, s, `{"sender_alert_id":"r1","sender_incident_key":"disk","severity":"resolved-warn","title":"Disk ok","message":""}`)
+	retryAt := a.Now().Add(30 * time.Second)
+	a.Now = func() time.Time { return retryAt }
+	if retry := readIntakeAnswer(t, a, p, s, repeat); retry != (intakeAnswer{AlertID: admitted.AlertID, AlreadyReceived: true}) {
+		t.Fatalf("answer to a retry: %+v; want the duplicate of %s", retry, admitted.AlertID)
+	}
+	if n := scalarTeam(t, a, `SELECT count(*) FROM alerts WHERE source_id=? AND severity='warn'`, s.Source.ID); n != 2 {
+		t.Fatalf("%d warns; want the first and the repeat, and no retry", n)
+	}
+}
+
 // The settings file's repeated_warnings reaches intake: a source set to
 // fold folds a repeat after settings apply.
 func TestTheSettingsFileSetsRepeatedWarnings(t *testing.T) {
