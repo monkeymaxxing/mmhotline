@@ -2478,7 +2478,9 @@ deadline, each in its own transaction, at most 100 a visit. So a full
 delivery queue never undoes an SOS's wake, the session's work, or a
 person's Stop: a warn that meets a full queue stays marked and goes at a
 later visit, also after a restart. A marked warn can no longer be taken over
-or resolved: MMHotline has decided to tell people. The background loop
+or resolved: MMHotline has decided to tell people. Nor can a warn past its
+deadline that the step has not marked yet, and a server replacement or a
+waiting SOS no longer moves its deadline: it is due. The background loop
 visits at the earliest deadline, so a deadline passes within a second.
 
 The alert's page and the dashboard say while the warn is held: "MMHotline

@@ -359,6 +359,33 @@ func TestHeldWarnOtherEndings(t *testing.T) {
 			t.Fatalf("hold: %q %q", outcome, reason)
 		}
 	})
+	// Past its deadline a warn is due, though the background step has not
+	// marked it yet: a resolve or a report that comes then must not end it
+	// unsent.
+	t.Run("its alert resolves after its deadline, before it is marked", func(t *testing.T) {
+		r := newHeldWarnRig(t, 15)
+		warn := r.warnArrives(t, loadWarning, "app002-load")
+		r.runStarted(t)
+		r.advance(r.start.Add(16 * time.Minute).Sub(r.a.Now()))
+		admitSignedAlert(t, r.a, r.source, "resolved-warn", loadWarning, "app002-load")
+		backgroundRounds(t, r.a)
+		if outcome, _, _, _ := r.holdOf(t, warn.ID); outcome != "delivered" {
+			t.Fatalf("hold: %q; want delivered", outcome)
+		}
+	})
+	t.Run("a report names it after its deadline, before it is marked", func(t *testing.T) {
+		r := newHeldWarnRig(t, 15)
+		warn := r.warnArrives(t, loadWarning, "app002-load")
+		run := r.runStarted(t)
+		r.advance(r.start.Add(16 * time.Minute).Sub(r.a.Now()))
+		if answer := agentRequest(t, run, json.NewDecoder(run.connection), reportEvent("0000000000000001", "info", "# app002 is fine\n", warn.ID)); answer.Outcome != triageagent.ReportRecorded {
+			t.Fatalf("answer: %+v", answer)
+		}
+		backgroundRounds(t, r.a)
+		if outcome, _, _, _ := r.holdOf(t, warn.ID); outcome != "delivered" {
+			t.Fatalf("hold: %q; want delivered", outcome)
+		}
+	})
 	t.Run("a server replacement moves its deadline", func(t *testing.T) {
 		r := &heldWarnRig{replacementRig(t, false)}
 		r.setWaits(t, 3, 7, 3)

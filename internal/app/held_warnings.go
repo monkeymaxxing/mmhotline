@@ -159,7 +159,11 @@ func heldWarnJoinsSession(ctx context.Context, tx *sql.Tx, alertID, sessionID st
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE held_warn_alerts SET triage_session_id=?,held_with_sos_incident_id=?,held_until=? WHERE alert_id=?`, sessionID, sosIncidentID, max(heldUntil, sosDeadline), alertID); err != nil {
+	// A warn past its deadline is due, and waits no longer (heldWarnStillWaits).
+	if heldUntil > at.Unix() {
+		heldUntil = max(heldUntil, sosDeadline)
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE held_warn_alerts SET triage_session_id=?,held_with_sos_incident_id=?,held_until=? WHERE alert_id=?`, sessionID, sosIncidentID, heldUntil, alertID); err != nil {
 		return err
 	}
 	var takenOver bool
@@ -192,12 +196,21 @@ func heldWarnAlertResolved(ctx context.Context, tx *sql.Tx, e Alert, at time.Tim
 	return endHeldWarnsBecauseResolved(ctx, tx, at, "alert_id IN (SELECT id FROM alerts WHERE source_id=? AND sender_incident_key=? AND severity='warn')", e.SourceID, e.SenderIncidentKey)
 }
 
-// endHeldWarnsBecauseResolved ends, sending nothing, the open holds that
-// where picks, except those already released for delivery.
+// endHeldWarnsBecauseResolved ends, sending nothing, the holds that where
+// picks and that still wait (heldWarnStillWaits); one released for
+// delivery, or past its deadline, is delivered.
 func endHeldWarnsBecauseResolved(ctx context.Context, tx *sql.Tx, at time.Time, where string, args ...any) error {
-	_, err := tx.ExecContext(ctx, `UPDATE held_warn_alerts SET ended_at=?,outcome='resolved',outcome_reason=? WHERE ended_at=0 AND release_requested_at=0 AND `+where, append([]any{at.Unix(), warnResolvedWhileHeldReason}, args...)...)
+	_, err := tx.ExecContext(ctx, `UPDATE held_warn_alerts SET ended_at=?,outcome='resolved',outcome_reason=? WHERE `+heldWarnStillWaits+` AND `+where, append([]any{at.Unix(), warnResolvedWhileHeldReason, at.Unix()}, args...)...)
 	return err
 }
+
+// heldWarnStillWaits picks the holds that still wait for the triage agent at
+// a time, the query's argument: not ended, not marked for delivery, and not
+// past their deadline. A hold past its deadline is due though the
+// background step has not marked it yet, so a resolve, a take-over, or a
+// longer wait must leave it to that step, which delivers it: when MMHotline
+// cannot tell, it delivers.
+const heldWarnStillWaits = `ended_at=0 AND release_requested_at=0 AND held_until>?`
 
 // requestHeldWarnRelease marks the open holds that where picks for delivery,
 // with the reason the alert's page shows; DeliverReleasedHeldAlerts queues
@@ -316,14 +329,15 @@ func deliverHeldWarn(ctx context.Context, tx *sql.Tx, alertID string, at time.Ti
 // heldWarnTakenOver ends, sending nothing, the holds of the warns that the
 // triage agent's report or playbook run request named: the item of itemKind
 // and itemID of run runID (triage_agent_covered_alerts), when that run
-// carried the warn. A warn already released for delivery stays released. by
+// carried the warn. A warn already released for delivery, or past its
+// deadline, stays to be delivered (heldWarnStillWaits). by
 // is "report" or "playbook_run_request"; link goes to the report or to the
 // session whose agent asked for the playbook run. A playbook run request
 // takes warns over only in the transaction that makes a new approval
 // request or a new warned run, because only then does MMHotline tell a
 // person now.
 func heldWarnTakenOver(ctx context.Context, tx *sql.Tx, runID, itemKind, itemID, by, link string, at time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE held_warn_alerts SET ended_at=?,outcome='taken_over',taken_over_by=?,taken_over_link=? WHERE ended_at=0 AND release_requested_at=0 AND alert_id IN (SELECT c.alert_id FROM triage_agent_covered_alerts c JOIN triage_session_alerts s ON s.alert_id=c.alert_id AND s.sent_in_run_id=c.run_id WHERE c.run_id=? AND c.item_kind=? AND c.item_id=?)`, at.Unix(), by, link, runID, itemKind, itemID)
+	_, err := tx.ExecContext(ctx, `UPDATE held_warn_alerts SET ended_at=?,outcome='taken_over',taken_over_by=?,taken_over_link=? WHERE `+heldWarnStillWaits+` AND alert_id IN (SELECT c.alert_id FROM triage_agent_covered_alerts c JOIN triage_session_alerts s ON s.alert_id=c.alert_id AND s.sent_in_run_id=c.run_id WHERE c.run_id=? AND c.item_kind=? AND c.item_id=?)`, at.Unix(), by, link, at.Unix(), runID, itemKind, itemID)
 	return err
 }
 
