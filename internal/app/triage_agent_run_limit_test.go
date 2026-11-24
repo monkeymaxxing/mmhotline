@@ -750,3 +750,28 @@ func TestRunLimitSkipsTheScheduledReview(t *testing.T) {
 		t.Fatalf("show: %s", text)
 	}
 }
+
+// A commit review takes the last run. The next visit finds the limit
+// reached, and the commit the running review was given waits for its
+// decision: no warning goes out about it, and the agent's approval is
+// recorded as the one alert about the commit.
+func TestRunLimitLeavesTheRunningCommitReviewItsCommits(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newCommitReviewRig(t)
+	forgetEarlierRuns(t, r.a)
+	setRunLimit(t, r.a, "1")
+	commit := r.pushAndCheck(t, "playbooks/deploy.yml", "- hosts: app_servers\n  roles: [app]\n")
+	r.rounds(t)
+	run := r.nextCommitReview(t)
+	r.rounds(t)
+	if state := runLimitStateOf(t, r.a); state.notice != runLimitNoticeLimitHolds {
+		t.Fatalf("notice %q; want the limit to hold", state.notice)
+	}
+	if count := alertsAbout(t, r.a, commit); count != 0 {
+		t.Fatalf("%d alerts about the commit while the agent reviews it", count)
+	}
+	answer := reviewCommit(t, run, json.NewDecoder(run.connection), "00000000000000a1", commit, "approve", "", "Ordinary deploy change\n")
+	if answer.Outcome != triageagent.ReportRecorded || alertsAbout(t, r.a, commit) != 1 {
+		t.Fatalf("approve: %+v, %d alerts about the commit", answer, alertsAbout(t, r.a, commit))
+	}
+}
