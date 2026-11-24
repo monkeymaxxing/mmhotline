@@ -239,7 +239,8 @@ var databaseFormatUpgrades = []func(*sql.Tx) error{
 	// Format 3: what ended each triage agent run, as a value decisions read.
 	addRunEndCause,
 	// Format 4: the hold rules: a held warn's release, the alerts each of
-	// the triage agent's reports and requests covers, and an SOS's
+	// the triage agent's reports and requests covers, the alert each
+	// report sent, and an SOS's
 	// subscribed notification that waits with its first waking step.
 	addHoldRules,
 	// Format 5: an alert source's repeated_warnings setting, the repeats

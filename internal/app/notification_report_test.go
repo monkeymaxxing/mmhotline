@@ -59,7 +59,7 @@ func TestTriageReportNotificationsKeepEvidenceOnPages(t *testing.T) {
 			if _, err := r.a.Store.db.Exec(`INSERT INTO triage_agent_runs(id,purpose,coding_agent,credential_type,state,started_at,started_by,ended_at) VALUES(?,'software_review','codex','api_key','finished',?,'MMHotline',?)`, runID, r.a.Now().Unix(), r.a.Now().Unix()); err != nil {
 				t.Fatal(err)
 			}
-			if err := r.a.deliverTriageAgentReport(ctx, runID, "", false, severity, reportNotificationExample); err != nil {
+			if err := r.a.deliverTriageAgentReport(ctx, runID, "", severity, reportNotificationExample); err != nil {
 				t.Fatal(err)
 			}
 			alert := reportAlert(t, r.a, "The AI triage agent reports: Test of the alerts on web01: nothing is wrong")

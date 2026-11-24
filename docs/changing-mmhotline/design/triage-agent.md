@@ -2523,12 +2523,17 @@ alert, once per alert ([requests from the agent](#requests-from-the-agent)).
   adds for an sos report's own incident joins the session as sent by the
   run, but it is MMHotline's own and was never shown, so it does not count.
 
-With named alerts, the incident a report goes with, the incident's history,
-and the SOS escalation of an sos report follow the named alerts' problems,
-not every problem the run carried ([reports to people](#reports-to-people)).
-A report at sos that names a warn-only problem opens an incident of its own,
-as a report about a problem with no incident does, even when the run also
-carried a claimed incident of another problem.
+When a report covers alerts, named or the one alert its run carried, the
+incident a report goes with, the incident's history, and the SOS escalation
+of an sos report follow the covered alerts' problems, not every problem the
+run carried, nor the problem of a playbook result it carried
+([reports to people](#reports-to-people)). A report at sos that covers a
+warn-only problem opens an incident of its own, as a report about a problem
+with no incident does, even when the run also carried a claimed incident of
+another problem. A later report about the same problem goes with that
+incident, so two reports about one warn open one incident and wake once:
+MMHotline records the alert each report sent in
+`triage_agent_requests.report_alert_id`.
 
 MMHotline records what each item covers in
 `triage_agent_covered_alerts(run_id, item_kind, item_id, alert_id)`:
@@ -2896,16 +2901,18 @@ keeps its notes.
 
 ### Reports to people
 
-A report that names alerts with `--about-alert-id` concerns the session's
-alerts about the named alerts' problems: their alert source and
-`sender_incident_key`, or the named alert alone without a key
+A report that covers alerts, named with `--about-alert-id` or the one alert
+its run carried, concerns the session's alerts about the covered alerts'
+problems: their alert source and `sender_incident_key`, or the covered alert
+alone without a key, and the incident an earlier report about the same
+problem opened
 ([reports and requests name their alerts](#reports-and-requests-name-their-alerts)).
-A report at sos that names only a warn-only problem then opens an incident
+A report at sos that covers only a warn-only problem then opens an incident
 of its own, even when the run also carried a claimed incident of another
 problem. Named alerts the run did not carry count for nothing; when the
-report names none the run carried, it is handled as a report without names.
+report covers none, it is handled as a report without names.
 
-A report without named alerts from a session's run concerns two groups of
+A report that covers no alert, from a session's run, concerns two groups of
 alerts:
 
 - alerts carried to the agent by the reporting run;
@@ -2967,10 +2974,13 @@ At sos, the person on call is woken through an incident's SOS escalation:
   later reports go with the new SOS incident, and the session stays open
   until a person resolves the new SOS incident.
 
-Every incident of the session that
-[waits for the agent](#an-sos-waits-for-the-agent) stops waiting at an sos
-report, and its escalation contacts the person on call at once, because the
-agent asks for a person.
+At an sos report, the incidents it concerns that
+[wait for the agent](#an-sos-waits-for-the-agent) stop waiting, and their
+escalation contacts the person on call at once, because the agent asks for
+a person about their problem. Another problem's waiting SOS keeps waiting
+until its own deadline. A report that covers no alert cannot say which
+problem needs a person, so every incident of the session that waits for the
+agent stops waiting.
 
 A report alert's title starts with "The AI triage agent reports: ".
 MMHotline first converts the report's first line to plain text.

@@ -80,6 +80,7 @@ CREATE TABLE triage_agent_requests (
  diagnosis TEXT NOT NULL DEFAULT '',
  commit_id TEXT NOT NULL DEFAULT '',
  commit_review_decision TEXT NOT NULL DEFAULT '' CHECK(commit_review_decision IN ('','approve','needs_a_person')),
+ ` + triageAgentRequestReportAlertIDColumn + `,
  PRIMARY KEY(run_id, request_id)
 );
 CREATE TABLE triage_agent_run_steps (

@@ -562,8 +562,8 @@ create SOS incidents. MMHotline also opens an SOS when it refuses an SOS
 ([intake limits](#intake-limits-and-rejected-requests)).
 
 The triage agent's reports are alerts from MMHotline too, at the severity
-the agent chose. A report at sos opens an SOS incident only when the run's work has no
-unresolved incident ([triage agent](triage-agent.md#reports-to-people)).
+the agent chose. A report at sos opens an SOS incident only when the incidents it concerns
+include no unresolved one ([triage agent](triage-agent.md#reports-to-people)).
 
 ## Acceptance evidence
 

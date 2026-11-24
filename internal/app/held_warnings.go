@@ -68,13 +68,14 @@ const (
 
 // addHoldRules is database format 4: the release of a held warn, recorded
 // apart from its delivery; the alerts each report and playbook run request
-// of the triage agent covers; and an SOS's subscribed notification that waits
-// with its first waking step.
+// of the triage agent covers, and the alert each report sent; and an SOS's
+// subscribed notification that waits with its first waking step.
 func addHoldRules(tx *sql.Tx) error {
 	for _, statement := range []string{
 		`ALTER TABLE held_warn_alerts ADD COLUMN ` + heldWarnReleaseRequestedAtColumn,
 		`ALTER TABLE held_warn_alerts ADD COLUMN ` + heldWarnReleaseReasonColumn,
 		`ALTER TABLE incidents ADD COLUMN ` + incidentSubscribedAlertNotificationWaitsColumn,
+		`ALTER TABLE triage_agent_requests ADD COLUMN ` + triageAgentRequestReportAlertIDColumn,
 		triageAgentCoveredAlertsSchema,
 	} {
 		if _, err := tx.Exec(statement); err != nil {

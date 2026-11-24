@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -633,6 +634,12 @@ func wakeHeldIncident(ctx context.Context, tx *sql.Tx, i Incident, kind, why str
 // the agent cannot help or asks for a person, and a second wake is better
 // than a late one.
 func wakeIncidentsHeldForTriageAgent(ctx context.Context, tx *sql.Tx, why string, at time.Time) error {
+	return wakeIncidentsHeldForTriageAgentAmong(ctx, tx, nil, why, at)
+}
+
+// wakeIncidentsHeldForTriageAgentAmong is wakeIncidentsHeldForTriageAgent
+// for the incidents ids names, or for every one when ids is nil.
+func wakeIncidentsHeldForTriageAgentAmong(ctx context.Context, tx *sql.Tx, ids []string, why string, at time.Time) error {
 	rows, err := tx.QueryContext(ctx, `SELECT `+incidentColumns+` FROM incidents i JOIN alerts e ON e.id=i.opening_alert_id WHERE i.status='open' AND (i.step=? OR EXISTS(SELECT 1 FROM incident_actions a WHERE a.incident_id=i.id AND a.revision=i.revision AND a.kind='already_woken_for_triage_session')) ORDER BY i.created_at,i.id`, triageAgentStep)
 	if err != nil {
 		return err
@@ -650,6 +657,9 @@ func wakeIncidentsHeldForTriageAgent(ctx context.Context, tx *sql.Tx, why string
 		return err
 	}
 	for _, i := range held {
+		if ids != nil && !slices.Contains(ids, i.ID) {
+			continue
+		}
 		if err = wakeIncidentHeldForTriageAgent(ctx, tx, i, why, at); err != nil {
 			return err
 		}
@@ -1040,45 +1050,47 @@ func triageSessionRunFailed(ctx context.Context, tx *sql.Tx, runID, reason strin
 
 // deliverTriageAgentReport records a report of a session's run with each
 // incident it is about and sends it to people at its alert severity, as an
-// alert from MMHotline about one of them. A report that named alerts with
-// --about-alert-id (named) is about the incidents of the named alerts'
-// problems (incidentsOfNamedProblems); otherwise, or when the run carried
-// none of the named alerts, it is about the run's work (triageRunIncidents).
-// At sos, an open one wakes the person on call through its own SOS
-// escalation, and a claimed one's owner has it; when every one is resolved,
-// or they have none, as for a warn alert, the report opens an SOS incident,
-// whose escalation wakes them, and that incident joins the session. Every
-// incident of the session that waits for the agent stops waiting at an sos
-// report. The report takes over the held warns it covers
-// (triage_agent_covered_alerts), requestID naming it within the run.
+// alert from MMHotline about one of them. A report that covers alerts
+// (triage_agent_covered_alerts), named with --about-alert-id or the one
+// alert its run carried, is about the incidents of the covered alerts'
+// problems (incidentsOfNamedProblems); otherwise it is about the run's work
+// (triageRunIncidents). At sos, an open one wakes the person on call through
+// its own SOS escalation, and a claimed one's owner has it; when every one is
+// resolved, or they have none, as for a warn alert, the report opens an SOS
+// incident, whose escalation wakes them, and that incident joins the session.
+// At an sos report, the incidents it is about stop waiting for the agent;
+// one that covers no alert cannot say which problem needs a person, so every
+// incident of the session that waits for the agent stops waiting. The report
+// takes over the held warns it covers, requestID naming it within the run.
 //
 // A software review's run has no session, so each of its reports is an
 // alert of its own: at sos it opens an SOS incident, which records the
 // report, and whose escalation wakes the person on call at once. The agent's
 // own alert never waits for the agent, and it wakes no incident of a session
 // the review knows nothing about.
-func (a *App) deliverTriageAgentReport(ctx context.Context, runID, requestID string, named bool, severity, report string) error {
+func (a *App) deliverTriageAgentReport(ctx context.Context, runID, requestID, severity, report string) error {
 	return a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-		return deliverTriageAgentReportTx(ctx, tx, runID, requestID, named, severity, report, a.Now().UTC())
+		return deliverTriageAgentReportTx(ctx, tx, runID, requestID, severity, report, a.Now().UTC())
 	})
 }
 
 // deliverTriageAgentReportTx is deliverTriageAgentReport in the caller's
 // transaction, so a commit review's report and the commit's record of it
 // commit together.
-func deliverTriageAgentReportTx(ctx context.Context, tx *sql.Tx, runID, requestID string, named bool, severity, report string, now time.Time) error {
+func deliverTriageAgentReportTx(ctx context.Context, tx *sql.Tx, runID, requestID string, severity, report string, now time.Time) error {
 	var sessionID string
 	if err := tx.QueryRowContext(ctx, `SELECT triage_session_id FROM triage_agent_runs WHERE id=?`, runID).Scan(&sessionID); err != nil {
 		return err
 	}
 	var incidents []Incident
+	var covers bool
 	var err error
-	if named && sessionID != "" {
-		if incidents, named, err = incidentsOfNamedProblems(ctx, tx, sessionID, runID, requestID); err != nil {
+	if sessionID != "" {
+		if incidents, covers, err = incidentsOfNamedProblems(ctx, tx, sessionID, runID, requestID); err != nil {
 			return err
 		}
 	}
-	if !named {
+	if !covers {
 		if incidents, err = triageRunIncidents(ctx, tx, sessionID, runID); err != nil {
 			return err
 		}
@@ -1086,6 +1098,11 @@ func deliverTriageAgentReportTx(ctx context.Context, tx *sql.Tx, runID, requestI
 	in := GenericAlert{Severity: severity, Title: triageAgentReportTitle(report), Message: triageAgentReportMessage(report)}
 	alert, incidents, err := admitAlertAboutIncidents(ctx, tx, sessionID, runID, "triage_agent", incidents, in, now)
 	if err != nil {
+		return err
+	}
+	// A later report about the same problem goes with the incident this
+	// one opened (incidentsOfNamedProblems).
+	if _, err = tx.ExecContext(ctx, `UPDATE triage_agent_requests SET report_alert_id=? WHERE run_id=? AND request_id=?`, alert.ID, runID, requestID); err != nil {
 		return err
 	}
 	// The report takes over the held warns it covers, before an sos report
@@ -1101,7 +1118,15 @@ func deliverTriageAgentReportTx(ctx context.Context, tx *sql.Tx, runID, requestI
 	if severity != "sos" || sessionID == "" {
 		return nil
 	}
-	return wakeIncidentsHeldForTriageAgent(ctx, tx, "The triage agent sent an urgent report (sos). Waking the person on call", now)
+	const why = "The triage agent sent an urgent report (sos). Waking the person on call"
+	if !covers {
+		return wakeIncidentsHeldForTriageAgent(ctx, tx, why, now)
+	}
+	ids := make([]string, 0, len(incidents))
+	for _, i := range incidents {
+		ids = append(ids, i.ID)
+	}
+	return wakeIncidentsHeldForTriageAgentAmong(ctx, tx, ids, why, now)
 }
 
 // admitAlertAboutTriageRun admits an alert from MMHotline, by actor, about

@@ -31,6 +31,12 @@ CREATE TABLE triage_agent_covered_alerts (
 );
 `
 
+// triageAgentRequestReportAlertIDColumn is
+// triage_agent_requests.report_alert_id, in the table and in the upgrade
+// step that adds it (addHoldRules): the alert a report sent, so a later
+// report about the same problem goes with the incident it opened.
+const triageAgentRequestReportAlertIDColumn = `report_alert_id TEXT NOT NULL DEFAULT ''`
+
 // The item kinds of triage_agent_covered_alerts.
 const (
 	coveredByReport          = "report"
@@ -99,16 +105,19 @@ func (c alertCoverage) answerText(what string) string {
 }
 
 // incidentsOfNamedProblems lists the incidents of the session's alerts about
-// the problems of the alerts the report requestID of run runID named, the
-// one whose alert joined last first. A problem is an alert source and a
-// sender_incident_key; an alert without a key is a problem of its own.
-// named is false when the report named no alert the run carried; the caller
-// then goes by the run's work (triageRunIncidents).
-func incidentsOfNamedProblems(ctx context.Context, tx *sql.Tx, sessionID, runID, requestID string) ([]Incident, bool, error) {
-	var named bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM triage_agent_covered_alerts WHERE run_id=? AND item_kind=? AND item_id=?)`, runID, coveredByReport, requestID).Scan(&named); err != nil || !named {
+// the problems of the alerts the report requestID of run runID covers, named
+// or the one alert its run carried, the one whose alert joined last first.
+// A problem is an alert source and a sender_incident_key; an alert without a
+// key is a problem of its own. The incident an earlier report about the same
+// problem opened, with its own alert, is one of them, so a second report
+// opens no second incident. covers is false when the report covers no
+// alert; the caller then goes by the run's work (triageRunIncidents).
+func incidentsOfNamedProblems(ctx context.Context, tx *sql.Tx, sessionID, runID, requestID string) (incidents []Incident, covers bool, err error) {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM triage_agent_covered_alerts WHERE run_id=? AND item_kind=? AND item_id=?)`, runID, coveredByReport, requestID).Scan(&covers); err != nil || !covers {
 		return nil, false, err
 	}
-	incidents, err := incidentsOfTriageSessionAlerts(ctx, tx, `s.triage_session_id=? AND EXISTS(SELECT 1 FROM triage_agent_covered_alerts c JOIN alerts n ON n.id=c.alert_id WHERE c.run_id=? AND c.item_kind=? AND c.item_id=? AND (n.id=e.id OR (n.sender_incident_key!='' AND n.source_id=e.source_id AND n.sender_incident_key=e.sender_incident_key)))`, sessionID, runID, coveredByReport, requestID)
+	const sameProblem = `(%[1]s.id=%[2]s.id OR (%[1]s.sender_incident_key!='' AND %[1]s.source_id=%[2]s.source_id AND %[1]s.sender_incident_key=%[2]s.sender_incident_key))`
+	incidents, err = incidentsOfTriageSessionAlerts(ctx, tx, `s.triage_session_id=? AND EXISTS(SELECT 1 FROM triage_agent_covered_alerts c JOIN alerts n ON n.id=c.alert_id WHERE c.run_id=? AND c.item_kind=? AND c.item_id=? AND (`+fmt.Sprintf(sameProblem, "n", "e")+`
+		OR e.id IN (SELECT r.report_alert_id FROM triage_agent_requests r JOIN triage_agent_covered_alerts earlier ON earlier.run_id=r.run_id AND earlier.item_kind=? AND earlier.item_id=r.request_id JOIN alerts m ON m.id=earlier.alert_id WHERE r.report_alert_id!='' AND `+fmt.Sprintf(sameProblem, "m", "n")+`)))`, sessionID, runID, coveredByReport, requestID, coveredByReport)
 	return incidents, true, err
 }

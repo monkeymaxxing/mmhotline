@@ -154,7 +154,7 @@ func (a *App) decideTriageAgentRequest(run *triageAgentActiveRun, requestID stri
 	if request.Kind == triageagent.ReportRequest {
 		// A report reaches people even when the run ends meanwhile.
 		if inSystemsRepository(run.purpose) {
-			if err := a.deliverTriageAgentReport(context.WithoutCancel(run.ctx), run.id, requestID, len(request.AboutAlertIDs) > 0, request.AlertSeverity, request.ReportText); err != nil {
+			if err := a.deliverTriageAgentReport(context.WithoutCancel(run.ctx), run.id, requestID, request.AlertSeverity, request.ReportText); err != nil {
 				return refused("MMHotline could not send your report to the team. Send the report again.")
 			}
 		}

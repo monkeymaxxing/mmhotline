@@ -232,6 +232,56 @@ func TestHeldWarnAnSOSReportAboutAWarnOnlyProblemOpensItsOwnIncident(t *testing.
 	}
 }
 
+// A second sos report about the same warn-only problem goes with the
+// incident the first one opened: one problem, one incident, one wake.
+func TestHeldWarnTwoSOSReportsAboutOneWarnOpenOneIncident(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	warn := admitSignedAlert(t, r.a, r.source, "warn", loadWarning, "app002-load")
+	run := r.runStarted(t)
+	answers := json.NewDecoder(run.connection)
+	for _, requestID := range []string{"0000000000000001", "0000000000000002"} {
+		if answer := agentRequest(t, run, answers, reportEvent(requestID, "sos", "# app002 is overloaded and needs a person now\n", warn.ID)); answer.Outcome != triageagent.ReportRecorded {
+			t.Fatalf("answer: %+v", answer)
+		}
+	}
+	if opened := countRows(t, r.a, `SELECT count(*) FROM incidents i JOIN alerts o ON o.id=i.opening_alert_id WHERE o.actor='triage_agent'`); opened != 1 {
+		t.Fatalf("the two reports opened %d incidents; want 1", opened)
+	}
+	if incidents := countRows(t, r.a, `SELECT count(DISTINCT incident_id) FROM alerts WHERE actor='triage_agent'`); incidents != 1 {
+		t.Fatalf("the two reports went with %d incidents; want the one", incidents)
+	}
+}
+
+// An sos report that names one waiting SOS's problem wakes the person on
+// call for that SOS only; another problem's SOS keeps waiting for the agent
+// until its own deadline.
+func TestHeldWarnAnSOSReportWakesOnlyTheSOSItNames(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	db02 := r.sosArrives(t, "The server db02 stopped answering", "db02")
+	app002 := admitSignedAlert(t, r.a, r.source, "sos", "The server app002 stopped answering", "app002")
+	run := r.runStarted(t)
+	if answer := agentRequest(t, run, json.NewDecoder(run.connection), reportEvent("0000000000000001", "sos", "# db02 needs a person now\n", db02.ID)); answer.Outcome != triageagent.ReportRecorded {
+		t.Fatalf("answer: %+v", answer)
+	}
+	waits := func(incidentID string) bool {
+		var step string
+		if err := r.a.Store.db.QueryRow(`SELECT step FROM incidents WHERE id=?`, incidentID).Scan(&step); err != nil {
+			t.Fatal(err)
+		}
+		return step == triageAgentStep
+	}
+	r.at(t, time.Minute)
+	if waits(db02.IncidentID) || !waits(app002.IncidentID) {
+		t.Fatalf("db02 waits: %v, app002 waits: %v; want only app002 waiting", waits(db02.IncidentID), waits(app002.IncidentID))
+	}
+	r.at(t, 5*time.Minute)
+	if waits(app002.IncidentID) {
+		t.Fatal("app002's SOS still waits after its deadline")
+	}
+}
+
 // Without --about-alert-id, a run that carried two warns of one problem
 // covers neither: one key is not one alert, as two affected versions of one
 // CVE share it. An SOS report without the option in such a run still goes

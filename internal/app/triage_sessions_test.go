@@ -707,6 +707,43 @@ func TestTriageAgentReportAfterAnApprovalResult(t *testing.T) {
 	}
 }
 
+// A run that carried exactly one alert covers it without --about-alert-id,
+// so its sos report goes with that alert's problem, as a named one does,
+// and not with the incident of the playbook result it also carried: here
+// a warn-only problem, so the report opens an SOS incident of its own.
+func TestTriageAgentSOSReportCoveringItsOneAlertFollowsThatProblem(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newTriageSessionRig(t, true)
+	prepareApprovals(t, r.a, "")
+	r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
+	startSessionWithAnOutage(t, r)
+	app002 := r.alert(t, "sos", "app002 stopped answering", "app002")
+	r.claim(t, app002.IncidentID)
+	r.drive(t)
+	second := r.nextRun(t)
+	requestPlaybookRun(t, second, json.NewDecoder(second.connection), "0000000000000001")
+	r.end(t, second, triageagent.Event{Event: "finished", Answer: "Reported."})
+	record := onlyApprovalRecord(t, r.a)
+	if err := r.a.ApprovePlaybookRun(context.Background(), r.p, record.id); err != nil {
+		t.Fatal(err)
+	}
+	runApprovedPlaybooks(t, r.a)
+	r.alert(t, "warn", "chrony on app003 stopped", "app003-chrony")
+	r.drive(t)
+	third := r.nextRun(t)
+	if carried := countRows(t, r.a, `SELECT count(*) FROM triage_session_alerts WHERE sent_in_run_id=?`, lastRunID(t, r.a)); carried != 1 || !strings.Contains(third.request.Prompt, "chrony on app003 stopped") {
+		t.Fatalf("the third run must carry the result and the one warn; it carried %d alerts:\n%s", carried, third.request.Prompt)
+	}
+	report(t, third, json.NewDecoder(third.connection), "0000000000000001", "sos", "# app003 needs a person\n")
+	alert := reportAlert(t, r.a, "The AI triage agent reports: app003 needs a person")
+	if alert.IncidentID == "" || alert.IncidentID == app002.IncidentID {
+		t.Fatalf("the report went with incident %q; want an SOS incident of its own, not claimed app002's %s", alert.IncidentID, app002.IncidentID)
+	}
+	if reports := reportsInHistory(t, r.a, app002.IncidentID); reports != 0 {
+		t.Fatalf("app002's history holds %d reports about app003", reports)
+	}
+}
+
 // An sos report about a problem whose alert has no incident, a warn, opens an
 // SOS incident of its own that wakes the person on call, though another
 // problem's incident of the session is claimed: its owner has only that one.
