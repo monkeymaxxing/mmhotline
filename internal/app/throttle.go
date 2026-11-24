@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -200,6 +201,15 @@ func claimButtons(d Delivery, facts ContactMethodTypeFacts, combined []CombinedA
 // CombinedAlert is one alert inside a combined message.
 type CombinedAlert struct {
 	Severity, Title, AlertID, IncidentID string
+	// PassedOverForTheRunLimit: the triage agent's run limit sent the alert
+	// straight to people, so the message starts with runLimitPassedOverLine.
+	PassedOverForTheRunLimit bool
+}
+
+// anyPassedOverForTheRunLimit says a combined message carries an alert the
+// run limit passed over.
+func anyPassedOverForTheRunLimit(alerts []CombinedAlert) bool {
+	return slices.ContainsFunc(alerts, func(a CombinedAlert) bool { return a.PassedOverForTheRunLimit })
 }
 
 // combinedAlerts returns the alerts a waiting message carries, its own first,
@@ -207,14 +217,15 @@ type CombinedAlert struct {
 func combinedAlerts(ctx context.Context, tx *sql.Tx, d Delivery) ([]CombinedAlert, error) {
 	// A message that left (its incident was claimed while this one waited)
 	// is not listed.
-	rows, err := tx.QueryContext(ctx, `SELECT severity,title,alert_id,incident_id FROM deliveries WHERE combined_into=? AND state='combined' ORDER BY created_at,id`, d.ID)
+	const passedOver = `coalesce((SELECT e.passed_over_for_the_run_limit FROM alerts e WHERE e.id=d.alert_id AND d.severity IN ('warn','sos')),0)`
+	rows, err := tx.QueryContext(ctx, `SELECT d.severity,d.title,d.alert_id,d.incident_id,`+passedOver+` FROM deliveries d WHERE d.combined_into=? AND d.state='combined' ORDER BY d.created_at,d.id`, d.ID)
 	if err != nil {
 		return nil, err
 	}
 	var joined []CombinedAlert
 	for rows.Next() {
 		var c CombinedAlert
-		if err = rows.Scan(&c.Severity, &c.Title, &c.AlertID, &c.IncidentID); err != nil {
+		if err = rows.Scan(&c.Severity, &c.Title, &c.AlertID, &c.IncidentID, &c.PassedOverForTheRunLimit); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -228,7 +239,13 @@ func combinedAlerts(ctx context.Context, tx *sql.Tx, d Delivery) ([]CombinedAler
 			return nil, err
 		}
 	}
-	return append([]CombinedAlert{{Severity: d.Severity, Title: d.Title, AlertID: d.AlertID, IncidentID: d.IncidentID}}, joined...), nil
+	own := CombinedAlert{Severity: d.Severity, Title: d.Title, AlertID: d.AlertID, IncidentID: d.IncidentID}
+	if d.Severity == "warn" || d.Severity == "sos" {
+		if own.PassedOverForTheRunLimit, err = alertPassedOverForTheRunLimit(ctx, tx, d.AlertID); err != nil {
+			return nil, err
+		}
+	}
+	return append([]CombinedAlert{own}, joined...), nil
 }
 
 // combinedMessageText is the plain rendering of a combined message, used by
@@ -236,6 +253,9 @@ func combinedAlerts(ctx context.Context, tx *sql.Tx, d Delivery) ([]CombinedAler
 func combinedMessageText(alerts []CombinedAlert, publicURL string) (string, string) {
 	subject := fmt.Sprintf("[MMHotline] %d new alerts", len(alerts))
 	var b strings.Builder
+	if anyPassedOverForTheRunLimit(alerts) {
+		b.WriteString(runLimitPassedOverLine + "\n\n")
+	}
 	fmt.Fprintf(&b, "MMHotline combined %d alerts for this contact method into one message.\n\n", len(alerts))
 	for i := len(alerts) - 1; i >= 0 && len(alerts)-i <= maxAlertsListedInCombinedMessage; i-- {
 		a := alerts[i]

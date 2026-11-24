@@ -120,6 +120,10 @@ type SettingsTriageAgent struct {
 	// to the person on call when a triage session starts; it may be left
 	// out, which is false (sendAMessageWhenTheAgentStartsLookingDefault).
 	SendAMessageWhenTheAgentStartsLooking bool `yaml:"send_a_message_when_the_agent_starts_looking" settings:"optional"`
+	// MostRunsIn24Hours is the run limit: a whole number of runs, 1 or
+	// more, or no_limit; left out, 50 (mostRunsIn24HoursDefault). YAML
+	// reads an unquoted no_limit as a string.
+	MostRunsIn24Hours string `yaml:"most_runs_in_24_hours" settings:"optional"`
 	// SOSWaitsForAServerReplacementMinutes is how long an SOS waits after the
 	// triage agent starts replacing a server, 0 to 60; 0 turns it off.
 	SOSWaitsForAServerReplacementMinutes int `yaml:"sos_waits_for_a_server_replacement_minutes"`

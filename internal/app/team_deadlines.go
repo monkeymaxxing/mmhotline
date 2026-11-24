@@ -145,7 +145,11 @@ func (a *App) readTeamDeadlineFacts(ctx context.Context, now time.Time) (teamDea
 		if err != nil {
 			return err
 		}
-		facts.nextDeadline = earliest(incident, delivery, coverage, receipt, call, triageSessionEnd, heldWarn, softwareReview, warnedRun, credentials)
+		runLimit, err := nextRunLimitDeadline(ctx, tx, now)
+		if err != nil {
+			return err
+		}
+		facts.nextDeadline = earliest(incident, delivery, coverage, receipt, call, triageSessionEnd, heldWarn, softwareReview, warnedRun, credentials, runLimit)
 		return nil
 	})
 	return facts, err

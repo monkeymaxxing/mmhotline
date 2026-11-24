@@ -256,7 +256,7 @@ func TestApprovalOnlyIncidentEndsWithRequest(t *testing.T) {
 func TestTriagePromptsExplainNotificationTextAndResolution(t *testing.T) {
 	t.Parallel()
 	session := promptText(triageSessionStartPrompt("app001", "", []string{"servers"}, nil, nil, nil))
-	review := softwareReviewPrompt("app001", time.Time{}, []string{"servers"}, rigSoftwareReviewTask)
+	review := softwareReviewPrompt("app001", time.Time{}, []string{"servers"}, rigSoftwareReviewTask, "")
 	for name, prompt := range map[string]string{"session": session, "software review": review} {
 		for _, required := range []string{"one-line title", "one to three plain sentences about what happened and what the person should do", "Notifications show only the title and opening sentences", "Give the evidence after the opening sentences"} {
 			if !strings.Contains(prompt, required) {

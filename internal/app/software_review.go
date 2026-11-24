@@ -33,7 +33,8 @@ const softwareReviewSchema = `
 CREATE TABLE software_review_interval (
  id INTEGER PRIMARY KEY CHECK(id=1),
  interval_hours INTEGER CHECK(interval_hours BETWEEN 1 AND 8760),
- changed_at INTEGER NOT NULL, changed_by TEXT NOT NULL
+ changed_at INTEGER NOT NULL, changed_by TEXT NOT NULL,
+ ` + softwareReviewSkippedForTheRunLimitAtColumn + `
 );
 `
 
@@ -111,19 +112,27 @@ type softwareReviewInterval struct {
 	hours     SoftwareReviewIntervalHours
 	changedAt *time.Time
 	changedBy string
+	// skippedForTheRunLimitAt is when the background loop last skipped a
+	// scheduled review because the triage agent's run limit held, nil when
+	// it never did.
+	skippedForTheRunLimitAt *time.Time
 }
 
 func readSoftwareReviewInterval(ctx context.Context, tx *sql.Tx) (softwareReviewInterval, error) {
 	var interval softwareReviewInterval
 	var hours sql.NullInt64
-	var changedAt int64
-	err := tx.QueryRowContext(ctx, `SELECT interval_hours,changed_at,changed_by FROM software_review_interval WHERE id=1`).Scan(&hours, &changedAt, &interval.changedBy)
+	var changedAt, skippedAt int64
+	err := tx.QueryRowContext(ctx, `SELECT interval_hours,changed_at,changed_by,skipped_for_the_run_limit_at FROM software_review_interval WHERE id=1`).Scan(&hours, &changedAt, &interval.changedBy, &skippedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return interval, nil
 	}
 	interval.hours = SoftwareReviewIntervalHours(hours.Int64)
 	at := time.Unix(changedAt, 0).UTC()
 	interval.changedAt = &at
+	if skippedAt != 0 {
+		skipped := time.Unix(skippedAt, 0).UTC()
+		interval.skippedForTheRunLimitAt = &skipped
+	}
 	return interval, err
 }
 
@@ -152,10 +161,14 @@ ON CONFLICT(id) DO UPDATE SET interval_hours=excluded.interval_hours,changed_at=
 // schedule: intervalHours after the latest review that counts started, or
 // zero when none has, as the next is then due at once. A review that failed
 // counts, and so does one started by hand; one that MMHotline's stop, its
-// restart, or a triage session cut short does not, so it starts again.
+// restart, or a triage session cut short does not, so it starts again. A
+// scheduled review the run limit skipped counts as one that started then:
+// the next is due one interval later, so the review does not take a run
+// the moment the limit ends.
 func softwareReviewDueAt(ctx context.Context, tx *sql.Tx, intervalHours SoftwareReviewIntervalHours) (time.Time, error) {
 	var lastStarted int64
-	err := tx.QueryRowContext(ctx, `SELECT coalesce(max(started_at),0) FROM triage_agent_runs WHERE purpose='software_review' AND end_cause NOT IN (?,?,?)`,
+	err := tx.QueryRowContext(ctx, `SELECT max(coalesce((SELECT max(started_at) FROM triage_agent_runs WHERE purpose='software_review' AND end_cause NOT IN (?,?,?)),0),
+		coalesce((SELECT skipped_for_the_run_limit_at FROM software_review_interval WHERE id=1),0))`,
 		runCutByMMHotlineStop, runCutByMMHotlineRestart, runStoppedForTriageSession).Scan(&lastStarted)
 	if err != nil || lastStarted == 0 {
 		return time.Time{}, err
@@ -201,7 +214,18 @@ func (a *App) DriveSoftwareReview(ctx context.Context) error {
 	var due bool
 	err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 		deadline, err := a.nextSoftwareReviewDeadline(ctx, tx)
-		due = !deadline.IsZero() && !deadline.After(a.Now())
+		if due = !deadline.IsZero() && !deadline.After(a.Now()); !due || err != nil {
+			return err
+		}
+		// While the triage agent's run limit holds, a scheduled review is
+		// skipped, and the skip is recorded: the page says so, and the next
+		// review is due one interval later.
+		holds, err := runLimitHolds(ctx, tx)
+		if err != nil || !holds {
+			return err
+		}
+		due = false
+		_, err = tx.ExecContext(ctx, `UPDATE software_review_interval SET skipped_for_the_run_limit_at=? WHERE id=1`, a.Now().Unix())
 		return err
 	})
 	if err != nil || !due {
@@ -270,18 +294,25 @@ func (a *App) softwareReviewPromptAt(ctx context.Context, commitID string) (stri
 	// The advisories since the last review that finished: a review that
 	// failed or was stopped may not have read them all.
 	var lastReview time.Time
+	var usage TriageAgentUsage
 	if err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 		var started int64
 		err := tx.QueryRowContext(ctx, `SELECT coalesce(max(started_at),0) FROM triage_agent_runs WHERE purpose='software_review' AND state='finished'`).Scan(&started)
 		if started != 0 {
 			lastReview = time.Unix(started, 0).UTC()
 		}
+		if err != nil {
+			return err
+		}
+		// The weekly numbers, so the review can weigh what the agent costs.
+		now := a.Now().UTC()
+		usage, err = readTriageAgentUsage(ctx, tx, now.Add(-softwareReviewUsageWindow), now)
 		return err
 	}); err != nil {
 		return "", err
 	}
 	serverName, _ := os.Hostname()
-	return softwareReviewPrompt(serverName, lastReview, a.inventoryNames(), task), nil
+	return softwareReviewPrompt(serverName, lastReview, a.inventoryNames(), task, usage.Text()), nil
 }
 
 // ReportCountsByAlertSeverity counts the reports a run sent to people at

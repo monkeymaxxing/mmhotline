@@ -98,6 +98,9 @@ templ alertBody(frame pageFrame, alert alertView) {
 						{ alert.Outcome }
 					}
 				</p>
+				if alert.PassedOverForTheRunLimit {
+					<p id="passed-over-for-the-run-limit" class="line-warn">{ runLimitPassedOverLine }</p>
+				}
 				if held := alert.HeldWarn; held != nil {
 					<p id="held-warning" data-live>
 						if held.Released {

@@ -133,13 +133,13 @@ func readTriageSessionRecord(ctx context.Context, tx *sql.Tx, sessionID string) 
 	return session, err
 }
 
-// alertAndMore scans an alert's columns, then more columns after them.
-type alertAndMore struct {
+// rowAndMore scans a row's columns, such as an alert's, then more columns after them.
+type rowAndMore struct {
 	row  scanner
 	more []any
 }
 
-func (s alertAndMore) Scan(dest ...any) error { return s.row.Scan(append(dest, s.more...)...) }
+func (s rowAndMore) Scan(dest ...any) error { return s.row.Scan(append(dest, s.more...)...) }
 
 func triageSessionAlerts(ctx context.Context, tx *sql.Tx, sessionID string) ([]TriageSessionAlert, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT `+alertColumns+`,s.joined_at,s.sent_in_run_id FROM triage_session_alerts s JOIN alerts ON alerts.id=s.alert_id WHERE s.triage_session_id=? ORDER BY alerts.sequence`, sessionID)
@@ -151,7 +151,7 @@ func triageSessionAlerts(ctx context.Context, tx *sql.Tx, sessionID string) ([]T
 	for rows.Next() {
 		var alert TriageSessionAlert
 		var joined int64
-		if alert.Alert, err = scanAlert(alertAndMore{rows, []any{&joined, &alert.SentInRunID}}); err != nil {
+		if alert.Alert, err = scanAlert(rowAndMore{rows, []any{&joined, &alert.SentInRunID}}); err != nil {
 			return nil, err
 		}
 		alert.JoinedAt = time.Unix(joined, 0).UTC()

@@ -8,9 +8,13 @@ import (
 	"strings"
 )
 
-func (a *App) triageAgentCommand(ctx context.Context, p Principal, action string, result *CommandResult) error {
+func (a *App) triageAgentCommand(ctx context.Context, p Principal, action string, in TriageAgentCommandRequest, result *CommandResult) error {
 	var err error
 	switch action {
+	case "usage":
+		usage, err := a.TriageAgentUsage(ctx, p, in.Since)
+		result.TriageAgentUsage = &usage
+		return err
 	case "show":
 	case "run-software-review":
 		result.TriageAgentRunID, err = a.RunSoftwareReviewNow(ctx, p)
@@ -98,6 +102,9 @@ func (view TriageAgentView) Text() string {
 	if run := view.LatestSignInCheck; run != nil {
 		lines = append(lines, signInCheckText(*run)...)
 	}
+	if view.RunLimit != nil {
+		lines = append(lines, view.RunLimit.Text())
+	}
 	scheduled := "Scheduled software review: " + view.SoftwareReviewIntervalHours.Text()
 	if view.SoftwareReviewIntervalChangedAt != nil {
 		scheduled += fmt.Sprintf("; set by %s at %s", view.SoftwareReviewIntervalChangedBy, commandTime(*view.SoftwareReviewIntervalChangedAt))
@@ -110,6 +117,9 @@ func (view TriageAgentView) Text() string {
 		lines = append(lines, "Next scheduled software review due: at once.")
 	default:
 		lines = append(lines, "Next scheduled software review due at: "+commandTime(*view.NextSoftwareReviewDueAt))
+	}
+	if skipped := view.SoftwareReviewSkippedForTheRunLimitAt; skipped != nil {
+		lines = append(lines, "Scheduled software review skipped at "+commandTime(*skipped)+": the triage agent's run limit had been reached.")
 	}
 	if review := view.LatestSoftwareReview; review != nil {
 		lines = append(lines, fmt.Sprintf("Latest software review %s: %s; started by %s at %s.", review.RunID, review.State, review.StartedBy, commandTime(review.StartedAt)))

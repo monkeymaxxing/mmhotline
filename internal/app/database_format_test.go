@@ -230,3 +230,38 @@ func TestUpgradeGivesEachRunTheEndCauseItsReasonRecorded(t *testing.T) {
 		t.Fatal("the upgraded table took an end cause outside the list")
 	}
 }
+
+// Format 6 gives an earlier release's database the run limit's starting
+// state: a triage agent setup whose limit was never reached, alerts no limit
+// passed over, and a scheduled software review never skipped; every row is
+// kept.
+func TestUpgradeGivesTheRunLimitItsStartingState(t *testing.T) {
+	t.Parallel()
+	formatOne, err := os.ReadFile(filepath.Join("testdata", "database_format_1.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeDatabase(t, dir, 1, string(formatOne),
+		`INSERT INTO team_info(name) VALUES('Released team')`,
+		`INSERT INTO triage_agent_internet_access(id,internet_access,changed_at,changed_by) VALUES(1,'listed_hosts_only',1,'installation setup')`,
+		`INSERT INTO triage_agent_setup(id,coding_agent,credential_type,credential,model,reasoning_effort,set_up_at,set_up_by) VALUES(1,'codex','api_key','sk-test','gpt-5-codex','high',1,'administrator')`,
+		`INSERT INTO alerts(id,source_id,sender_alert_id,actor,replay_key,incident_id,sender_incident_key,severity,title,message,notes,received_at) VALUES('a1','monitoring','','source:monitoring','sender:1','','db01-cve','warn','db01: CVE-2026-123158','Details','',1)`,
+		`INSERT INTO software_review_interval(id,interval_hours,changed_at,changed_by) VALUES(1,24,1,'the settings file')`)
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var notice, title string
+	var noticeChangedAt, passedOver, skippedAt int64
+	if err := store.db.QueryRow(`SELECT s.run_limit_notice,s.run_limit_notice_changed_at,a.passed_over_for_the_run_limit,a.title,r.skipped_for_the_run_limit_at FROM triage_agent_setup s, alerts a, software_review_interval r`).Scan(&notice, &noticeChangedAt, &passedOver, &title, &skippedAt); err != nil {
+		t.Fatal(err)
+	}
+	if notice != "none" || noticeChangedAt != 0 || passedOver != 0 || skippedAt != 0 || title != "db01: CVE-2026-123158" {
+		t.Fatalf("after the upgrade: notice %q at %d, passed over %d, skipped at %d, title %q", notice, noticeChangedAt, passedOver, skippedAt, title)
+	}
+	if _, err := store.db.Exec(`UPDATE triage_agent_setup SET run_limit_notice='reached'`); err == nil {
+		t.Fatal("the upgraded setup took a notice outside the list")
+	}
+}

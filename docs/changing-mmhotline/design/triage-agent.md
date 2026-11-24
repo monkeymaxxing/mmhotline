@@ -8,7 +8,7 @@ This document defines the parts that support whatever task the agent receives:
 
 - the fence around the agent and how the agent reads the team's servers over SSH;
 - the triage agent setup, the two copies of the team's systems repository,
-  and the connection to each coding agent;
+  the connection to each coding agent, and the run limit;
 - the agent's requests during a run and the rules for running the agent's playbooks that decide which
   playbooks MMHotline runs for the agent without a person;
 - the review agent that can check each playbook first and how MMHotline keeps
@@ -1352,7 +1352,8 @@ approves gets nothing that needs a person's action:
   with the review link and the reason the agent did not review the commit:
   the run failed, with the run's reason; the run ended without a decision
   on the commit; the triage agent is not set up, its sandbox is not
-  installed, or MMHotline's copy is missing; or the settings changed so the
+  installed, or MMHotline's copy is missing; the
+  [run limit](#once-the-limit-holds) holds; or the settings changed so the
   agent may no longer approve it. Without this, a commit could wait with
   nobody told.
 
@@ -1823,6 +1824,283 @@ server reported 401,751, 631,916, 781,739, and 1,172,090 input tokens, while
 their own use was 401,751, 230,165, 149,823, and 390,351 input tokens.
 About 95% of the input tokens were cached.
 
+## The run limit
+
+The run limit stops only agent runs, never alerts. MMHotline starts the
+triage agent by itself for alerts, scheduled software reviews, and commit
+reviews, and the team pays for each run. A check that fails over and over,
+each time with a new `sender_incident_key`, would start a run every minute
+or two, about 700 to 1,400 a day. The run limit stops that within hours.
+Past the limit, MMHotline sends alerts as it would without a triage agent:
+no hold and no wait for the agent, with each person's own subscriptions and
+mutes as always. No alert is dropped, held longer, or quieted because of
+the limit.
+
+### The setting and what counts
+
+The settings file's `triage_agent.most_runs_in_24_hours` is a whole number
+of runs, 1 or more, or `no_limit`. Left out, it is 50. Anything else,
+including `0`, is refused with "must be a whole number of runs, 1 or more,
+or no_limit" after the key path; a team that wants no agent leaves out the
+`triage_agent` section. YAML reads an unquoted `no_limit` as a string. With
+`no_limit`, MMHotline counts runs only for the numbers below and never stops
+one. There is no upper bound: `no_limit` already covers "as many as it
+takes", and a maximum would need a reason nobody has.
+
+The reason for 50: monkeymaxxing.com's busiest day so far had 7 runs, and
+the lab's worst recorded incident had 13 runs in 3 hours. Fifty stops a
+runaway within hours and still covers a long real incident. The fleet hub
+groups a large fleet's alerts by finding, so the number of runs follows
+findings, not servers. A team that needs more raises the limit or sets
+`no_limit`.
+
+The limit counts the runs MMHotline starts by itself whose `started_at` is
+in the last 24 hours, a rolling window:
+
+- a triage session's runs, except a person's hand-over;
+- the scheduled software reviews (`started_by` is `MMHotline`);
+- the commit reviews.
+
+Not counted: setup tests, sign-in checks, a software review a person
+started, the review agent's playbook reviews, a person's hand-over, a run
+that MMHotline's own stop or restart cut short, and a review stopped to
+make way for a triage session (`end_cause`). Those runs did not do the work
+they were started for, or a person asked for them, and a restart must not
+use up the limit. A playbook review follows a counted run, and refusing it
+would only send the agent's fix to a person.
+
+A new counted run is admitted only when the count of the others is below
+the limit and the limit does not hold, in the transaction that records the
+run. MMHotline's database takes one writer at a time, so two starts can
+never both take the last place. A refused start records nothing.
+
+### Once the limit holds
+
+Once the count reaches the limit, the limit holds until the count falls to
+80% of it: with 50, until 40. Without that margin the agent would switch on
+and off with every run that leaves the window, and every message would
+switch with it; with it, each message stays true for hours. The 80% point
+is rounded down and is at most one less than the limit, so a limit of 1
+holds until no counted run is left. The agent stays off at 49.
+
+`triage_agent_setup.run_limit_notice` is the one source of truth: `none`,
+`heads_up_sent`, or `limit_holds`, with `run_limit_notice_changed_at`. The
+background loop's turn for the run limit, before the session's turn, moves
+it and sends each message in the same transaction, so each goes once.
+
+While the limit holds, this is a path of its own, not
+[the agent cannot run](#when-the-agent-cannot-run), which ends the session
+and stops the active run:
+
+- **The active run finishes.** The alerts it carried keep their holds and
+  deadlines, and its report takes them over as usual. An SOS it carried
+  keeps waiting until its deadline.
+- **What waits for the next run goes out at once.** Each held warn no run
+  carried is released, with "The triage agent reached its run limit, so
+  MMHotline sends the warning without waiting for the agent." An SOS that
+  waits and is not carried by the active run wakes the person on call at
+  once; its history says "MMHotline woke the person on call without the
+  agent's wait: the triage agent reached its run limit." Each alert of the
+  open session that waits for its first run is marked, so no later run
+  carries it.
+- **New alerts are marked at intake.** An alert that would go to the agent
+  ([what starts or joins a session](#what-starts-or-joins-a-session))
+  gets `alerts.passed_over_for_the_run_limit` in the transaction that saves
+  it. A warn is not held, an SOS does not wait, and neither joins a session.
+  The session's join step skips marked alerts, so an alert sent out with
+  "will not come back to it" never reaches the agent later, also after the
+  limit ends. A new SOS's history says the same line as a woken one.
+- **A playbook run's result that waits for the agent** goes to a person
+  once, as an alert from MMHotline: "Result of PLAYBOOK in the inventory
+  “production”: Ran and failed", at warn, or at info for a playbook that
+  ran and succeeded. Its message starts "The triage agent will not look at
+  this result: its run limit was reached. Handle it yourself.", then the
+  result, then the alerts of the problem it was for: those the request
+  named, or else those its run carried. This is run 50's fix that failed
+  after the run ended; without it, the result would wait for a run the
+  limit refuses.
+- **A scheduled software review is skipped** and the skip is recorded in
+  `software_review_interval.skipped_for_the_run_limit_at`. The next review
+  is due one interval after the skip, so the review does not take a run the
+  moment the limit ends. `show` and the Triage agent page say "Scheduled
+  software review skipped at TIME: the triage agent's run limit had been
+  reached."
+- **A commit review cannot start**, so each waiting commit gets
+  MMHotline's warning, as today, with "The triage agent did not review the
+  commit: the triage agent reached its run limit
+  (triage_agent.most_runs_in_24_hours)."
+- **A person's take-over** still gets its hand-over run, which is not
+  counted.
+- **Not changed, deliberately:** past the limit a warn meets the ordinary
+  delivery queue at intake, as it does without a triage agent, and a full
+  queue refuses it with 429 for the sender to retry. The queue holds
+  thousands of deliveries, so this is rare, and the sender sees it.
+
+The limit ends when the count falls to 80% of the limit in force. Raising
+the limit above the count, or setting `no_limit`, ends it at once when the
+setting applies: a person who raises the limit wants the agent back now.
+Lowering the limit never ends it. The background loop's next visit is set
+for the moment the count will fall to 80%.
+
+### What people hear
+
+Every message about the limit starts with the promise, "The limit stops
+only agent runs, never alerts.", and names no contact method. With the
+default of 50:
+
+1. **At 40 runs, one info heads-up**, to the people an ordinary info alert
+   reaches, such as a quiet Pushover message:
+
+   ```text
+   [Info] Agent runs: 40 of 50 used in 24 hours. Alerts continue.
+   The limit stops only agent runs, never alerts. At 50 runs, MMHotline stops sending new alerts to the triage agent until the count falls back to 40.
+   Most runs went to:
+   - 22 runs: db01: installed_packages/known_exploited_flaws: CVE-2026-123158 openssh failed
+   - 9 runs: the scheduled software review
+   - 3 runs: app002: disk 91% full
+   - 6 runs: 3 other problems
+   Nothing is needed from you now.
+   ```
+
+   With a limit below 5 there is no heads-up: 80% of it is too close to the
+   limit to be worth a message of its own.
+
+2. **At 50 runs, one warning**, MMHotline's own warn, which is never held:
+
+   ```text
+   [Warning] Agent run limit reached. Alerts continue.
+   The limit stops only agent runs, never alerts. New alerts now go straight to people: warnings are not held, and an SOS wakes the person on call without the agent's wait. The current run finishes its work. The agent can look at new alerts again at 14:05 UTC.
+
+   What used the runs in the last 24 hours:
+   - 31 runs: db01: installed_packages/known_exploited_flaws: CVE-2026-123158 openssh failed
+   - 12 runs: the scheduled software review
+   - 7 runs: several findings at once
+
+   In the last 7 days, a finished Codex run used on average 410,000 input tokens (380,000 of them cached) and 2,100 output tokens. Codex reports tokens, not dollars.
+
+   An administrator can change the limit: tell your coding agent "Set triage_agent.most_runs_in_24_hours in MMHotline's settings file to 100, or to no_limit, and apply MMHotline's settings." The default is 50 so a check that fails over and over cannot run the agent hundreds of times a day.
+   Dashboard: https://ops.example.com/
+   ```
+
+   - "The current run finishes its work." is left out when no run is
+     active, as when run 50 ended before the loop's next visit.
+   - "The agent can look at new alerts again at" is when the count will
+     fall to 80% of the limit in force, from the counted runs' start times.
+   - The suggested new limit is twice the limit in force.
+   - The token lines cover finished runs in the systems repository in the
+     last 7 days, one line per coding agent used. A failed or stopped run
+     reports no use of its own. Claude Code's line ends "and cost US$0.42 on
+     average." instead of the sentence about dollars. With no finished run
+     in the 7 days, the lines are left out.
+   - The link is the dashboard, which every member may open; the Triage
+     agent page is for administrators only.
+
+3. **Each alert the limit passed over** keeps its own title, which a phone
+   shows first. One line goes at the start of the message MMHotline sends,
+   before the alert's own message: in each notification, in Pushover's
+   combined form for several alerts and in email's combined message, in an
+   emergency message, on the alert's page, and in `alerts list`:
+
+   ```text
+   The triage agent did not look at this alert and will not come back to it: its run limit was reached. Handle it yourself.
+   ```
+
+   The stored alert is not changed, so a sender's retry still matches it
+   and is answered as a duplicate. The line goes only on warn and sos alerts
+   that would otherwise have gone to the agent; info alerts and resolved
+   messages are unchanged. An SOS the agent already looked at in an earlier
+   run, woken at the limit, has the history line but not this one, which
+   would be untrue.
+
+4. **When the count falls to 40, one info message:**
+
+   ```text
+   [Info] The triage agent can run again. Alerts wait for it again.
+   It has used 40 of its 50 runs in the last 24 hours. Alerts that arrived during the limit already reached people and are not sent to the agent.
+   ```
+
+   With `no_limit`, the second line starts "It has used 55 runs in the last
+   24 hours; triage_agent.most_runs_in_24_hours is now no_limit."
+
+The heads-up and the warning are each sent once. When the limit ends, the
+warning is armed again. The "can run again" message already says how many
+runs are used, so when the count is still at 80% the notice records the
+heads-up as sent. A heads-up is armed again once the count is below 80% and
+the last notice is 24 hours old, so at most one heads-up goes out in 24
+hours even when the count moves around 80%.
+
+### What used the runs
+
+The lines of "Most runs went to" and "What used the runs" come from the
+counted runs of the last 24 hours, `triage_session_alerts.sent_in_run_id`,
+and `triage_agent_runs`:
+
+- A triage session's run counts toward the problem, the alert source and
+  `sender_incident_key`, of the alerts it carried. The line is named by the
+  title of that problem's newest alert, not a resolved message; an alert
+  without a key is a problem of its own, named by its own title.
+- A run that carried several problems counts once, on a line of its own:
+  "several findings at once". Counting it under one problem would blame the
+  wrong alert.
+- A run that carried no alert, such as a run that only took a playbook
+  run's result back to the agent, counts under the problem of its session's
+  first alert.
+- The alerts MMHotline adds about a run's own work, a report or a playbook
+  run request, are never counted as carried.
+- Software reviews and commit reviews each form one line: "the scheduled
+  software review" and "the commit reviews".
+- The lines are sorted by runs, most first. The top three are shown, then
+  one line for the rest: "6 runs: 3 other problems", or "others" when the
+  rest holds a line that is not a problem.
+
+### The run limit's numbers
+
+`mmhotline triage-agent usage --since TIME [--json]` gives the numbers
+since an RFC 3339 time, such as `2026-11-17T09:00:00Z`, as the other
+commands' time flags do (`alerts list --received-since`). It only reads,
+and is for administrators, as `show` is:
+
+- runs by purpose, by whether MMHotline started them by itself, and by
+  state;
+- tokens per coding agent, and US dollars where the coding agent reports
+  them, as Claude Code does;
+- how often the limit was reached: a count of MMHotline's own warnings that
+  it was, which are alerts from MMHotline with the actor
+  `triage_agent_run_limit`;
+- the alerts the limit sent straight to people: a count of the
+  `passed_over_for_the_run_limit` marks;
+- the warnings held for the agent by how their hold ended: taken over,
+  delivered, resolved while held, or still held.
+
+The same numbers for the last 7 days go into every software review's
+prompt ([the software review's task](#the-software-reviews-task)). The
+history comes from the records themselves, so the run limit keeps no table
+of its own. The set-aside findings list lives in the systems repository,
+which the review reads itself; MMHotline does not send it.
+
+The Triage agent page and `triage-agent show` give the last 24 hours
+against the limit: "Runs that count toward the run limit in the last 24
+hours: 12 of 50.", and while the limit holds, "The run limit was reached:
+new alerts go straight to people. The agent can look at new alerts again at
+14:05 UTC." `show --json` has `run_limit` with `most_runs_in_24_hours`,
+`counted_runs_in_the_last_24_hours`, `run_limit_notice`, and
+`agent_looks_at_new_alerts_again_at`.
+
+### What MMHotline keeps for the run limit
+
+- `triage_agent_setup.run_limit_notice` (`none`, `heads_up_sent`, or
+  `limit_holds`) and `run_limit_notice_changed_at`.
+- `alerts.passed_over_for_the_run_limit`, 1 for an alert the limit sent
+  straight to people, set at intake or when the limit released a waiting
+  alert.
+- `software_review_interval.skipped_for_the_run_limit_at`, the latest
+  scheduled review the limit skipped, 0 for none.
+- An index on `triage_agent_runs(started_at)`, which the count reads.
+
+Database format 6 adds them
+([database format and upgrades](operation.md#database-format-and-upgrades)).
+Nothing is renamed or removed.
+
 ## Triage sessions
 
 A triage session groups warn and sos alerts received while the session is
@@ -1859,7 +2137,9 @@ The following alerts and messages never start or join a session:
   cannot deliver alerts to {destination}", which say nothing about the
   servers;
 - the triage agent's own reports, which would otherwise send the agent its
-  own words.
+  own words;
+- an alert that arrives while the [run limit](#the-run-limit) holds, which
+  goes straight to people and never reaches the agent later.
 
 Without the triage agent nothing changes: MMHotline is plain on-call
 software. MMHotline looks at each alert once, after the alert is saved. An
@@ -2020,7 +2300,9 @@ call, the repeats every minute, the backup, and everyone available all count
 from the first waking step, as for any SOS.
 
 Every SOS whose alert joins a session waits, except one a person creates by
-hand, because a person who creates an SOS wants someone now.
+hand, because a person who creates an SOS wants someone now, and one that
+arrives while the [run limit](#once-the-limit-holds) holds, which wakes the
+person on call at once.
 
 An SOS that joins a session which already woke the person on call neither
 waits nor wakes them again: the person is already at work on the session,
@@ -2134,6 +2416,8 @@ Each held warn ends exactly once, the first of these:
   because it is not set up, its sandbox is not installed, or MMHotline's
   copy of the systems repository is missing. A session that ends delivers
   its held warns too.
+- **Delivered at once** when the [run limit](#once-the-limit-holds) holds
+  and no run carried the warn: the limit refuses the run that would.
 - **Delivered at its deadline** otherwise, even while the agent still works
   on it.
 
@@ -2164,8 +2448,8 @@ Info alerts are unchanged, an SOS keeps
 [its own wait](#an-sos-waits-for-the-agent), and resolved messages are
 unchanged: they are already silent on Pushover. A warn from MMHotline or one
 made by hand is never held, and neither is a warn that arrives while a
-person has taken the open session over: the agent works on nothing more in
-it.
+person has taken the open session over, where the agent works on nothing
+more, or while the [run limit](#the-run-limit) holds.
 
 The rule to keep: every held warn ends either delivered once, or taken over
 by the agent's own request or report that names it, or resolved while held.
@@ -3111,7 +3395,9 @@ elapsed time, and available run meet all the following conditions:
   of the systems repository exists, as for a triage session;
 - the latest software review that counts started one interval ago or more,
   or none has;
-- no triage run is active, whether or not a triage session is open.
+- no triage run is active, whether or not a triage session is open;
+- the [run limit](#once-the-limit-holds) does not hold. A scheduled review
+  due while it holds is skipped, and the next is due one interval later.
 
 The first scheduled software review starts right after the interval first
 applies, when no review has run before, so the team sees at once whether
@@ -3268,6 +3554,11 @@ MMHotline owns:
   The prompt therefore gives the start time of the last review that finished;
 - the team's task, quoted whole between a start line and an end line that
   name `scheduled_software_review_task.md`, as the team's instructions;
+- MMHotline's record of the triage agent's last 7 days, the
+  [run limit's numbers](#the-run-limits-numbers) as `triage-agent usage`
+  prints them, for a task that reviews what the agent costs and how its
+  holds went. Every review carries them, so the team's task decides
+  whether to use them;
 - to send the reports the team's task asks for, because how many reports
   a review sends and at which severity is the team's choice, and no report
   when the agent finds nothing new. The review's record on the Triage agent

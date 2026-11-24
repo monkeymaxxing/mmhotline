@@ -85,6 +85,11 @@ func (a *App) teamBackgroundWork(ctx context.Context, report func(error)) bool {
 	if err := a.ReconcileIncidents(ctx); err != nil {
 		fail(fmt.Errorf("reconcile incidents: %w", err))
 	}
+	// Before the session's turn: while the run limit holds, the session
+	// starts no run, and what waits for one goes straight to people.
+	if err := a.DriveTriageAgentRunLimit(ctx); err != nil {
+		fail(fmt.Errorf("drive the triage agent's run limit: %w", err))
+	}
 	if err := a.DriveTriageSession(ctx); err != nil {
 		fail(fmt.Errorf("drive the triage session: %w", err))
 	}

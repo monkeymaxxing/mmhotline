@@ -417,7 +417,8 @@ func (a *App) startTriageAgentRunInSystemsRepository(ctx context.Context, purpos
 // startTriageAgentRun reserves the run's place, records it, and sends request
 // to the sandbox: a playbook review takes the one review run, every other
 // run the one triage run. authorize runs in the transaction that records the
-// run, which it may refuse. setup is a setup test's setup from the settings
+// run, which it may refuse, and so does the run limit
+// (admitRunUnderTheRunLimit). setup is a setup test's setup from the settings
 // file, nil for any other run. A run that fails after it was recorded is
 // returned ended.
 func (a *App) startTriageAgentRun(ctx context.Context, purpose, startedBy string, request triageagent.Request, setup *SettingsCodingAgent, authorize func(tx *sql.Tx, runID string) error) (*triageAgentActiveRun, error) {
@@ -451,7 +452,8 @@ func (a *App) startTriageAgentRun(ctx context.Context, purpose, startedBy string
 	*place = run
 	runtime.mu.Unlock()
 	err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO triage_agent_runs(id,purpose,coding_agent,credential_type,state,started_at,started_by) VALUES(?,?,?,?,'running',?,?)`, run.id, purpose, request.CodingAgent, request.CredentialType, a.Now().Unix(), startedBy); err != nil {
+		now := a.Now()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO triage_agent_runs(id,purpose,coding_agent,credential_type,state,started_at,started_by) VALUES(?,?,?,?,'running',?,?)`, run.id, purpose, request.CodingAgent, request.CredentialType, now.Unix(), startedBy); err != nil {
 			return err
 		}
 		if request.CredentialType == "chatgpt_sign_in" {
@@ -460,7 +462,12 @@ func (a *App) startTriageAgentRun(ctx context.Context, purpose, startedBy string
 				return err
 			}
 		}
-		return authorize(tx, run.id)
+		if err := authorize(tx, run.id); err != nil {
+			return err
+		}
+		// After authorize, which records what the run is for, such as a
+		// session's hand-over, which the run limit does not count.
+		return admitRunUnderTheRunLimit(ctx, tx, run.id, now)
 	})
 	// Set before the request goes out, so the run's first event finds them.
 	run.request.Credential, run.chatGPTSignIn, run.secrets = request.Credential, request.Credential, credentialSecrets(request.CredentialType, request.Credential)

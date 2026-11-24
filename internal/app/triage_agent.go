@@ -23,7 +23,9 @@ CREATE TABLE triage_agent_setup (
  model TEXT NOT NULL, reasoning_effort TEXT NOT NULL,
  set_up_at INTEGER NOT NULL, set_up_by TEXT NOT NULL,
  ` + credentialColumns + `,
- ` + credentialCheckColumns + `
+ ` + credentialCheckColumns + `,
+ ` + runLimitNoticeColumn + `,
+ ` + runLimitNoticeChangedAtColumn + `
 );
 CREATE TABLE triage_agent_internet_access (
  id INTEGER PRIMARY KEY CHECK(id=1), internet_access TEXT NOT NULL CHECK(internet_access IN ('listed_hosts_only','any_site')),
@@ -52,6 +54,7 @@ CREATE TABLE triage_agent_runs (
  vendor_page_hosts_not_listed_because TEXT NOT NULL DEFAULT '',
  ` + runEndCauseColumn + `
 );
+` + triageAgentRunsStartedAtIndex + `
 CREATE TABLE triage_agent_commits (
  run_id TEXT NOT NULL REFERENCES triage_agent_runs(id), request_id TEXT NOT NULL,
  base_commit_id TEXT NOT NULL,
@@ -274,6 +277,13 @@ type TriageAgentView struct {
 	SoftwareReviewIntervalChangedAt *time.Time                   `json:"software_review_interval_changed_at,omitempty"`
 	SoftwareReviewIntervalChangedBy string                       `json:"software_review_interval_changed_by,omitempty"`
 	NextSoftwareReviewDueAt         *time.Time                   `json:"next_software_review_due_at,omitempty"`
+	// SoftwareReviewSkippedForTheRunLimitAt is when a scheduled software
+	// review was last skipped because the run limit held, absent when none
+	// was skipped since the latest review started.
+	SoftwareReviewSkippedForTheRunLimitAt *time.Time `json:"software_review_skipped_for_the_run_limit_at,omitempty"`
+	// RunLimit is the last 24 hours against the run limit, absent without
+	// the setup.
+	RunLimit *TriageAgentRunLimitView `json:"run_limit,omitempty"`
 	RecentConnections               []TriageAgentProxyConnection `json:"recent_connections"`
 }
 
@@ -630,6 +640,12 @@ func (a *App) TriageAgentState(ctx context.Context, p Principal) (TriageAgentVie
 			if !due.IsZero() {
 				view.NextSoftwareReviewDueAt = &due
 			}
+		}
+		if skipped := interval.skippedForTheRunLimitAt; skipped != nil && (view.LatestSoftwareReview == nil || skipped.After(view.LatestSoftwareReview.StartedAt)) {
+			view.SoftwareReviewSkippedForTheRunLimitAt = skipped
+		}
+		if view.RunLimit, err = readTriageAgentRunLimitView(ctx, tx, a.Now().UTC()); err != nil {
+			return err
 		}
 		// A listed host lets the triage agent through, never a review.
 		rows, err := tx.QueryContext(ctx, `SELECT c.id,c.run_id,c.started_at,c.host,c.port,c.address,c.decision,c.refusal_reason,c.bytes_sent,c.bytes_received,c.ended_at,coalesce(r.purpose,'') FROM triage_agent_proxy_connections c LEFT JOIN triage_agent_runs r ON r.id=c.run_id ORDER BY c.id DESC LIMIT 50`)

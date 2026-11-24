@@ -244,6 +244,12 @@ func (a *App) DriveTriageSession(ctx context.Context) error {
 			}
 			return err
 		}
+		// While the run limit holds, the session starts no run: what waits
+		// for one goes straight to people (DriveTriageAgentRunLimit). A
+		// hand-over, above, is not counted and still runs.
+		if holds, err := runLimitHolds(ctx, tx); err != nil || holds {
+			return err
+		}
 		if plan, err = a.planTriageSessionRun(ctx, tx, sessionID, codingAgent); err != nil || plan == nil || !busy {
 			return err
 		}
@@ -330,7 +336,9 @@ func joinNewAlertsToTriageSession(ctx context.Context, tx *sql.Tx, sessionID str
 		return sessionID, nil
 	}
 	if agentCanRun {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM alerts WHERE sequence>? AND sequence<=? AND `+triageSessionAlertCondition+` ORDER BY sequence`, considered, newest)
+		// An alert the run limit passed over went straight to people with
+		// "will not come back to it", so it never reaches the agent later.
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM alerts WHERE sequence>? AND sequence<=? AND passed_over_for_the_run_limit=0 AND `+triageSessionAlertCondition+` ORDER BY sequence`, considered, newest)
 		if err != nil {
 			return "", err
 		}
@@ -394,7 +402,7 @@ func alertStartsANewTriageSession(ctx context.Context, tx *sql.Tx, sessionID, al
 		AND NOT EXISTS(SELECT 1 FROM triage_session_alerts s JOIN alerts e ON e.id=s.alert_id JOIN incidents i ON i.id=e.incident_id WHERE s.triage_session_id=?1 AND i.status!='resolved')
 		AND NOT EXISTS(SELECT 1 FROM triage_agent_playbook_runs_waiting_for_a_person WHERE triage_session_id=?1 AND (state IN (?3,?4,?5) OR result_for_the_agent=?6))
 		AND NOT EXISTS(SELECT 1 FROM triage_agent_runs WHERE triage_session_id=?1 AND state='running')
-		AND NOT EXISTS(SELECT 1 FROM triage_session_alerts WHERE triage_session_id=?1 AND sent_in_run_id='')
+		AND NOT EXISTS(SELECT 1 FROM triage_session_alerts s JOIN alerts e ON e.id=s.alert_id WHERE s.triage_session_id=?1 AND s.sent_in_run_id='' AND e.passed_over_for_the_run_limit=0)
 		AND NOT EXISTS(SELECT 1 FROM alerts n JOIN alerts e ON e.source_id=n.source_id AND e.sender_incident_key=n.sender_incident_key JOIN triage_session_alerts s ON s.alert_id=e.id WHERE n.id=?2 AND n.sender_incident_key!='' AND s.triage_session_id=?1)`,
 		sessionID, alertID, approvalOpen, approvalApproved, approvalRunning, resultForTheAgentWaits).Scan(&starts)
 	return starts, err
@@ -451,11 +459,13 @@ func skipAlertsForTriageSessions(ctx context.Context, tx *sql.Tx) error {
 // created it by hand, because a person who creates an SOS wants someone now.
 // It never waits while a person has taken the open session over: the agent
 // works on nothing more in it, and the next session starts only after it.
+// Nor does an SOS the run limit passed over: it wakes the person on call at
+// once.
 // Whether the agent's sandbox and MMHotline's copy are there is known only to
 // the background loop, whose next visit wakes the incident when they are not.
 func sosWaitsForTriageAgent(ctx context.Context, tx *sql.Tx, alertID string) (bool, error) {
 	var waits bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM triage_agent_setup) AND EXISTS(SELECT 1 FROM alerts WHERE id=? AND source_id!='manual' AND `+triageSessionAlertCondition+`) AND NOT EXISTS(SELECT 1 FROM triage_sessions WHERE ended_at=0 AND taken_over_by_member_id!='')`, alertID).Scan(&waits)
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM triage_agent_setup) AND EXISTS(SELECT 1 FROM alerts WHERE id=? AND source_id!='manual' AND passed_over_for_the_run_limit=0 AND `+triageSessionAlertCondition+`) AND NOT EXISTS(SELECT 1 FROM triage_sessions WHERE ended_at=0 AND taken_over_by_member_id!='')`, alertID).Scan(&waits)
 	return waits, err
 }
 
@@ -560,6 +570,14 @@ func wakeIncidentHeldForTriageAgent(ctx context.Context, tx *sql.Tx, i Incident,
 	if err := releaseEveryHeldWarn(ctx, tx, "An SOS woke the person on call: "+strings.TrimSuffix(strings.TrimSuffix(why, "; waking the person on call"), ". Waking the person on call")+".", at); err != nil {
 		return err
 	}
+	return wakeHeldIncident(ctx, tx, i, "triage_agent_hold_ended", why, at)
+}
+
+// wakeHeldIncident ends an incident's wait for the triage agent and starts
+// its first waking step now, recording why under kind in its history, and
+// releases no held warn: the run limit wakes an SOS while the active run's
+// alerts keep their holds (passOverWaitingWorkForTheRunLimit).
+func wakeHeldIncident(ctx context.Context, tx *sql.Tx, i Incident, kind, why string, at time.Time) error {
 	c, err := CoverageAt(ctx, tx, at)
 	if err != nil {
 		return err
@@ -573,7 +591,7 @@ func wakeIncidentHeldForTriageAgent(ctx context.Context, tx *sql.Tx, i Incident,
 	i.Revision++
 	i.TeamMuteRevision = c.TeamMute.Revision
 	chooseInitialTarget(&i, c, window, at)
-	if err = recordIncidentAction(ctx, tx, i, "system", "triage_agent_hold_ended", why, "", "", at); err != nil {
+	if err = recordIncidentAction(ctx, tx, i, "system", kind, why, "", "", at); err != nil {
 		return err
 	}
 	// An SOS a server replacement held says, in its first waking message,
@@ -675,7 +693,7 @@ func triageSessionQuietSince(ctx context.Context, tx *sql.Tx, sessionID string) 
 // and no result of a playbook run a person decided waits.
 func (a *App) planTriageSessionRun(ctx context.Context, tx *sql.Tx, sessionID, codingAgent string) (*triageSessionRunPlan, error) {
 	plan := &triageSessionRunPlan{sessionID: sessionID, action: "start"}
-	if err := tx.QueryRowContext(ctx, `SELECT coalesce(max(e.sequence),0) FROM triage_session_alerts s JOIN alerts e ON e.id=s.alert_id WHERE s.triage_session_id=? AND s.sent_in_run_id=''`, sessionID).Scan(&plan.throughAlertSequence); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT coalesce(max(e.sequence),0) FROM triage_session_alerts s JOIN alerts e ON e.id=s.alert_id WHERE s.triage_session_id=? AND s.sent_in_run_id='' AND e.passed_over_for_the_run_limit=0`, sessionID).Scan(&plan.throughAlertSequence); err != nil {
 		return nil, err
 	}
 	var err error
@@ -696,8 +714,10 @@ func (a *App) planTriageSessionRun(ctx context.Context, tx *sql.Tx, sessionID, c
 		waitingOnly = ` AND s.sent_in_run_id=''`
 	}
 	// A start shows every alert of the session: an earlier run that failed
-	// before the agent began may have carried some.
-	rows, err := tx.QueryContext(ctx, `SELECT e.id,e.source_id,e.actor,e.incident_id,e.severity,e.title,e.message,e.received_at,coalesce(src.name,''),s.sent_in_run_id='' FROM triage_session_alerts s JOIN alerts e ON e.id=s.alert_id LEFT JOIN sources src ON src.id=e.source_id WHERE s.triage_session_id=? AND e.sequence<=?`+waitingOnly+` ORDER BY e.sequence`, sessionID, plan.throughAlertSequence)
+	// before the agent began may have carried some. An alert the run limit
+	// passed over is never shown: people were told the agent will not come
+	// back to it.
+	rows, err := tx.QueryContext(ctx, `SELECT e.id,e.source_id,e.actor,e.incident_id,e.severity,e.title,e.message,e.received_at,coalesce(src.name,''),s.sent_in_run_id='' FROM triage_session_alerts s JOIN alerts e ON e.id=s.alert_id LEFT JOIN sources src ON src.id=e.source_id WHERE s.triage_session_id=? AND e.sequence<=? AND e.passed_over_for_the_run_limit=0`+waitingOnly+` ORDER BY e.sequence`, sessionID, plan.throughAlertSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -890,7 +910,8 @@ func (a *App) startTriageSessionRun(ctx context.Context, plan triageSessionRunPl
 		return incidentNotesGiven(ctx, tx, runID, plan.incidentNoteIDs)
 	})
 	// The alerts still wait; the next visit tries again.
-	if err != nil && !errors.Is(err, errTriageSessionEnded) && ctx.Err() == nil {
+	// A run the limit refused leaves its alerts to the run limit's turn.
+	if err != nil && !errors.Is(err, errTriageSessionEnded) && !errors.Is(err, errRunLimitReached) && ctx.Err() == nil {
 		fmt.Fprintf(os.Stderr, "mmhotline: could not start the triage session's run: %s\n", err)
 	}
 }

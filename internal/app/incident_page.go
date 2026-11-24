@@ -569,7 +569,7 @@ func (r incidentReader) history(audit []IncidentAction, alerts []Alert, deliveri
 			event.Tone, event.Text = "agent", "MMHotline held the incident for the triage agent to investigate first. MMHotline wakes nobody "+strings.TrimPrefix(action.Message, "Held for the triage agent ")+"."
 		case "triage_agent_hold_ended":
 			event.Tone, event.Text = "agent", "The hold for the triage agent ended. "+holdEndedReason(action.Message)+"."
-		case "already_woken_for_triage_session", heldForAServerReplacement:
+		case "already_woken_for_triage_session", heldForAServerReplacement, runLimitSOSWokeKind:
 			event.Tone = "agent"
 		case "sos_escalation_due":
 			if first, ok := firstRound[action.Revision]; ok {

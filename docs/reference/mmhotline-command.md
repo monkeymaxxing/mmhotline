@@ -884,6 +884,7 @@ Listed host: api.osv.dev:443; listed because: OSV.dev's API.
 Listed host: raw.githubusercontent.com:443; listed because: CISA's list of known exploited vulnerabilities, from CISA's copy on GitHub.
 Setup test bbd54461c72208a751219d09b0050026: passed; run state: finished; purpose: setup_test; coding agent: claude_code; credential type: subscription_token.
 ...
+Runs that count toward the run limit in the last 24 hours: 0 of 50.
 Scheduled software review: off; set by the settings file /etc/mmhotline/mmhotline_settings.yml at 2026-11-15T08:51:06Z.
 ```
 
@@ -997,7 +998,13 @@ the fields below are inside `triage_agent`.
 | `latest_sign_in_check` | The latest sign-in check, with the fields of `latest_setup_test` and the purpose `sign_in_check`. `started_by` is `MMHotline` for the daily check. A check stopped for a triage session has the state `stopped`. Absent when none ran |
 | `software_review_interval_hours` | `"off"`, or the hours between scheduled software reviews, 1 to 8760. Also `"off"` before the settings file set the key |
 | `software_review_interval_changed_at`, `software_review_interval_changed_by` | When the setting applied, and `the settings file` and its path; absent while not set |
-| `next_software_review_due_at` | One interval after the latest counted review started. Absent while the review is off, and before any counted review, since one is then due at once. A due review still waits while a triage agent run is active |
+| `run_limit` | The last 24 hours against the [run limit](../changing-mmhotline/design/triage-agent.md#the-run-limit); absent without the setup. The text prints it as `Runs that count toward the run limit in the last 24 hours: 12 of 50.` |
+| `run_limit.most_runs_in_24_hours` | The applied `triage_agent.most_runs_in_24_hours`: a number, or `"no_limit"` |
+| `run_limit.counted_runs_in_the_last_24_hours` | The runs MMHotline started by itself in the last 24 hours that count toward the limit |
+| `run_limit.run_limit_notice` | `none`, `heads_up_sent` (the 80% heads-up went out), or `limit_holds` (new alerts go straight to people) |
+| `run_limit.agent_looks_at_new_alerts_again_at` | While the limit holds, when the count falls to 80% of the limit and the agent runs again; absent otherwise |
+| `software_review_skipped_for_the_run_limit_at` | When the run limit last skipped a scheduled software review, since the latest review started; absent when none was skipped. The text prints `Scheduled software review skipped at TIME: the triage agent's run limit had been reached.` |
+| `next_software_review_due_at` | One interval after the latest counted review started, or after a review the run limit skipped. Absent while the review is off, and before any counted review, since one is then due at once. A due review still waits while a triage agent run is active |
 | `latest_software_review` | The latest software review, without its steps; absent when none ran |
 | `latest_software_review.run_id`, `.state` | The run ID; `running`, `finished`, `stopped`, or `failed` |
 | `latest_software_review.started_at`, `.started_by`, `.ended_at` | Start; `MMHotline` or the person who ran `run-software-review`; end, absent until recorded |
@@ -1078,6 +1085,61 @@ uses it.
   sent at each alert severity.
 - **JSON:** the fields of `triage-agent show`, and `triage_agent_run_id`,
   the review's run ID.
+
+## mmhotline triage-agent usage
+
+Gives the triage agent's numbers since a time: what its runs did and used,
+how often the run limit was reached, and how the warnings held for it
+ended. It only reads, and is for administrators, as `show` is. The team's
+weekly review of what the agent costs uses it; every software review's
+prompt carries the same numbers for the last 7 days
+([the run limit's numbers](../changing-mmhotline/design/triage-agent.md#the-run-limits-numbers)).
+
+```sh
+sudo mmhotline triage-agent usage --since 2026-11-17T09:00:00Z
+```
+
+```text
+Triage agent usage from 2026-11-17 09:00:00 UTC to 2026-11-24 09:00:00 UTC.
+Run limit (triage_agent.most_runs_in_24_hours): 50 runs in 24 hours.
+Runs by purpose and state:
+- commit_review, finished: 2
+- software_review (scheduled), finished: 7
+- triage_session, failed: 1
+- triage_session, finished: 38
+What the runs used, per coding agent:
+- Codex: 48 runs, 47 finished; 19,680,000 input tokens (18,240,000 of them cached), 100,800 output tokens; Codex reports tokens, not dollars.
+The run limit was reached 0 times. Alerts sent straight to people because of the run limit: 0.
+Warnings held for the triage agent: 21 taken over by the agent's report or request, 4 delivered, 2 resolved while held, 0 still held.
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--since TIME` | Required. Count the runs that started, and the alerts that arrived, at or after `TIME`, an RFC 3339 time such as `2026-11-17T09:00:00Z`, as `alerts list --received-since` takes it |
+| Common flags | As above |
+
+- **Runs** of every purpose count here, also those the run limit does not
+  count, such as setup tests. `software_review` says whether the schedule
+  or a person started it.
+- **Tokens and dollars** are the runs' own use. A failed or stopped run
+  reports none; the next finished run of its coding agent session counts
+  it. Dollars appear where the coding agent reports them, as Claude Code
+  does.
+- **How often the limit was reached** counts MMHotline's own warnings
+  "Agent run limit reached. Alerts continue."; **alerts sent straight to
+  people** counts the alerts the limit passed over.
+
+**JSON fields:** `message`, `web_url`, and `triage_agent_usage`, with:
+
+| Field | Meaning |
+| --- | --- |
+| `since`, `until` | The span: `--since` and now |
+| `most_runs_in_24_hours` | The applied limit: a number, or `"no_limit"` |
+| `runs` | One entry per purpose, starter, and state, present also when empty: `purpose`, `started_by_mmhotline`, `state` (`running`, `finished`, `stopped`, or `failed`), and `runs`, the count |
+| `coding_agents` | One entry per coding agent used, present also when empty: `coding_agent`, `runs`, `finished_runs`, `input_tokens`, `cached_input_tokens`, `output_tokens`, and `cost_in_us_dollars`, absent when the coding agent reports no dollars |
+| `times_the_run_limit_was_reached` | MMHotline's warnings that the limit was reached |
+| `alerts_sent_straight_to_people_for_the_run_limit` | The alerts the limit passed over |
+| `held_warnings.taken_over`, `.delivered`, `.resolved`, `.still_held` | The warnings held for the agent, by how their hold ended |
 
 ## mmhotline triage-agent check-preparation
 
@@ -2663,6 +2725,7 @@ empty. Each alert:
 | `sender_alert_id`, `sender_incident_key` | The sender's IDs, when it gave them |
 | `repeat_count` | How many later warns were folded into this warn and not delivered again; absent when none ([repeated warnings](../changing-mmhotline/design/ingestion.md#repeated-warnings)) |
 | `last_repeat_title` | The latest folded repeat's title; absent when none |
+| `passed_over_for_the_run_limit` | `true` when the triage agent's [run limit](../changing-mmhotline/design/triage-agent.md#the-run-limit) held, so the alert went straight to people and never to the agent; absent otherwise. The text adds the line "The triage agent did not look at this alert and will not come back to it: its run limit was reached. Handle it yourself." |
 | `page_url` | The alert's page |
 
 ## mmhotline triage-sessions list
