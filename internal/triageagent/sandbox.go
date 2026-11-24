@@ -104,8 +104,16 @@ func RunInsideSandbox(ctx context.Context, in io.Reader, out io.Writer, settings
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return fail(errors.New("triage agent request must be one JSON object"))
 	}
-	if len(line)-base64.StdEncoding.EncodedLen(len(request.SystemsRepositoryBundle)) > maximumLineSizeWithoutBundle {
-		return fail(errors.New("triage agent request exceeds 1 MiB excluding the systems repository bundle"))
+	// The server list is measured as Go encodes it, which is how MMHotline sent it.
+	inventoryServers, err := json.Marshal(request.InventoryServers)
+	if err != nil {
+		return fail(fmt.Errorf("invalid triage agent request: %w", err))
+	}
+	if len(inventoryServers) > MaximumInventoryServersSize {
+		return fail(fmt.Errorf("the triage agent request's inventory_servers exceeds %d MiB", MaximumInventoryServersSize>>20))
+	}
+	if len(line)-base64.StdEncoding.EncodedLen(len(request.SystemsRepositoryBundle))-len(inventoryServers) > maximumLineSizeWithoutBundle {
+		return fail(errors.New("triage agent request exceeds 1 MiB excluding the systems repository bundle and inventory_servers"))
 	}
 	if err := checkRequest(request); err != nil {
 		return fail(err)

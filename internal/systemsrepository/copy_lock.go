@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -39,9 +41,45 @@ type CopyLockOptions struct {
 	WaitingChanged func(waiting bool)
 }
 
+type copyLockWaitsKey struct{}
+
+// ReportCopyLockWaits returns a context under which every wait for the
+// copy's lock that sets no WaitingChanged of its own is reported to
+// waitingChanged: a triage agent run's start fetches, bundles, and lists the
+// servers under the lock, and its page says while any of these waits.
+func ReportCopyLockWaits(ctx context.Context, waitingChanged func(waiting bool)) context.Context {
+	return context.WithValue(ctx, copyLockWaitsKey{}, waitingChanged)
+}
+
+// maximumCopyLockHolderCharacters bounds the holder line a page shows: other
+// users' helpers write the line, and one line names a holder in far fewer.
+const maximumCopyLockHolderCharacters = 300
+
+// CopyLockHolder reads the line the lock's holder wrote into <copy>.lock,
+// such as "mmhotline: mmx run ... process 4242", or "" when the file names
+// nobody: one of MMHotline's short holds, or a holder that writes no line.
+func CopyLockHolder(directory string) string {
+	file, err := os.Open(copyLockPath(directory))
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	buffer := make([]byte, 4*maximumCopyLockHolderCharacters)
+	read, _ := io.ReadFull(file, buffer)
+	line, _, _ := strings.Cut(strings.ToValidUTF8(string(buffer[:read]), "?"), "\n")
+	line = strings.TrimSpace(line)
+	if characters := []rune(line); len(characters) > maximumCopyLockHolderCharacters {
+		line = string(characters[:maximumCopyLockHolderCharacters-1]) + "…"
+	}
+	return line
+}
+
 // withCopyLock runs work while holding the copy's lock, waiting for it until
 // ctx ends. A waiting MMX run or deploy is normal, not a failure.
 func withCopyLock(ctx context.Context, directory string, options CopyLockOptions, work func() error) error {
+	if options.WaitingChanged == nil {
+		options.WaitingChanged, _ = ctx.Value(copyLockWaitsKey{}).(func(bool))
+	}
 	file, err := os.OpenFile(copyLockPath(directory), os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return fmt.Errorf("open the systems repository lock %s: %w", copyLockPath(directory), err)

@@ -225,9 +225,13 @@ func (a *App) DriveSoftwareReview(ctx context.Context) error {
 // needs the run stops it, as it stops any review. It counts as any review:
 // the next is due one interval after it.
 func (a *App) RunSoftwareReviewNow(ctx context.Context, p Principal) (string, error) {
-	// The start fetches from the team's Git host; the command may stop
-	// waiting meanwhile, and the review must not stop with it.
-	ctx = context.WithoutCancel(ctx)
+	// The start fetches from the team's Git host and may wait for the copy's
+	// lock; the command may stop waiting meanwhile, and the review must not
+	// stop with it. It stops with MMHotline, as a scheduled review's start
+	// does, so a stop never waits for the lock.
+	ctx, stop := context.WithCancel(context.WithoutCancel(ctx))
+	defer stop()
+	defer context.AfterFunc(a.mmhotlineStopping(), stop)()
 	var person Member
 	if err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error { var err error; person, err = RequireMember(ctx, tx, p, true); return err }); err != nil {
 		return "", err

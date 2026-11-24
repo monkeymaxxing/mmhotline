@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"mmhotline/internal/systemsrepository"
 )
 
 // The triage agent at work, as people see it:
@@ -61,6 +64,10 @@ type TriageSessionLiveRun struct {
 	Steps                            []TriageAgentRunStep
 	// EarlierSteps counts the steps before those shown.
 	EarlierSteps int
+	// WaitingForSystemsRepository says, while the run's start waits for the
+	// systems repository copy's lock, who holds the lock; "" otherwise.
+	WaitingForSystemsRepository string
+	id                          string
 }
 
 // Stoppable says whether a member may still press Stop: the session is
@@ -94,7 +101,7 @@ func (a *App) IncidentTriageSession(ctx context.Context, p Principal, incidentID
 		if err != nil {
 			return err
 		}
-		view, err = readTriageSessionLiveView(ctx, tx, sessionID, maximumLiveViewSteps)
+		view, err = a.readTriageSessionLiveView(ctx, tx, sessionID, maximumLiveViewSteps)
 		return err
 	})
 	return view, err
@@ -119,7 +126,7 @@ func (s triageSessionState) phaseText() string {
 // readTriageSessionLiveView reads the session's live view with the latest
 // steps of its run, at most steps of them; ErrNotFound when there is no such
 // session.
-func readTriageSessionLiveView(ctx context.Context, tx *sql.Tx, sessionID string, steps int) (*TriageSessionLiveView, error) {
+func (a *App) readTriageSessionLiveView(ctx context.Context, tx *sql.Tx, sessionID string, steps int) (*TriageSessionLiveView, error) {
 	s, err := readTriageSessionState(ctx, tx, sessionID)
 	if err != nil {
 		return nil, err
@@ -143,8 +150,28 @@ func readTriageSessionLiveView(ctx context.Context, tx *sql.Tx, sessionID string
 		}
 		view.TakenOverAt = s.TakenOverAt
 	}
-	view.Run, err = triageSessionLiveRun(ctx, tx, s, steps)
+	if view.Run, err = triageSessionLiveRun(ctx, tx, s, steps); view.Run != nil {
+		view.Run.WaitingForSystemsRepository = a.copyLockWaitText(view.Run.id)
+	}
 	return view, err
+}
+
+// copyLockWaitText is the line the session's page shows while the start of
+// run runID waits for the systems repository copy's lock, with the line the
+// lock's holder wrote, such as an MMX run's; "" when it does not wait.
+func (a *App) copyLockWaitText(runID string) string {
+	a.triageAgent.mu.Lock()
+	run := a.triageAgent.activeRun
+	waiting := run != nil && run.id == runID && run.waitingForCopyLock
+	a.triageAgent.mu.Unlock()
+	if !waiting {
+		return ""
+	}
+	holder := systemsrepository.CopyLockHolder(filepath.Join(a.Store.Dir, systemsrepository.DirectoryName))
+	if holder == "" {
+		return "Waiting for the systems repository, which another process is using."
+	}
+	return "Waiting for the systems repository, which MMX is using: " + holder
 }
 
 // triageSessionLiveRun reads the session's run that is running, or else its
@@ -161,7 +188,7 @@ func triageSessionLiveRun(ctx context.Context, tx *sql.Tx, s triageSessionState,
 	if err != nil {
 		return nil, err
 	}
-	run := &TriageSessionLiveRun{Started: time.Unix(started, 0), Title: "Latest run", StateLabel: triageSessionRunStateLabel(state), FailureReason: reason}
+	run := &TriageSessionLiveRun{id: id, Started: time.Unix(started, 0), Title: "Latest run", StateLabel: triageSessionRunStateLabel(state), FailureReason: reason}
 	if id == s.HandOverRunID {
 		run.Title = "Hand-over run"
 	}
@@ -224,7 +251,7 @@ func (a *App) TriageSessionPageFor(ctx context.Context, p Principal, sessionID s
 			return err
 		}
 		var err error
-		if page.TriageSession, err = readTriageSessionLiveView(ctx, tx, sessionID, maximumLiveViewSteps); err != nil {
+		if page.TriageSession, err = a.readTriageSessionLiveView(ctx, tx, sessionID, maximumLiveViewSteps); err != nil {
 			return err
 		}
 		session, err := readTriageSession(ctx, tx, sessionID)
@@ -329,7 +356,7 @@ func (a *App) TriageAgentAtWorkNow(ctx context.Context, p Principal) (*TriageAge
 			return nil
 		}
 		var err error
-		if part.Session, err = readTriageSessionLiveView(ctx, tx, openID, 1); err != nil {
+		if part.Session, err = a.readTriageSessionLiveView(ctx, tx, openID, 1); err != nil {
 			return err
 		}
 		part.SessionStartedAt = time.Unix(openStarted, 0).UTC()
