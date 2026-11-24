@@ -34,12 +34,12 @@ type CommandAlert struct {
 	SenderIncidentKey string    `json:"sender_incident_key,omitempty"`
 	// RepeatCount and LastRepeatTitle are the later warns folded into this
 	// one; absent when none were.
-	RepeatCount     int64  `json:"repeat_count,omitempty"`
+	RepeatCount int64 `json:"repeat_count,omitempty"`
 	// PassedOverForTheRunLimit: the triage agent's run limit sent the alert
 	// straight to people, and the agent will not come back to it.
-	PassedOverForTheRunLimit bool `json:"passed_over_for_the_run_limit,omitempty"`
-	LastRepeatTitle string `json:"last_repeat_title,omitempty"`
-	PageURL         string `json:"page_url"`
+	PassedOverForTheRunLimit bool   `json:"passed_over_for_the_run_limit,omitempty"`
+	LastRepeatTitle          string `json:"last_repeat_title,omitempty"`
+	PageURL                  string `json:"page_url"`
 }
 
 // maximumAlertsListed is as many alerts as one ListAlerts read gives, which

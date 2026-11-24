@@ -33,11 +33,11 @@ type CommandRequest struct {
 
 type CommandResult struct {
 	// SettingsFile is what settings apply and settings show print.
-	SettingsFile       *SettingsFileView             `json:"settings_file,omitempty"`
-	TriageAgent        *TriageAgentView              `json:"triage_agent,omitempty"`
-	TriageAgentRunID   string                        `json:"triage_agent_run_id,omitempty"`
+	SettingsFile     *SettingsFileView `json:"settings_file,omitempty"`
+	TriageAgent      *TriageAgentView  `json:"triage_agent,omitempty"`
+	TriageAgentRunID string            `json:"triage_agent_run_id,omitempty"`
 	// TriageAgentUsage is what triage-agent usage prints.
-	TriageAgentUsage *TriageAgentUsage `json:"triage_agent_usage,omitempty"`
+	TriageAgentUsage   *TriageAgentUsage             `json:"triage_agent_usage,omitempty"`
 	ReviewAgent        *ReviewAgentView              `json:"review_agent,omitempty"`
 	ReviewAgentRunID   string                        `json:"review_agent_run_id,omitempty"`
 	AgentPlaybookRules []InventoryAgentPlaybookRules `json:"agent_playbook_rules,omitempty"`

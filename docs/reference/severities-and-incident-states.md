@@ -212,7 +212,7 @@ or while the agent replaces a server, for
 `triage_agent.sos_waits_for_a_server_replacement_minutes`, 0 to 60.
 
 - The page says `The triage agent looks first, so MMHotline has woken nobody yet.`
-- Email and chat get the SOS at once.
+- Email and chat wait with it, and get the SOS when `primary` starts or a person claims it. An SOS that resolves during the wait with nobody claiming it sends them nothing.
 - The wait ends early when the agent sends a report at SOS about it, or
   one that names no alert, cannot help,
   or a person presses **Take over from the agent**. Then `primary` starts.

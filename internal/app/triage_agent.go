@@ -274,18 +274,18 @@ type TriageAgentView struct {
 	// change is absent while the settings file has not set it; the next due
 	// time is absent while the review is off, and while no review that
 	// counts has started, as the next is then due at once.
-	SoftwareReviewIntervalHours     SoftwareReviewIntervalHours  `json:"software_review_interval_hours"`
-	SoftwareReviewIntervalChangedAt *time.Time                   `json:"software_review_interval_changed_at,omitempty"`
-	SoftwareReviewIntervalChangedBy string                       `json:"software_review_interval_changed_by,omitempty"`
-	NextSoftwareReviewDueAt         *time.Time                   `json:"next_software_review_due_at,omitempty"`
+	SoftwareReviewIntervalHours     SoftwareReviewIntervalHours `json:"software_review_interval_hours"`
+	SoftwareReviewIntervalChangedAt *time.Time                  `json:"software_review_interval_changed_at,omitempty"`
+	SoftwareReviewIntervalChangedBy string                      `json:"software_review_interval_changed_by,omitempty"`
+	NextSoftwareReviewDueAt         *time.Time                  `json:"next_software_review_due_at,omitempty"`
 	// SoftwareReviewSkippedForTheRunLimitAt is when a scheduled software
 	// review was last skipped because the run limit held, absent when none
 	// was skipped since the latest review started.
 	SoftwareReviewSkippedForTheRunLimitAt *time.Time `json:"software_review_skipped_for_the_run_limit_at,omitempty"`
 	// RunLimit is the last 24 hours against the run limit, absent without
 	// the setup.
-	RunLimit *TriageAgentRunLimitView `json:"run_limit,omitempty"`
-	RecentConnections               []TriageAgentProxyConnection `json:"recent_connections"`
+	RunLimit          *TriageAgentRunLimitView     `json:"run_limit,omitempty"`
+	RecentConnections []TriageAgentProxyConnection `json:"recent_connections"`
 }
 
 // ScheduledSoftwareReviewIsOff says that only a person starts a software
