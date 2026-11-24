@@ -183,12 +183,12 @@ func (a *App) commitsForTheTriageAgent(ctx context.Context, tx *sql.Tx) ([]Commi
 	if every, err := trustsEveryCommitOnOrigin(ctx, tx); err != nil || every {
 		return nil, err
 	}
-	// A commit given to a review run that is still running waits for that
-	// run's decision, also when the run took the last place under the run
-	// limit; a run that ends without one sends the warning
-	// (warnAboutCommitsTheRunLeft), or leaves the commit to the next visit.
-	waiting, err := readCommitReviews(ctx, tx, `c.reviewed_at IS NULL AND c.alert_sent='' AND NOT EXISTS(SELECT 1 FROM triage_agent_runs r WHERE r.id=c.triage_agent_review_run_id AND r.state='running') ORDER BY c.found_at,c.commit_id`)
+	waiting, err := readCommitReviews(ctx, tx, `c.reviewed_at IS NULL AND c.alert_sent='' ORDER BY c.found_at,c.commit_id`)
 	if err != nil || len(waiting) == 0 {
+		return nil, err
+	}
+	running, err := queryStrings(ctx, tx, `SELECT id FROM triage_agent_runs WHERE state='running' AND purpose='commit_review'`)
+	if err != nil {
 		return nil, err
 	}
 	settings, err := readCommitApprovalSettings(ctx, tx)
@@ -204,6 +204,14 @@ func (a *App) commitsForTheTriageAgent(ctx context.Context, tx *sql.Tx) ([]Commi
 		reason := whyTheTriageAgentMayNotApprove(settings, review)
 		if reason == "" && cannot == "" {
 			forTheAgent = append(forTheAgent, review)
+			continue
+		}
+		// A commit the agent may approve that was given to a review run
+		// still running waits for that run's decision, also when the run
+		// took the last place under the run limit; a run that ends without
+		// one sends the warning (warnAboutCommitsTheRunLeft), or leaves the
+		// commit to the next visit.
+		if reason == "" && slices.Contains(running, review.TriageAgentReviewRunID) {
 			continue
 		}
 		// With the setting a_person, the warning says what it always said.
