@@ -16,12 +16,12 @@ import (
 const maxUnresolvedIncidents = 1000
 
 const incidentSchema = `
-CREATE TABLE sources(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,active INTEGER NOT NULL,created_at INTEGER NOT NULL,last_heard_at INTEGER NOT NULL DEFAULT 0,warn_after_no_check_in_for INTEGER NOT NULL DEFAULT 120,sos_after_no_check_in_for INTEGER NOT NULL DEFAULT 300);
+CREATE TABLE sources(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,active INTEGER NOT NULL,created_at INTEGER NOT NULL,last_heard_at INTEGER NOT NULL DEFAULT 0,warn_after_no_check_in_for INTEGER NOT NULL DEFAULT 120,sos_after_no_check_in_for INTEGER NOT NULL DEFAULT 300,` + repeatedWarningsColumn + `);
 CREATE TABLE signing_secrets(id TEXT PRIMARY KEY,source_id TEXT NOT NULL REFERENCES sources(id),secret BLOB NOT NULL,created_at INTEGER NOT NULL);
 CREATE INDEX signing_secrets_source ON signing_secrets(source_id);
 CREATE TABLE source_rates(source_id TEXT PRIMARY KEY REFERENCES sources(id),bucket INTEGER NOT NULL,alert_count INTEGER NOT NULL);
 CREATE TABLE team_alert_rate(id INTEGER PRIMARY KEY CHECK(id=1),hour_bucket INTEGER NOT NULL,warning_and_info_alerts INTEGER NOT NULL);
-CREATE TABLE alerts(sequence INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,source_id TEXT NOT NULL,sender_alert_id TEXT NOT NULL,actor TEXT NOT NULL,replay_key TEXT NOT NULL,incident_id TEXT NOT NULL,sender_incident_key TEXT NOT NULL,severity TEXT NOT NULL,title TEXT NOT NULL,message TEXT NOT NULL,notes TEXT NOT NULL,received_at INTEGER NOT NULL,happened_at INTEGER NOT NULL DEFAULT 0,UNIQUE(source_id,replay_key));
+CREATE TABLE alerts(sequence INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,source_id TEXT NOT NULL,sender_alert_id TEXT NOT NULL,actor TEXT NOT NULL,replay_key TEXT NOT NULL,incident_id TEXT NOT NULL,sender_incident_key TEXT NOT NULL,severity TEXT NOT NULL,title TEXT NOT NULL,message TEXT NOT NULL,notes TEXT NOT NULL,received_at INTEGER NOT NULL,happened_at INTEGER NOT NULL DEFAULT 0,` + alertRepeatCountColumn + `,` + alertLastRepeatTitleColumn + `,UNIQUE(source_id,replay_key));
 CREATE INDEX alerts_incident ON alerts(incident_id,sequence);
 CREATE INDEX alerts_received ON alerts(received_at,sequence);
 CREATE TABLE incident_settings(id INTEGER PRIMARY KEY CHECK(id=1),response_seconds INTEGER NOT NULL);

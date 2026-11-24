@@ -285,6 +285,10 @@ type SettingsAlertSource struct {
 	// WarnAfterNoCheckInForMinutes is 1 to 60, or off.
 	WarnAfterNoCheckInForMinutes string `yaml:"warn_after_no_check_in_for_minutes"`
 	SOSAfterNoCheckInForMinutes  int    `yaml:"sos_after_no_check_in_for_minutes"`
+	// RepeatedWarnings is keep_each, the default when left out, or
+	// fold_by_sender_incident_key_and_first_message_line
+	// (repeated_warnings.go).
+	RepeatedWarnings string `yaml:"repeated_warnings" settings:"optional"`
 }
 
 // SettingsProblem is one problem in the settings file: the key path and what

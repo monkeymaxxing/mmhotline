@@ -95,7 +95,9 @@ The tool's own ID for this one alert, so a retry is counted once.
 - Without it, MMHotline recognizes only an identical signed request as a
   repeat. A retry signed again at a new second is a new request, so it
   would be saved as a second alert.
-- MMHotline recognizes a repeat for as long as it keeps the alert.
+- MMHotline recognizes a repeat for as long as it keeps the alert. A warn
+  folded into an earlier warn has no alert of its own; MMHotline recognizes
+  its retry for 24 hours.
 
 ### sender_incident_key
 
@@ -165,6 +167,7 @@ When the problem happened, on the tool's own clock.
 | `mmhotline_alert_id` | MMHotline's ID for the saved alert |
 | `mmhotline_incident_id` | The SOS incident the alert opened, joined, or resolved; absent when the alert has no incident |
 | `already_received` | `true` when this was a repeat of an alert MMHotline already has |
+| `recorded_as_repeat_of_earlier_alert` | Only when `true`: the alert source folds repeated warnings, and this warn was counted on an earlier warn, which `mmhotline_alert_id` names. It is not delivered again ([repeated warnings](../changing-mmhotline/design/ingestion.md#repeated-warnings)) |
 
 A `200` says MMHotline saved the alert. It does not say that anyone was
 notified or claimed anything.
@@ -406,8 +409,8 @@ never meets a `413`.
 
 | Limit | Counts | Answer |
 | --- | --- | --- |
-| 120 new alerts per UTC minute, per alert source | Every severity except `sos` and `resolved-sos`; a repeat does not count | `429` |
-| 1,000 new `info` and `warn` alerts per UTC hour, for the whole installation | `info`, `warn`, `resolved-info`, `resolved-warn` | `429` |
+| 120 new alerts per UTC minute, per alert source | Every severity except `sos` and `resolved-sos`; a repeat does not count, nor a warn folded into an earlier one | `429` |
+| 1,000 new `info` and `warn` alerts per UTC hour, for the whole installation | `info`, `warn`, `resolved-info`, `resolved-warn`; a warn folded into an earlier one does not count | `429` |
 | 1,000 incidents not resolved | A new `sos` that would open an incident; an `sos` that joins an incident, and a `resolved-sos`, still pass | `429`, and MMHotline's own SOS |
 | 10,000 notifications waiting to be sent, of which `info` and `warn` may use 9,000 | Alerts that would queue more | `429`; for an `sos`, also MMHotline's own SOS |
 | 250 SOS notifications waiting to be sent, per alert source | A new `sos` from that source | `429`, and MMHotline's own SOS |

@@ -242,6 +242,9 @@ var databaseFormatUpgrades = []func(*sql.Tx) error{
 	// the triage agent's reports and requests covers, and an SOS's
 	// subscribed notification that waits with its first waking step.
 	addHoldRules,
+	// Format 5: an alert source's repeated_warnings setting, the repeats
+	// folded into a warn, and the folded repeats' retry identities.
+	addRepeatedWarnings,
 }
 
 // currentDatabaseFormat is the format Setup creates and Open upgrades to.

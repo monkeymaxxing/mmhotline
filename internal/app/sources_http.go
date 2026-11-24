@@ -78,7 +78,7 @@ func (a *App) genericIntake(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	e, duplicate, secret, err := a.AdmitGeneric(r.Context(), r.PathValue("alert_source_id"), signature, body)
+	e, outcome, secret, err := a.AdmitGeneric(r.Context(), r.PathValue("alert_source_id"), signature, body)
 	receiptKey := newReceipt(secret, "alert-intake", signature)
 	now := a.Now()
 	if err != nil {
@@ -89,7 +89,10 @@ func (a *App) genericIntake(w http.ResponseWriter, r *http.Request) {
 		MmhotlineAlertID    string `json:"mmhotline_alert_id"`
 		MmhotlineIncidentID string `json:"mmhotline_incident_id,omitempty"`
 		AlreadyReceived     bool   `json:"already_received"`
-	}{e.ID, e.IncidentID, duplicate}, receiptKey, now)
+		// Only when true: the alert was folded into the earlier warn that
+		// mmhotline_alert_id names.
+		RecordedAsRepeatOfEarlierAlert bool `json:"recorded_as_repeat_of_earlier_alert,omitempty"`
+	}{e.ID, e.IncidentID, outcome.AlreadyReceived, outcome.RecordedAsRepeatOfEarlierAlert}, receiptKey, now)
 }
 
 type sourcesPageData struct {

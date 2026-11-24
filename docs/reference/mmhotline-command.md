@@ -2634,7 +2634,8 @@ sudo mmhotline alerts list --severity warn
 
 That is the first line of one alert. Each alert has a line with its
 received time, severity, ID, and title, then a line with its alert source
-and page, then its message. The list ends with a line such as
+and page, then its message. A warn with folded repeats adds a line such as
+`Repeated 4999 more times within the hour, and not delivered again. The latest repeat's title: node-17: CVE-2026-1234 in openssh 9.6`. The list ends with a line such as
 `Listed 1 alert, newest first.`
 [Back up and restore the database](../how-to/back-up-and-restore-the-database.md#restore)
 uses it.
@@ -2660,6 +2661,8 @@ empty. Each alert:
 | `alert_source_id` | The alert source's ID, or `system` or `manual` |
 | `incident_id` | The SOS incident it opened or joined; absent when none |
 | `sender_alert_id`, `sender_incident_key` | The sender's IDs, when it gave them |
+| `repeat_count` | How many later warns were folded into this warn and not delivered again; absent when none ([repeated warnings](../changing-mmhotline/design/ingestion.md#repeated-warnings)) |
+| `last_repeat_title` | The latest folded repeat's title; absent when none |
 | `page_url` | The alert's page |
 
 ## mmhotline triage-sessions list

@@ -37,7 +37,7 @@ func checkAlertSourceName(name string) (string, error) {
 
 // applyAlertSourceSettings makes the alert sources those of the settings
 // file (CA3): each listed source is active, with its name, signing secrets,
-// and check-in times; each other source is disabled, so its secrets stop
+// check-in times, and repeated_warnings; each other source is disabled, so its secrets stop
 // working, and its alerts and check-ins stay. A signing secret listed before
 // keeps its ID and creation time.
 func (a *App) applyAlertSourceSettings(ctx context.Context, sources []SettingsAlertSource) error {
@@ -61,6 +61,10 @@ func (a *App) applyAlertSourceSettings(ctx context.Context, sources []SettingsAl
 			if err = checkAlertSourceCheckInTimes(warnAfter, sosAfter); err != nil {
 				return err
 			}
+			repeatedWarnings, err := checkRepeatedWarnings(source.RepeatedWarnings)
+			if err != nil {
+				return fmt.Errorf("%w: repeated_warnings %s", ErrInvalid, err)
+			}
 			_, err = readSource(ctx, tx, source.AlertSourceID)
 			switch {
 			case errors.Is(err, ErrNotFound):
@@ -71,9 +75,9 @@ func (a *App) applyAlertSourceSettings(ctx context.Context, sources []SettingsAl
 				if count >= maxAlertSources {
 					return fmt.Errorf("%w: an installation can have at most %d alert sources, counting disabled ones", ErrRateLimited, maxAlertSources)
 				}
-				_, err = tx.ExecContext(ctx, `INSERT INTO sources(id,name,kind,active,created_at,warn_after_no_check_in_for,sos_after_no_check_in_for) VALUES(?,?,'generic',1,?,?,?)`, source.AlertSourceID, name, now.Unix(), int64(warnAfter/time.Second), int64(sosAfter/time.Second))
+				_, err = tx.ExecContext(ctx, `INSERT INTO sources(id,name,kind,active,created_at,warn_after_no_check_in_for,sos_after_no_check_in_for,repeated_warnings) VALUES(?,?,'generic',1,?,?,?,?)`, source.AlertSourceID, name, now.Unix(), int64(warnAfter/time.Second), int64(sosAfter/time.Second), repeatedWarnings)
 			case err == nil:
-				_, err = tx.ExecContext(ctx, `UPDATE sources SET name=?,active=1,warn_after_no_check_in_for=?,sos_after_no_check_in_for=? WHERE id=?`, name, int64(warnAfter/time.Second), int64(sosAfter/time.Second), source.AlertSourceID)
+				_, err = tx.ExecContext(ctx, `UPDATE sources SET name=?,active=1,warn_after_no_check_in_for=?,sos_after_no_check_in_for=?,repeated_warnings=? WHERE id=?`, name, int64(warnAfter/time.Second), int64(sosAfter/time.Second), repeatedWarnings, source.AlertSourceID)
 			}
 			if err != nil {
 				return err

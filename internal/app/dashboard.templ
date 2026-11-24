@@ -123,6 +123,9 @@ templ alertBody(frame pageFrame, alert alertView) {
 				if alert.Notes != "" && alert.Severity != "resolved-sos" {
 					<p class="small muted">{ alert.Notes }</p>
 				}
+				if repeats := repeatsSentence(alert.RepeatCount, alert.LastRepeatTitle); repeats != "" {
+					<p id="repeats" class="small muted" data-live>{ repeats }</p>
+				}
 				if alert.SourceID == "system" {
 					<p class="small faint">Notice from MMHotline</p>
 				}
