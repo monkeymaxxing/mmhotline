@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -199,6 +200,9 @@ func readMostRunsIn24Hours(ctx context.Context, tx rowQuerier) (MostRunsIn24Hour
 // applyMostRunsIn24Hours ends a limit that holds when the new value raises
 // it above the count, or is no_limit: a person who raises the limit wants
 // the agent back now, not when the count falls to 80% of the new limit.
+// The new value is recorded in the same transaction, which the settings
+// apply then records again with the part: a background visit between the
+// two would otherwise read the old limit and find it reached again.
 func applyMostRunsIn24Hours(ctx context.Context, a *App, s Settings) error {
 	if s.TriageAgent == nil {
 		return nil
@@ -207,11 +211,21 @@ func applyMostRunsIn24Hours(ctx context.Context, a *App, s Settings) error {
 	if err != nil {
 		return fmt.Errorf("%w: most_runs_in_24_hours %s", ErrInvalid, err)
 	}
+	value, err := json.Marshal(s.TriageAgent.MostRunsIn24Hours)
+	if err != nil {
+		return err
+	}
 	now := a.Now().UTC()
 	return a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 		earlier, err := readMostRunsIn24Hours(ctx, tx)
-		if err != nil || limit != noRunLimit && (earlier == noRunLimit || limit <= earlier) {
+		if err != nil {
 			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO settings_file_parts(part,applied_values) VALUES(?,?) ON CONFLICT(part) DO UPDATE SET applied_values=excluded.applied_values`, mostRunsIn24HoursKey, string(value)); err != nil {
+			return err
+		}
+		if limit != noRunLimit && (earlier == noRunLimit || limit <= earlier) {
+			return nil
 		}
 		state, err := readRunLimitState(ctx, tx, now, "")
 		if err != nil || state.notice != runLimitNoticeLimitHolds {

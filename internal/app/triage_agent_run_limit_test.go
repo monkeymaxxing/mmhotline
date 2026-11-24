@@ -451,6 +451,26 @@ func TestRaisingTheRunLimitEndsItAtOnce(t *testing.T) {
 	}
 }
 
+// A background visit right after the raise lifted the limit, before the
+// settings apply records the part, reads the new limit: the limit is not
+// reached again.
+func TestRaisingTheRunLimitAndANextVisitAgree(t *testing.T) {
+	t.Parallel()
+	r := newTriageSessionRig(t, false)
+	forgetEarlierRuns(t, r.a)
+	setRunLimit(t, r.a, "50")
+	fillCountedRuns(t, r.a, r.source, 50, r.a.Now().Add(-23*time.Hour))
+	driveRunLimit(t, r.a)
+	// The part's own step alone, as the settings apply runs it first.
+	if err := applyMostRunsIn24Hours(context.Background(), r.a, Settings{TriageAgent: &SettingsTriageAgent{MostRunsIn24Hours: "55"}}); err != nil {
+		t.Fatal(err)
+	}
+	driveRunLimit(t, r.a)
+	if state := runLimitStateOf(t, r.a); state.notice == runLimitNoticeLimitHolds || state.limit != 55 || len(runLimitMessages(t, r.a)) != 2 {
+		t.Fatalf("after raising the limit to 55: notice %q, limit %d, messages %q", state.notice, state.limit, runLimitMessages(t, r.a))
+	}
+}
+
 // Run 50's fix fails after the run ended: the limit refuses the run that
 // would take the result to the agent, so the result goes to a person once,
 // with the alerts of the problem it was for.
