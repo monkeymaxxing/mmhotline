@@ -259,7 +259,7 @@ reached over SSH.
 
 | Check | Result |
 | --- | --- |
-| A session from alerts | A triage session groups the alert investigation, while a run is one invocation of the coding agent. A warn alert started a triage session and a run in the same second, and the quiet start message went out. Later alerts resumed the same Codex session |
+| A session from alerts | A triage session groups the alert investigation, while a run is one invocation of the coding agent. A warn alert started a triage session and a run in the same second, and the quiet start message went out (since 0.7.0 it is off unless `triage_agent.send_a_message_when_the_agent_starts_looking` is true). Later alerts resumed the same Codex session |
 | Reading the server | The agent read the MMHotline server's journal as the `triage` user over SSH through MMHotline's logging proxy. MMHotline wrote the `~/.ssh/config` used for the SSH connection. The proxy recorded the server's port 22 allowed at `10.20.0.1`. The `triage` user's key allowed connections only from `10.20.0.1`, and was refused from `127.0.0.1` |
 | Commits | The agent's signed commits reached the origin through MMHotline's push filter. All 12 commits on the origin verified as signed |
 | A fix that waits | A one-off is an MMX playbook written for one fix, containing tasks to run on the server. A one-off written as a `shell` task was judged an unrecognized task and waited for a person under "Routine fixes without permission" |
