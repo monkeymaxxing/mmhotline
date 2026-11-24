@@ -750,3 +750,152 @@ func TestTriageSessionPromptFullOfResultsStillCarriesOneAlert(t *testing.T) {
 		t.Fatalf("the prompt is %d bytes in JSON", size)
 	}
 }
+
+// fillDeliveryQueue queues count deliveries, due long after the test, at
+// severity, to an email contact method subscribed to nothing, so no message
+// of the test joins them; an SOS filler counts toward alertID's alert
+// source's share of SOS deliveries.
+func (r *heldWarnRig) fillDeliveryQueue(t *testing.T, count int, severity, alertID string) {
+	t.Helper()
+	member, err := r.a.CurrentMember(context.Background(), r.s.Principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.a.Store.db.Exec(`INSERT OR IGNORE INTO contact_methods(id,member_id,contact_method_type,settings_json,sent_to,revision,send_while_unavailable_or_muted,deleted) VALUES('filler',?,'email','{}','filler@example.test',1,1,0)`, member.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.a.Store.db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
+INSERT INTO deliveries(id,notification_key,alert_id,contact_method_id,contact_method_revision,member_id,contact_method_type,sent_to,purpose,severity,subject,message,state,created_at,next_attempt)
+SELECT 'filler'||i,'filler:'||i,?,'filler',1,?,'email','x','subscribed_alert',?,'s','m','queued',?,? FROM n`,
+		count, alertID, member.ID, severity, r.a.Now().Unix(), r.a.Now().Add(24*time.Hour).Unix()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// emptyDeliveryQueue takes the fillers out again.
+func (r *heldWarnRig) emptyDeliveryQueue(t *testing.T) {
+	t.Helper()
+	if _, err := r.a.Store.db.Exec(`DELETE FROM deliveries WHERE id LIKE 'filler%'`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// claimAndResolve claims the incident, then resolves it, if resolve.
+func (r *heldWarnRig) claimAndResolve(t *testing.T, incidentID string, resolve bool) {
+	t.Helper()
+	ctx := context.Background()
+	i, err := r.a.GetIncident(ctx, r.s.Principal, incidentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i, err = r.a.ClaimIncident(ctx, r.s.Principal, i.ID, i.Revision, ""); err != nil {
+		t.Fatal(err)
+	}
+	if resolve {
+		if _, err = r.a.ResolveIncident(ctx, r.s.Principal, i.ID, i.Revision, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// A held SOS woke the person on call, its email met the alert source's full
+// share of SOS deliveries, and it resolved before the email could be
+// queued. The email then goes with its end, and the Pushover that heard the
+// end at the resolve does not hear it a second time.
+func TestHeldSOSEndReachesEachContactMethodOnce(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	r.addEmail(t)
+	sos := r.sosArrives(t, "The server db02 stopped answering", "db02")
+	r.runStarted(t)
+	r.fillDeliveryQueue(t, maxPendingSOSDeliveriesPerAlertSource, "sos", sos.ID)
+	r.at(t, 5*time.Minute)
+	if !r.woken(sos.IncidentID) {
+		t.Fatal("the SOS woke nobody at its deadline")
+	}
+	if states := r.emailStates(t, sos.IncidentID); len(states) != 0 {
+		t.Fatalf("the email was queued past the source's share: %q", states)
+	}
+	r.claimAndResolve(t, sos.IncidentID, true)
+	r.emptyDeliveryQueue(t)
+	r.at(t, 6*time.Minute)
+	// The resolve told the email nothing: it had heard nothing yet.
+	if states := r.emailStates(t, sos.IncidentID); strings.Join(states, ",") != "resolved-sos suppressed,sos not suppressed,resolved-sos not suppressed" {
+		t.Fatalf("emails %q; want the SOS, then its end", states)
+	}
+	if twice := countRows(t, r.a, `SELECT count(*) FROM (SELECT contact_method_id FROM deliveries WHERE incident_id=? AND severity='resolved-sos' AND `+attemptedDelivery+` GROUP BY contact_method_id HAVING count(*)>1)`, sos.IncidentID); twice != 0 {
+		t.Fatalf("%d contact methods got the SOS's end twice", twice)
+	}
+}
+
+// A resolved-warn that arrives after a held warn's deadline, before the
+// background step delivers the warn, goes out after the warning, once to
+// each contact method: never the end of a problem before the problem.
+func TestHeldWarnResolvedPastItsDeadlineFollowsTheWarning(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	warn := admitSignedAlert(t, r.a, r.source, "warn", loadWarning, "app002-load")
+	r.advance(16 * time.Minute)
+	resolved := admitSignedAlert(t, r.a, r.source, "resolved-warn", "Load on app002 is normal", "app002-load")
+	backgroundRounds(t, r.a)
+	rows, err := r.a.Store.db.Query(`SELECT contact_method_id,severity FROM deliveries WHERE alert_id IN (?,?) AND state!='suppressed' ORDER BY rowid`, warn.ID, resolved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	got := map[string][]string{}
+	for rows.Next() {
+		var contactMethodID, severity string
+		if err := rows.Scan(&contactMethodID, &severity); err != nil {
+			t.Fatal(err)
+		}
+		got[contactMethodID] = append(got[contactMethodID], severity)
+	}
+	if len(got) != 2 {
+		t.Fatalf("messages to %d contact methods; want both people's Pushover: %v", len(got), got)
+	}
+	for contactMethodID, severities := range got {
+		if strings.Join(severities, ",") != "warn,resolved-warn" {
+			t.Errorf("contact method %s got %q; want the warning, then its end", contactMethodID, severities)
+		}
+	}
+}
+
+// When one held incident's end meets the full ordinary part of the delivery
+// queue, the step goes on to the next incident's SOS email, for which the
+// part reserved for SOS has room.
+func TestHeldSOSEmailGoesOnPastAnotherIncidentsEndInAFullQueue(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	r.addEmail(t)
+	first := r.sosArrives(t, "The server db02 stopped answering", "db02")
+	r.advance(time.Second)
+	second := admitSignedAlert(t, r.a, r.source, "sos", "The server db03 stopped answering", "db03")
+	r.claimAndResolve(t, second.IncidentID, false)
+	r.fillDeliveryQueue(t, maxPendingDeliveries-sosReservedPendingDeliveries, "info", "")
+	r.claimAndResolve(t, first.IncidentID, true)
+	if err := r.a.DeliverReleasedHeldAlerts(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if states := r.emailStates(t, second.IncidentID); len(states) != 1 || states[0] != "sos not suppressed" {
+		t.Fatalf("the second SOS's email with room reserved for SOS: %q", states)
+	}
+}
+
+// An sos report about a warn-only problem opens its own incident and wakes
+// the person on call: the session's other held warns go out at once.
+func TestHeldWarnAnSOSReportThatOpensAnIncidentReleasesTheOtherWarns(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	warns := r.warnsArrive(t, loadWarning, "app002-load", diskWarning, "db001-disk")
+	run := r.runStarted(t)
+	if answer := agentRequest(t, run, json.NewDecoder(run.connection), reportEvent("0000000000000001", "sos", "# app002 is overloaded and needs a person now\n", warns[0].ID)); answer.Outcome != triageagent.ReportRecorded {
+		t.Fatalf("answer: %+v", answer)
+	}
+	if outcome, _, _, _ := r.holdOf(t, warns[0].ID); outcome != "taken_over" {
+		t.Fatalf("the named warn: %q", outcome)
+	}
+	if outcome, reason, ended, released := r.holdOf(t, warns[1].ID); !released && outcome != "delivered" {
+		t.Fatalf("the other warn after the wake: outcome %q, ended %v, reason %q; want released", outcome, ended, reason)
+	}
+}

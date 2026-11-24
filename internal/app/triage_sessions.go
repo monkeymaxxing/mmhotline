@@ -527,7 +527,9 @@ func queueSOSNotificationAfterItsWait(ctx context.Context, tx *sql.Tx, incidentI
 	}
 	// It resolved after the wait was over and before this step: its
 	// resolved message went only to contact methods told about it then, so
-	// those getting the SOS now get its end after it.
+	// those getting the SOS now get its end after it. A contact method the
+	// resolve already told, such as the woken person's Pushover, is not told
+	// again (QueueNotification).
 	i, err := readIncident(ctx, tx, incidentID)
 	if err != nil {
 		return err
@@ -590,12 +592,18 @@ func triageSessionAlreadyWoke(ctx context.Context, tx *sql.Tx, targets []string)
 // SOS that does not wait, so the repeats and later steps count from now. why
 // goes in the incident's history.
 func wakeIncidentHeldForTriageAgent(ctx context.Context, tx *sql.Tx, i Incident, why string, at time.Time) error {
-	// The person is told everything now, the held warnings too. They are
-	// only marked here, so a full delivery queue cannot undo the wake.
-	if err := releaseEveryHeldWarn(ctx, tx, "An SOS woke the person on call: "+strings.TrimSuffix(strings.TrimSuffix(why, "; waking the person on call"), ". Waking the person on call")+".", at); err != nil {
+	if err := releaseHeldWarnsForAWake(ctx, tx, why, at); err != nil {
 		return err
 	}
 	return wakeHeldIncident(ctx, tx, i, "triage_agent_hold_ended", why, at)
+}
+
+// releaseHeldWarnsForAWake marks every held warn for delivery when an SOS
+// of the session wakes the person on call: they are told everything now, the
+// held warnings too. They are only marked here, so a full delivery queue
+// cannot undo the wake. why is the wake's reason for the incident's history.
+func releaseHeldWarnsForAWake(ctx context.Context, tx *sql.Tx, why string, at time.Time) error {
+	return releaseEveryHeldWarn(ctx, tx, "An SOS woke the person on call: "+strings.TrimSuffix(strings.TrimSuffix(why, "; waking the person on call"), ". Waking the person on call")+".", at)
 }
 
 // wakeHeldIncident ends an incident's wait for the triage agent and starts
@@ -1105,10 +1113,14 @@ func deliverTriageAgentReportTx(ctx context.Context, tx *sql.Tx, runID, requestI
 		}
 	}
 	in := GenericAlert{Severity: severity, Title: triageAgentReportTitle(report), Message: triageAgentReportMessage(report)}
+	before := len(incidents)
 	alert, incidents, err := admitAlertAboutIncidents(ctx, tx, sessionID, runID, "triage_agent", incidents, in, now)
 	if err != nil {
 		return err
 	}
+	// An incident the report opened, at sos, woke the person on call at
+	// once: the report's own alert never waits for the agent.
+	openedAnIncident := len(incidents) > before
 	// A later report about the same problem goes with the incident this
 	// one opened (incidentsOfNamedProblems).
 	if _, err = tx.ExecContext(ctx, `UPDATE triage_agent_requests SET report_alert_id=? WHERE run_id=? AND request_id=?`, alert.ID, runID, requestID); err != nil {
@@ -1128,6 +1140,13 @@ func deliverTriageAgentReportTx(ctx context.Context, tx *sql.Tx, runID, requestI
 		return nil
 	}
 	const why = "The triage agent sent an urgent report (sos). Waking the person on call"
+	// Its wake releases the held warns as any other wake of the session
+	// does; the warns the report covers it took over above.
+	if openedAnIncident {
+		if err = releaseHeldWarnsForAWake(ctx, tx, why, now); err != nil {
+			return err
+		}
+	}
 	if !covers {
 		return wakeIncidentsHeldForTriageAgent(ctx, tx, why, now)
 	}

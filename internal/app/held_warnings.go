@@ -277,22 +277,19 @@ func (a *App) DeliverReleasedHeldAlerts(ctx context.Context) error {
 		// A full queue keeps the deliveries queued before it: an SOS can
 		// have more contact methods subscribed than the alert source's
 		// share of SOS deliveries, so it goes in parts as the queue drains,
-		// each contact method once (insertDelivery).
-		var full error
+		// each contact method once (insertDelivery). The step goes on to the
+		// next incident: one alert source's full share leaves room for
+		// another source's SOS, and an incident's resolved message that meets
+		// the full ordinary part leaves room reserved for the next SOS.
 		err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 			err := queueSOSNotificationAfterItsWait(ctx, tx, incidentID, now)
 			if errors.Is(err, errPendingDeliveryFull) || errors.Is(err, errAlertSourcePendingSOSFull) {
-				full, err = err, nil
+				return nil
 			}
 			return err
 		})
 		if err != nil {
 			return err
-		}
-		// The alert source's share of SOS deliveries being full leaves
-		// room for another source's SOS.
-		if errors.Is(full, errPendingDeliveryFull) {
-			break
 		}
 	}
 	return nil
@@ -335,7 +332,54 @@ func deliverHeldWarn(ctx context.Context, tx *sql.Tx, alertID string, at time.Ti
 	}
 	e.ReceivedAt, e.HappenedAt = time.Unix(received, 0).UTC(), deadlineTime(happened)
 	notes := strings.TrimSpace(e.Notes + " MMHotline held this warning for the triage agent from " + e.ReceivedAt.Format("15:04") + " UTC to " + at.UTC().Format("15:04") + " UTC.")
-	return QueueNotification(ctx, tx, Notification{Key: alertID, AlertID: alertID, Severity: "warn", Title: e.Title, Message: e.Message, Notes: notes, Purpose: notificationPurpose(e.SourceID), HappenedAt: e.HappenedAt, At: at})
+	if err = QueueNotification(ctx, tx, Notification{Key: alertID, AlertID: alertID, Severity: "warn", Title: e.Title, Message: e.Message, Notes: notes, Purpose: notificationPurpose(e.SourceID), HappenedAt: e.HappenedAt, At: at}); err != nil {
+		return err
+	}
+	return queueResolutionThatWaitedForItsWarns(ctx, tx, alertID, at)
+}
+
+// warnsOfResolution is the condition on alerts a for the warns that the
+// resolved-warn ?3, the sequence of the alert of alert source ?1 and
+// sender_incident_key ?2, ends: those of its key since the previous
+// resolved-warn of that key.
+const warnsOfResolution = `a.source_id=?1 AND a.sender_incident_key=?2 AND a.severity='warn' AND a.sequence<?3
+ AND a.sequence>COALESCE((SELECT MAX(sequence) FROM alerts WHERE source_id=?1 AND sender_incident_key=?2 AND severity='resolved-warn' AND sequence<?3),0)`
+
+// resolutionWaitsForItsWarns reports whether the resolved-warn alert e ends
+// a held warn that is due to be delivered: marked for delivery, or past its
+// deadline, so its resolve could not end it (heldWarnStillWaits). Its
+// resolved message then waits for the background step, which queues it after
+// that warning (queueResolutionThatWaitedForItsWarns): sent now, people would
+// hear the problem ended before they heard of the problem.
+func resolutionWaitsForItsWarns(ctx context.Context, tx *sql.Tx, e Alert) (bool, error) {
+	if e.Severity != "resolved-warn" || e.SenderIncidentKey == "" {
+		return false, nil
+	}
+	var waits bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM alerts a JOIN held_warn_alerts h ON h.alert_id=a.id WHERE h.ended_at=0 AND `+warnsOfResolution+`)`, e.SourceID, e.SenderIncidentKey, e.Sequence).Scan(&waits)
+	return waits, err
+}
+
+// queueResolutionThatWaitedForItsWarns queues the resolved message that
+// waited for the held warn alertID, which the step just queued
+// (resolutionWaitsForItsWarns), once the last held warn it ends is queued, as
+// intake would have queued it. The resolved message's own notification key
+// sends it to each contact method once.
+func queueResolutionThatWaitedForItsWarns(ctx context.Context, tx *sql.Tx, alertID string, at time.Time) error {
+	var r Alert
+	var happened int64
+	err := tx.QueryRowContext(ctx, `SELECT r.id,r.source_id,r.sender_incident_key,r.sequence,r.incident_id,r.title,r.message,r.notes,r.happened_at FROM alerts w JOIN alerts r ON r.source_id=w.source_id AND r.sender_incident_key=w.sender_incident_key AND r.severity='resolved-warn' AND r.sequence>w.sequence WHERE w.id=? AND w.sender_incident_key!='' ORDER BY r.sequence LIMIT 1`, alertID).Scan(&r.ID, &r.SourceID, &r.SenderIncidentKey, &r.Sequence, &r.IncidentID, &r.Title, &r.Message, &r.Notes, &happened)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	r.Severity = "resolved-warn"
+	if waits, err := resolutionWaitsForItsWarns(ctx, tx, r); err != nil || waits {
+		return err
+	}
+	return QueueNotification(ctx, tx, Notification{Key: r.ID, AlertID: r.ID, IncidentID: r.IncidentID, Severity: r.Severity, Title: r.Title, Message: r.Message, Notes: r.Notes, Purpose: notificationPurpose(r.SourceID), HappenedAt: deadlineTime(happened), At: at})
 }
 
 // heldWarnTakenOver ends, sending nothing, the holds of the warns that the
@@ -564,8 +608,7 @@ func resolvesOnlyWarnsNeverSent(ctx context.Context, tx *sql.Tx, e Alert) (bool,
  COALESCE(SUM(h.outcome IN ('resolved','taken_over') AND h.ended_at>0),0),
  COALESCE(SUM(h.alert_id IS NULL OR h.outcome NOT IN ('resolved','taken_over') OR h.ended_at=0),0)
  FROM alerts a LEFT JOIN held_warn_alerts h ON h.alert_id=a.id
- WHERE a.source_id=?1 AND a.sender_incident_key=?2 AND a.severity='warn' AND a.sequence<?3
- AND a.sequence>COALESCE((SELECT MAX(sequence) FROM alerts WHERE source_id=?1 AND sender_incident_key=?2 AND severity='resolved-warn' AND sequence<?3),0)`,
+ WHERE `+warnsOfResolution,
 		e.SourceID, e.SenderIncidentKey, e.Sequence).Scan(&unsent, &other)
 	if err != nil || unsent == 0 || other > 0 {
 		return false, err

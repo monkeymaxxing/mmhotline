@@ -2284,10 +2284,14 @@ the alert source's share of SOS deliveries
 ([notifications](notifications.md)) can never undo a wake: with the share
 full, those that fit go and the rest wait for room, each contact method's
 once, also across a restart, so a team with more contact methods subscribed
-to SOS than the share still gets them all. An SOS that resolves after
+to SOS than the share still gets them all. An incident whose messages meet a
+full queue does not hold up the next incident's: the room reserved for SOS
+can still take its email and chat. An SOS that resolves after
 its wait is over, before that step queues them, sends them followed by its
 resolved message: the resolve told only those who had heard of it then, and
-nobody is left with an SOS that never ends. An SOS that joins a session
+nobody is left with an SOS that never ends. A contact method hears an
+incident's end once: one the resolve already told, such as the woken
+person's Pushover, is not told again. An SOS that joins a session
 which already woke its people sends its email and chat at once, as its
 waking step starts at once.
 
@@ -2493,7 +2497,10 @@ later visit, also after a restart. A marked warn can no longer be taken over
 or resolved: MMHotline has decided to tell people. Nor can a warn past its
 deadline that the step has not marked yet, and a server replacement or a
 waiting SOS no longer moves its deadline: it is due. The background loop
-visits at the earliest deadline, so a deadline passes within a second.
+visits at the earliest deadline, so a deadline passes within a second. A
+resolved-warn that ends such a due warn waits too, and the step queues it
+right after the last due warn it ends, so people hear the warning, then its
+end, each once; sent at once, it would end a problem they had not heard of.
 
 The alert's page and the dashboard say while the warn is held: "MMHotline
 holds this warning for up to 15 minutes while the triage agent looks into
@@ -2544,7 +2551,8 @@ run carried, nor the problem of a playbook result it carried
 ([reports to people](#reports-to-people)). A report at sos that covers a
 warn-only problem opens an incident of its own, as a report about a problem
 with no incident does, even when the run also carried a claimed incident of
-another problem. A later report about the same problem goes with that
+another problem. That incident wakes the person on call at once, so the
+session's other held warns are delivered at once, as for any wake. A later report about the same problem goes with that
 incident, so two reports about one warn open one incident and wake once:
 MMHotline records the alert each report sent in
 `triage_agent_requests.report_alert_id`.

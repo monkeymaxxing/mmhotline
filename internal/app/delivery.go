@@ -252,6 +252,18 @@ func QueueNotification(ctx context.Context, tx *sql.Tx, n Notification) error {
 		if facts.SOSOnly && n.Severity != "sos" {
 			reason = "this contact method is only for SOS"
 		}
+		// An incident resolves once, so a contact method hears its end once:
+		// the end that follows an SOS's email and chat queued after their
+		// wait (queueSOSNotificationAfterItsWait) skips one the resolve told.
+		if n.Severity == "resolved-sos" && n.IncidentID != "" {
+			ended, e := contactMethodWasToldIncidentEnded(ctx, tx, n.IncidentID, c.ID)
+			if e != nil {
+				return e
+			}
+			if ended {
+				continue
+			}
+		}
 		if reason == "" && n.Severity == "resolved-sos" && n.IncidentID != "" {
 			told, e := contactMethodWasToldAboutIncident(ctx, tx, n.IncidentID, c.ID)
 			if e != nil {
@@ -330,6 +342,14 @@ const attemptedDelivery = `(attempts>0 OR state NOT IN ('suppressed','cancelled'
 func contactMethodWasToldAboutIncident(ctx context.Context, tx *sql.Tx, incidentID, contactMethodID string) (bool, error) {
 	var told bool
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries WHERE incident_id=? AND contact_method_id=? AND severity IN ('sos','warn') AND `+attemptedDelivery+`)`, incidentID, contactMethodID).Scan(&told)
+	return told, err
+}
+
+// contactMethodWasToldIncidentEnded says whether MMHotline sent the contact
+// method the incident's resolved message, or still means to.
+func contactMethodWasToldIncidentEnded(ctx context.Context, tx *sql.Tx, incidentID, contactMethodID string) (bool, error) {
+	var told bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries WHERE incident_id=? AND contact_method_id=? AND severity='resolved-sos' AND `+attemptedDelivery+`)`, incidentID, contactMethodID).Scan(&told)
 	return told, err
 }
 

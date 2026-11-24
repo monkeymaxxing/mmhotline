@@ -453,6 +453,9 @@ func admitAlert(ctx context.Context, tx *sql.Tx, sourceID, actor, replayKey, inc
 	if err = heldWarnAlertResolved(ctx, tx, e, at); err != nil {
 		return Alert{}, err
 	}
+	if waits, err := resolutionWaitsForItsWarns(ctx, tx, e); err != nil || waits {
+		return e, err
+	}
 	if quiet, err := resolvesOnlyWarnsNeverSent(ctx, tx, e); err != nil || quiet {
 		return e, err
 	}
