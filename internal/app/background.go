@@ -19,6 +19,11 @@ func (a *App) RunBackground(ctx context.Context, report func(error)) {
 	var customSchedules sync.WaitGroup
 	customSchedules.Go(func() { a.RunCustomScheduleBackground(ctx, report) })
 	defer customSchedules.Wait()
+	// The lock-out file has its own watch, so a slow visit, such as one
+	// that waits 30 seconds for a mail server, never delays a lock-out.
+	var lockOutWatch sync.WaitGroup
+	lockOutWatch.Go(func() { a.watchForALockOut(ctx, report) })
+	defer lockOutWatch.Wait()
 	// A triage session's run, a software review, or a sign-in check that is
 	// starting stops with ctx; it must not outlive the stores.
 	defer a.triageAgent.backgroundRunStarts.Wait()
@@ -42,12 +47,32 @@ func (a *App) backgroundRound(ctx context.Context, report func(error)) bool {
 	if ctx.Err() != nil {
 		return false
 	}
+	// The lock-out watch looks every second as well; this look makes the
+	// visit act on the file as it is now.
+	a.everyoneLockedOut()
 	visited := a.teamNeedsVisit(a.Now())
 	if visited {
 		a.visitTeam(ctx, report)
 	}
 	a.teamDeadline.roundEnded(a.Now())
 	return visited
+}
+
+// watchForALockOut looks at the lock-out file every second until ctx ends,
+// on its own, apart from the visits: a lock-out cuts the agent's runs, ends
+// MMX runs, and brings the visit that tells people within a second, however
+// long the current visit takes.
+func (a *App) watchForALockOut(ctx context.Context, report func(error)) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		reportPanic(report, "the look at the lock-out file", func() { a.everyoneLockedOut() })
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 // reportPanic runs one round of a background loop and turns a panic in it

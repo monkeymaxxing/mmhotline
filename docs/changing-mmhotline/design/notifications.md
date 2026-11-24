@@ -53,11 +53,27 @@ MMHotline sent something about that incident
 ([routing rules](#routing-rules), step 6).
 A person can use different contact method types for different severities.
 
-| Base severity | Default subscriptions |
+A new contact method subscribes to these severities unless someone chooses
+others:
+
+| Contact method | Default subscriptions |
 | --- | --- |
-| info | Personal Pushover and email, and shared information chat |
-| warn | Personal Pushover and email, and shared main alert chat |
-| sos | Personal Pushover and email, optional phone call, and shared main alert chat |
+| A person's own, such as Pushover, email, or a private Telegram chat or Slack direct message | SOS and Warning |
+| Shared with the team, such as a team chat or a team mailbox, and every outgoing webhook | SOS, Warning, and Info |
+| Automated voice call | SOS only |
+
+Reason: Info alerts are routine news. A person's own phone and inbox stay
+quiet for them until the person turns Info on, while a team chat is where
+routine news belongs, and a program that reads an outgoing webhook is
+disturbed by nothing. The Contact methods page's new forms, `contact-methods
+add` without `--alert-severities`, and the Slack and Telegram connections
+take the default from one place: the contact method type's facts and
+whether the team owns the contact method. A new form on the page is a
+person's own until an administrator ticks "Shared with the team", so
+an administrator adding a shared contact method there ticks Info too. A
+choice, even of no alerts, is kept, and an upgrade keeps every existing
+contact method's subscriptions. MMHotline records every Info alert in the
+alert history and on the dashboard, whoever it reaches.
 
 A warn from an alert source that starts or joins a triage session may wait
 before its notifications are queued: with the settings file's
@@ -317,12 +333,14 @@ adds "on device NAME". Reason: the acknowledgement still comes from the
 person's own user, so it claims, unlike a group key.
 Only the owner edits personal contact methods through the browser.
 
-New Pushover notification contact methods subscribe to SOS, Warning, and Info, and follow
-personal availability and team mute. Pushover is often a person's only contact
-method, so with SOS alone every Warning and Info alert would reach nobody;
-Warning goes at normal priority, which keeps the person's quiet hours in
-Pushover, and Info at low priority, which is silent. A person can turn each
-off.
+New Pushover notification contact methods subscribe to SOS and Warning, as
+every personal contact method does
+([default subscriptions](#contact-methods-and-subscriptions)), and follow
+personal availability and team mute. Warning is on because Pushover is often
+a person's only contact method, so with SOS alone every Warning would reach
+nobody; Warning goes at normal priority, which keeps the person's quiet hours
+in Pushover. Info, which a person can turn on, goes at low priority, which is
+silent. A person can turn each off.
 Team mute always stops Pushover, including emergencies already repeating.
 
 **A quiet test, and the proof that a phone wakes its owner.** A Pushover
@@ -735,8 +753,11 @@ links. Setup changes take effect without restarting `serve`.
   Only the first user to send a code can link through that code. A new code
   can connect an existing conversation without duplicating its contact method.
 - **Connected conversations** are personal direct messages or channels shared
-  with the team. New methods receive Info, Warning, and SOS, even during
-  personal unavailability or team mute, like Telegram. The member changes
+  with the team. New methods get the
+  [default subscriptions](#contact-methods-and-subscriptions): SOS and
+  Warning for a direct message, and Info too for a channel shared with the
+  team. They send even during personal unavailability or team mute, like
+  Telegram. The member changes
   subscriptions on the card. The destination description names the Slack
   conversation ID and workspace; no extra profile-reading scope is needed
   for presentation. Conversation IDs cannot be edited by hand.
@@ -832,8 +853,9 @@ keeps the connections.
   the consumed token from the chat that consumed the token within the
   15 minutes changes nothing.
 - **Pressing Start** adds the chat as a contact method: the member's own, or,
-  for a group, one shared with the team. The new contact method subscribes
-  to Info, Warning, and SOS. Like email, the contact method sends when the
+  for a group, one shared with the team. The new contact method gets the
+  [default subscriptions](#contact-methods-and-subscriptions): SOS and
+  Warning for a person's own chat, and Info too for a group. Like email, the contact method sends when the
   person is unavailable or the team is muted. The owner changes the subscriptions
   and the unavailable-or-muted setting on the contact method's card.
 
@@ -1098,9 +1120,9 @@ retryable. A lost connection during or after transfer without an acceptance
 reply is uncertain and retried: a duplicate email is preferable to a lost
 alert. The outbox owns all retries.
 
-Email has `send_while_unavailable_or_muted` enabled by default, with
-Info/Warning/SOS subscriptions initially selected in the form. A user can turn
-each off. SOS emails are sent as ordinary alert notifications; they are never
+Email has `send_while_unavailable_or_muted` enabled by default, with SOS and
+Warning initially selected in the form, as for every personal contact method.
+A user can turn Info on and each of the others off. SOS emails are sent as ordinary alert notifications; they are never
 repeated by SOS timers. SOS emails link to the incident page, where the person
 [signs in](people.md#authentication-and-recovery) through Cloudflare Access
 or with a sign-in link.

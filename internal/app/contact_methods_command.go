@@ -106,12 +106,10 @@ func (a *App) contactMethodsCommand(ctx context.Context, p Principal, action str
 		if !request.SharedWithTeam && request.SignInEmailAddress == "" {
 			return fmt.Errorf("%w: --sign-in-email-address or --shared-with-team is required", ErrInvalid)
 		}
-		if request.AlertSeverities == nil && request.ContactMethodType == "pushover_notification" {
-			values := pushoverDefaultSubscriptions()
-			request.AlertSeverities = &values
-		}
 		if request.AlertSeverities == nil {
-			return fmt.Errorf("%w: --alert-severities is required", ErrInvalid)
+			facts, _ := contactMethodTypeFacts(request.ContactMethodType)
+			values := facts.defaultSubscriptions(request.SharedWithTeam)
+			request.AlertSeverities = &values
 		}
 		in := ContactMethodInput{ContactMethodType: request.ContactMethodType, Shared: request.SharedWithTeam, OwnerSignInEmailAddress: request.SignInEmailAddress, Subscriptions: *request.AlertSeverities, Fields: map[string]string{"email_address": request.EmailAddress, "outgoing_webhook_url": request.OutgoingWebhookURL, "outgoing_webhook_bearer_token": request.OutgoingWebhookBearerToken, "phone_number_to_call": request.PhoneNumberToCall, "pushover_user_key": request.PushoverUserKey, "pushover_device_name": request.PushoverDeviceName}}
 		if request.SendWhileUnavailableOrMuted != nil {

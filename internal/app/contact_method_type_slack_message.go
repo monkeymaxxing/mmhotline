@@ -732,7 +732,7 @@ func (a *App) connectSlackConversation(ctx context.Context, slack *SlackMessageC
 			if err != nil {
 				return err
 			}
-			if _, err = createContactMethodTx(ctx, tx, slack, owner, settings, true, []string{"info", "warn", "sos"}, actor, now); err != nil {
+			if _, err = createContactMethodTx(ctx, tx, slack, owner, settings, true, slack.Facts().defaultSubscriptions(shared), actor, now); err != nil {
 				return err
 			}
 		}

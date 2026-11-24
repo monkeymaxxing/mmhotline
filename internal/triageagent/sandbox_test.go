@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -583,7 +584,9 @@ func TestSandboxResumeArguments(t *testing.T) {
 			if string(arguments) != want {
 				t.Fatalf("arguments: %q", arguments)
 			}
-			_ = run.input.Close()
+			if err := json.NewEncoder(run.input).Encode(Control{Stop: true}); err != nil {
+				t.Fatal(err)
+			}
 			if event := run.next(t); event.Event != "stopped" {
 				t.Fatalf("stop: %+v", event)
 			}
@@ -633,33 +636,81 @@ printf 'completed' > "$HOME/step-finished"
 	}
 }
 
-func TestSandboxStopOutsideStepAndEOF(t *testing.T) {
-	for _, eof := range []bool{false, true} {
-		t.Run(fmt.Sprint("eof=", eof), func(t *testing.T) {
-			run := startFakeRun(t, "codex", codexSession+"\n"+waitForTermination, testRequest("codex"))
-			_ = run.next(t)
-			if eof {
-				_ = run.input.Close()
-			} else {
-				if err := json.NewEncoder(run.input).Encode(Control{Stop: true}); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if event := run.next(t); event.Event != "stopped" || event.SessionID != "session-one" {
-				t.Fatalf("stop: %+v", event)
-			}
-			run.finish(t)
-		})
+func TestSandboxStopOutsideStep(t *testing.T) {
+	run := startFakeRun(t, "codex", codexSession+"\n"+waitForTermination, testRequest("codex"))
+	_ = run.next(t)
+	if err := json.NewEncoder(run.input).Encode(Control{Stop: true}); err != nil {
+		t.Fatal(err)
 	}
+	if event := run.next(t); event.Event != "stopped" || event.SessionID != "session-one" {
+		t.Fatalf("stop: %+v", event)
+	}
+	run.finish(t)
 }
 
 func TestSandboxStopBeforeSession(t *testing.T) {
 	run := startFakeRun(t, "codex", waitForTermination, testRequest("codex"))
-	_ = run.input.Close()
+	if err := json.NewEncoder(run.input).Encode(Control{Stop: true}); err != nil {
+		t.Fatal(err)
+	}
 	if event := run.next(t); event.Event != "failed" || !event.StoppedBeforeSessionID || event.Reason != "the coding agent run was stopped before the coding agent reported a session ID" {
 		t.Fatalf("final: %+v", event)
 	}
 	run.finish(t)
+}
+
+// A closed connection is MMHotline's cut, such as a lock-out's: the run kills
+// the agent and its current step at once. It waits neither for the step,
+// which here runs a command that never prints, nor for the agent, which
+// here ignores SIGTERM, to end by itself.
+func TestSandboxClosedConnectionKillsTheAgentAtOnce(t *testing.T) {
+	results := t.TempDir()
+	begin := `printf '%s\n' '{"type":"item.started","item":{"id":"task","type":"command_execution","command":"work"}}'`
+	run := startFakeRun(t, "codex", `trap '' TERM
+`+codexSession+"\n"+begin+`
+/bin/sleep 60 &
+printf '%s' "$!" > '`+results+`/step-pid'
+wait
+printf 'completed' > '`+results+`/step-finished'
+`+waitForTermination, testRequest("codex"))
+	_ = run.next(t)
+	if event := run.next(t); event.Event != "step" || event.Step.Text != "work" {
+		t.Fatalf("step: %+v", event)
+	}
+	var stepPID int
+	for deadline := time.Now().Add(5 * time.Second); stepPID == 0; time.Sleep(10 * time.Millisecond) {
+		if data, err := os.ReadFile(filepath.Join(results, "step-pid")); err == nil {
+			_, _ = fmt.Sscan(string(data), &stepPID)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the step's command did not start")
+		}
+	}
+	closed := time.Now()
+	_ = run.input.Close()
+	select {
+	case err := <-run.done:
+		if !errors.Is(err, errRunConnectionClosed) {
+			t.Fatalf("a cut run must return errRunConnectionClosed: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the run still waits 3 seconds after its connection closed")
+	}
+	// Well inside the 10 seconds a stopped agent gets after SIGTERM.
+	if waited := time.Since(closed); waited > 2*time.Second {
+		t.Fatalf("the run took %s to end after its connection closed", waited)
+	}
+	for event := range run.events {
+		t.Fatalf("a cut run sends nothing: %+v", event)
+	}
+	for deadline := time.Now().Add(2 * time.Second); syscall.Kill(stepPID, 0) == nil; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the step's command, process %d, still runs after the cut", stepPID)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(results, "step-finished")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the agent went on after the cut: %v", err)
+	}
 }
 
 func TestSandboxUnexpectedExit(t *testing.T) {
@@ -978,7 +1029,9 @@ func TestSandboxPassesModelAndReasoningEffort(t *testing.T) {
 			if string(arguments) != test.want {
 				t.Fatalf("arguments: %q", arguments)
 			}
-			_ = run.input.Close()
+			if err := json.NewEncoder(run.input).Encode(Control{Stop: true}); err != nil {
+				t.Fatal(err)
+			}
 			if event := run.next(t); event.Event != "stopped" {
 				t.Fatalf("stop: %+v", event)
 			}

@@ -300,8 +300,9 @@ field and exit code.
   says, step 3.
 - **Every MMX run and `commit-reviews check` is refused** and says so: the
   applied settings have no `systems_repository_commits` section, such as
-  during a lock-out or after an upgrade that moved the keys there, so
-  MMHotline trusts no commit. After the section returns and applies, the
+  after an upgrade that moved the keys there, so MMHotline trusts no
+  commit. During a lock-out, the refusal names the lock-out file instead
+  ([when something fails](../when-something-fails.md#everyone-is-locked-out-the-file-etcmmhotlineeveryone-locked-out-exists-)). After the section returns and applies, the
   check goes on from where it stopped.
 - **`check` or `trust-through` is refused for the commit ID:** MMHotline's
   copy lacks that commit after the fetch, or, for `trust-through`, the

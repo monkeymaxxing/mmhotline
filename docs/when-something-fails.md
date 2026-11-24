@@ -813,10 +813,20 @@ team trusts signs it. Review it, as
 
 `settings show` prints this note, and every MMX run and
 `commit-reviews check` is refused with it, while the applied settings have
-no `systems_repository_commits` section, such as during a lock-out or
-after an upgrade that moved the commit keys there. Add the section, as
+no `systems_repository_commits` section, such as after an upgrade that
+moved the commit keys there. Add the section, as
 [Review a commit](how-to/review-a-commit.md#set-up) says, and apply the
 settings.
+
+### "everyone is locked out: the file /etc/mmhotline/everyone-locked-out exists ..."
+
+The team's break-in procedure created the lock-out file. While it exists,
+MMHotline runs no triage agent, review agent, or MMX for the agent, trusts
+no commit, and sends people every alert at once; incident histories say
+"Everyone is locked out". Alerting and the pages work as usual. When the
+break-in is handled, the team's procedure removes the file, and MMHotline
+lets the agent work again within a second, without a restart
+([everyone locked out](changing-mmhotline/design/operation.md#everyone-locked-out)).
 
 ### "... check_only has no rule; it needs a person until you add one"
 

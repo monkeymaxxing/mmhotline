@@ -92,18 +92,21 @@ Email does not wake anyone: use [Pushover](connect-pushover.md) or
 3. **Add each person's email address,** contact method type `email`. In MMHotline, each person opens
    **Contact methods**, enters their address under
    **Add email contact method**, chooses the alerts to send, and chooses
-   **Add email**. The contact method gets alerts at once. New email
-   contact methods get Info, Warning, and SOS,
-   also while the person is unavailable or the team is muted; the person
-   can change both on the card.
+   **Add email**. The contact method gets alerts at once. A person's
+   own email contact method gets SOS and Warning, and Info when the person
+   turns it on, also while the person is unavailable or the team is muted;
+   the person can change both on the card.
 
    An administrator can add it for a person from the server instead:
 
    ```sh
    sudo mmhotline contact-methods add --sign-in-email-address barbara@example.com \
      --contact-method-type email --email-address barbara@example.com \
-     --alert-severities sos,warn,info --send-while-unavailable-or-muted
+     --send-while-unavailable-or-muted
    ```
+
+   Left out, `--alert-severities` gives a person's own email SOS and
+   Warning; add `--alert-severities sos,warn,info` to send Info too.
 
    Administrators can also add an email address shared with the team, such
    as a team mailbox, on the Contact methods page.

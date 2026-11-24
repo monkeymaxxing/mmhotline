@@ -1316,7 +1316,9 @@ mmhotline triage-agent report --alert-severity info|warn|sos --report-file FILE 
   prompt lists, once per alert. A held warning the report names ends, sent
   to nobody: the report tells people instead. The report goes with the
   incidents of the named alerts' problems. A run that carried exactly one
-  alert may leave the option out; the report then covers that alert. In a
+  alert may leave the option out of a report at `warn` or `sos`; the report
+  then covers that alert. A report at `info` covers only the alerts it
+  names, so name a warning to close it with an info report. In a
   run that carried several alerts, a report without the option covers no
   warning, and the answer asks the agent to name them
   ([reports and requests name their alerts](../changing-mmhotline/design/triage-agent.md#reports-and-requests-name-their-alerts)).
@@ -1717,7 +1719,7 @@ Contact method saved. A test message for the contact method is queued. Inspect t
 | --- | --- |
 | `--sign-in-email-address ADDRESS` or `--shared-with-team` | Required: the owner, one person or the team |
 | `--contact-method-type TYPE` | Required: `email`, `outgoing_webhook`, `automated_voice_call`, or `pushover_notification` |
-| `--alert-severities VALUES` | Comma-separated `sos`, `warn`, `info`, in any order, without repeats. An empty string gets no alerts. Required, except for Pushover, which defaults to `sos,warn,info`. Pass `--alert-severities sos` for SOS only. An automated voice call takes only `sos` |
+| `--alert-severities VALUES` | Comma-separated `sos`, `warn`, `info`, in any order, without repeats. An empty string gets no alerts. Left out: `sos,warn` for a person's own contact method, `sos,warn,info` for one shared with the team and for an outgoing webhook, and `sos` for an automated voice call. Pass `--alert-severities sos` for SOS only. An automated voice call takes only `sos` |
 | `--send-while-unavailable-or-muted` | Optional. Without it, the method follows the person's unavailability and the team's mute. A team mute always silences Pushover and phone calls, even with this flag |
 | `--email-address ADDRESS` | With `email`: the address |
 | `--outgoing-webhook-url URL` | With `outgoing_webhook`: the receiver's `https://` URL |
@@ -2933,7 +2935,10 @@ Waits for review at https://ops.example.com/approvals/commits/5c281a5cc65bb8cb9a
 - **Waits** without a time limit while an MMX run or a person's helper
   holds the copy's lock, `/var/lib/mmhotline/systems_repository.lock`. A
   caller that holds the lock itself must release it first.
-- **Refused** for a `COMMIT_ID` the copy lacks after the fetch.
+- **Refused** for a `COMMIT_ID` the copy lacks after the fetch, and,
+  with exit 4 and no fetch, while the lock-out file
+  `/etc/mmhotline/everyone-locked-out` exists: MMHotline then trusts no
+  commit ([everyone locked out](../changing-mmhotline/design/operation.md#everyone-locked-out)).
 - A scheduled job on the server, such as `util01`'s job that applies the
   systems repository, runs `check` before applying a commit, and applies
   only through `trusted_through_commit_id`.

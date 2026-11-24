@@ -428,7 +428,7 @@ func (a *App) connectTelegramChat(ctx context.Context, startToken string, chat t
 			if err != nil {
 				return err
 			}
-			if _, err = createContactMethodTx(ctx, tx, contactMethodType, owner, settings, true, []string{"info", "sos", "warn"}, actorName, now); err != nil {
+			if _, err = createContactMethodTx(ctx, tx, contactMethodType, owner, settings, true, contactMethodType.Facts().defaultSubscriptions(owner == ""), actorName, now); err != nil {
 				return err
 			}
 		}

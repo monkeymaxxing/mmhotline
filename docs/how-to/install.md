@@ -44,13 +44,13 @@ send alerts. The install reads it and never changes its contents.
 
 1. **Download the archive, check it, and unpack it.** Paste this block.
    It picks the archive for the server's processor, downloads it with its
-   checksum file, checks it, and unpacks it into `~/mmhotline-0.7.0`. To
+   checksum file, checks it, and unpacks it into `~/mmhotline-0.8.0`. To
    install a newer release, change `version=`.
 
    ```sh
    (
    set -eu
-   version=0.7.0
+   version=0.8.0
    case "$(uname -sm)" in
      "Linux x86_64")  arch=amd64 ;;
      "Linux aarch64") arch=arm64 ;;
@@ -67,13 +67,13 @@ send alerts. The install reads it and never changes its contents.
    )
    ```
 
-   **Check:** it prints `mmhotline-0.7.0-linux-amd64.tar.gz: OK` (`arm64`
+   **Check:** it prints `mmhotline-0.8.0-linux-amd64.tar.gz: OK` (`arm64`
    on an ARM server), then where it unpacked.
 
    Reason: `SHA256SUMS` holds the checksum of each archive in the release,
    so the check finds a damaged or replaced download before you run it.
 
-   IF IT PRINTS `FAILED`, DELETE THE FOLDER `~/mmhotline-0.7.0` AND DO NOT RUN THE PROGRAM.
+   IF IT PRINTS `FAILED`, DELETE THE FOLDER `~/mmhotline-0.8.0` AND DO NOT RUN THE PROGRAM.
 
    By hand: `uname -sm` prints `Linux x86_64` for the `amd64` archive or
    `Linux aarch64` for the `arm64` archive.
@@ -81,7 +81,7 @@ send alerts. The install reads it and never changes its contents.
 2. **Go into the unpacked folder:**
 
    ```sh
-   cd ~/mmhotline-0.7.0/mmhotline-0.7.0-linux-*/
+   cd ~/mmhotline-0.8.0/mmhotline-0.8.0-linux-*/
    ```
 
    **Check:** `ls` shows `LICENSE`, `dependency_license_notices`, and the
@@ -94,7 +94,7 @@ send alerts. The install reads it and never changes its contents.
    tool (`gh`):
 
    ```sh
-   gh attestation verify ~/mmhotline-0.7.0/mmhotline-0.7.0-linux-*.tar.gz --repo monkeymaxxing/mmhotline
+   gh attestation verify ~/mmhotline-0.8.0/mmhotline-0.8.0-linux-*.tar.gz --repo monkeymaxxing/mmhotline
    ```
 
    **Check:** it says the verification succeeded. Reason: the checksum
@@ -163,7 +163,7 @@ send alerts. The install reads it and never changes its contents.
    ```
 
    print `active` and the release, such as
-   `mmhotline 0.7.0 (COMMIT, linux/amd64, modified=false)`, with the
+   `mmhotline 0.8.0 (COMMIT, linux/amd64, modified=false)`, with the
    release's full commit hash in place of `COMMIT`.
 
    From now on, run the installed `mmhotline`, without `./`. You can
@@ -221,8 +221,8 @@ CGO_ENABLED=0 go build -o "${TMPDIR:-/tmp}/mmhotline" ./cmd/mmhotline
 
 When GitHub is down, clone the mirror,
 `https://gitlab.com/monkeymaxxing/mmhotline.git`, instead. To build a
-release, run `git checkout v0.7.0` after `cd mmhotline`, with the release's
-version in place of `0.7.0`.
+release, run `git checkout v0.8.0` after `cd mmhotline`, with the release's
+version in place of `0.8.0`.
 
 **Check:** `"${TMPDIR:-/tmp}/mmhotline" version` prints the version. Then
 follow [Install a release](#install-a-release) from step 4, with

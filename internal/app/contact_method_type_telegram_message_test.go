@@ -218,7 +218,7 @@ func TestTelegramConnectsAMemberChatAndATeamGroup(t *testing.T) {
 	r.poll(t)
 	personal := r.telegramMethod(t, r.s.Principal, barbara.ID)
 	member, _ := r.a.CurrentMember(ctx, r.s.Principal)
-	if personal.MemberID != member.ID || personal.SentTo != "Telegram chat with Barbara" || strings.Join(personal.Subscriptions, ",") != "info,sos,warn" || !personal.SendWhileUnavailableOrMuted {
+	if personal.MemberID != member.ID || personal.SentTo != "Telegram chat with Barbara" || strings.Join(personal.Subscriptions, ",") != "sos,warn" || !personal.SendWhileUnavailableOrMuted {
 		t.Fatalf("personal chat: %+v", personal)
 	}
 	if ds := deliveriesOf(t, r.a, personal.ID); len(ds) != 1 || ds[0].Purpose != "contact_method_test" {
@@ -235,7 +235,8 @@ func TestTelegramConnectsAMemberChatAndATeamGroup(t *testing.T) {
 	}
 
 	group := r.connect(t, r.s.Principal, "team_group", barbara, opsGroup())
-	if group.MemberID != "" || group.SentTo != "Telegram group “Ops alerts”" {
+	// A person's own chat leaves Info off; a team group gets every severity.
+	if group.MemberID != "" || group.SentTo != "Telegram group “Ops alerts”" || strings.Join(group.Subscriptions, ",") != "info,sos,warn" {
 		t.Fatalf("group: %+v", group)
 	}
 	if got := r.lastMessageTo(t, opsGroup().ID).Text; got != telegramGroupConnectedText {

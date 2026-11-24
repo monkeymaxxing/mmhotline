@@ -446,8 +446,11 @@ playbook runs use only trusted commits. The section works with or without
 the triage agent.
 
 Leaving the section out trusts no commit: the commit check refuses, and
-so does every MMX run for the triage agent. A lock-out leaves the section
-out for this reason. Leaving it out keeps the checked-through commit, so
+so does every MMX run for the triage agent. A lock-out does not need to
+leave the section out: the lock-out file `/etc/mmhotline/everyone-locked-out`
+stops the agent and MMX and trusts no commit on its own
+([installed files](installed-files.md#etcmmhotlineeveryone-locked-out)).
+Leaving it out keeps the checked-through commit, so
 the check does not read the whole history again when the section returns.
 
 | Key | Required | Type and allowed values |
@@ -528,7 +531,8 @@ whether it starts a session or joins one:
   `--about-alert-id` takes the warning over, and MMHotline sends nothing for
   the warning. So does a playbook run request that names it when MMHotline
   asks a person about the run: a new approval request or a warning before
-  the run. A run that carried only one alert may leave the option out. A
+  the run. A run that carried only one alert may leave the option out,
+  except from an `info` report, which covers only the alerts it names. A
   playbook that simply ran takes nothing over. An agent that a log misleads
   into reporting "all fine" also keeps the named warning from people.
 - MMHotline delivers the warning when the run that carried it fails or

@@ -449,6 +449,74 @@ after an unknown sending service outcome. The
 [intake limits](ingestion.md#intake-limits-and-rejected-requests) bound pending
 deliveries. Restart recovery does not generate a burst of missed notifications.
 
+## Everyone locked out
+
+A team's break-in procedure, such as the Monkeymaxxing Stack's lock-out,
+creates the file `/etc/mmhotline/everyone-locked-out` as root on the
+MMHotline server. While the file exists, MMHotline:
+
+- **runs no agent.** It cuts a triage agent or review agent run that is
+  under way at once, as its own stop does: it closes the run's connection,
+  so the run kills the coding agent's process group at once, without
+  waiting for the agent's current step, and returns no commits, and
+  systemd stops the sandbox. It refuses
+  every new run: a triage session's run, a software review, a commit
+  review, a sign-in check, and a setup test. A sign-in check it cuts ends
+  as stopped: the cut shows nothing about the sign-in, so no warning goes
+  out, the sign-in's health stays as it was, and the check runs after the
+  lock-out.
+- **tells people at once.** Every SOS that waits for the agent wakes the
+  person on call, every held warn is delivered, and the open triage session
+  ends ([when the agent cannot run](triage-agent.md#when-the-agent-cannot-run)).
+  A new alert goes to people as if no triage agent were set up.
+- **runs no MMX for the agent.** A playbook run, whether the agent asked
+  for it, a person approved it, or its warning's wait ended, runs nothing.
+  One that waits for the copy's lock stops waiting, and an MMX run under
+  way gets `SIGTERM`, as at its
+  [time limit](triage-agent.md#the-time-limit).
+- **trusts no commit.** `commit-reviews check`, `commit-reviews
+  trust-through`, and the commit check before each MMX run are refused
+  with the cause. One already under way, such as a `trust-through` that
+  waits for the copy's lock, ends at the lock-out, and looks for the file
+  again in the transaction that would record the trust, so it records
+  nothing.
+- **pushes none of the agent's commits.** Commits a run returned before
+  the lock-out, which wait for the copy's lock, stay saved, as at
+  [MMHotline's stop](triage-agent.md#a-finished-runs-commits-and-mmhotlines-stop),
+  and the first run after the lock-out handles them. MMHotline looks for
+  the file again under the copy's lock just before each push.
+
+Alerting, escalation, contact methods, and the pages work as usual.
+
+MMHotline looks for the file every second, on a watch of its own apart
+from the background loop's visits, so a slow visit, such as one that waits
+30 seconds for a mail server, never delays a lock-out. It looks again
+before each agent run, MMX run, and commit check. The lock-out takes
+effect within a second, without a restart or a change to the settings
+file. When the file is gone, the next alert starts a triage session again,
+and a review or a sign-in check that was due runs.
+
+Reasons:
+
+- **A fixed path, not a setting.** The break-in procedure and the systemd
+  units that read the file must agree on one path. A lock-out must not
+  depend on rewriting and applying the settings file, whose source may be
+  what the break-in changed.
+- **A cut, not a stop after the agent's current step.** During a break-in
+  the agent must take no further step.
+- **MMX ends too.** An MMX run for the triage agent outlasts a stopped
+  triage run, but during a break-in MMHotline cannot trust what the agent
+  asked for. MMX stops cleanly on `SIGTERM`; the cost is a playbook that may
+  have stopped partway, which people check after a break-in anyway.
+- **A file MMHotline cannot check counts as there,** such as one in a
+  directory MMHotline may not read. A wrong refusal costs an agent run; a
+  wrong pass during a break-in costs much more.
+
+A settings file without the `systems_repository_commits` section also
+trusts no commit
+([commit check](triage-agent.md#checking-commits-before-mmx-and-triage-agent-runs)),
+but a lock-out no longer needs that.
+
 ## Diagnostics
 
 The dashboard shows what needs a person, the SOS incidents being handled,

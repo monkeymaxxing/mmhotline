@@ -198,7 +198,7 @@ func TestJoinedWarnAnUnrelatedReportDoesNotTakeItOver(t *testing.T) {
 	}
 	run2 := r.resumedRun(t, run)
 	r.at(t, 150*time.Second)
-	report(t, run2, json.NewDecoder(run2.connection), "0000000000000002", "info", "# The load on app002 is normal\n")
+	report(t, run2, json.NewDecoder(run2.connection), "0000000000000002", "info", "# The load on app002 is normal\n", joined.ID)
 	if outcome, _, ended := r.hold(t, joined.ID); outcome != "taken_over" || !ended {
 		t.Fatalf("the carrying run's report left the hold: %q %v", outcome, ended)
 	}

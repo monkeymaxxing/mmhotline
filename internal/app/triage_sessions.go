@@ -144,6 +144,7 @@ func (a *App) DriveTriageSession(ctx context.Context) error {
 	runtime.triageSessionWaitsForTheRun = false
 	runtime.mu.Unlock()
 	copyExists := a.systemsRepositoryCopyExists()
+	lockedOut := a.everyoneLockedOut()
 	now := a.Now().UTC()
 	var runToStop string
 	var stopRunForSession bool
@@ -166,6 +167,8 @@ func (a *App) DriveTriageSession(ctx context.Context) error {
 		switch {
 		case !setUp:
 			cannotRun = "The triage agent is no longer set up."
+		case lockedOut:
+			cannotRun = everyoneLockedOutCannotRun
 		case !installed:
 			cannotRun = "The triage agent sandbox is not installed."
 		case !copyExists:

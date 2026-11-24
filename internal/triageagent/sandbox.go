@@ -224,14 +224,18 @@ func RunInsideSandbox(ctx context.Context, in io.Reader, out io.Writer, settings
 	lines := make(chan lineReadResult)
 	go readAgentOutput(standardOutput, lines, runDone)
 	stopRequests := make(chan struct{}, 1)
-	go readControls(reader, stopRequests, relay, runDone)
+	connectionLost := make(chan struct{})
+	go readControls(reader, stopRequests, connectionLost, relay, runDone)
 	stream := &agentStream{}
-	stopRequested, terminating := false, false
+	stopRequested, terminating, cut := false, false, false
 	var failure error
 	var exitError error
 	outputEnded, processEnded := false, false
 	contextDone := ctx.Done()
-	for !outputEnded || !processEnded {
+	// After a cut the run waits only for the agent's own process: a
+	// descendant that left the process group and holds the output open must
+	// not keep the run, and so its systemd unit, going.
+	for !processEnded || !outputEnded && !cut {
 		if !terminating && (failure != nil || stopRequested && len(stream.activeSteps) == 0) {
 			terminating = true
 			terminateProcessGroup(command.Process.Pid, runDone)
@@ -245,6 +249,16 @@ func RunInsideSandbox(ctx context.Context, in io.Reader, out io.Writer, settings
 			// The command waiting for an answer is the agent's current step,
 			// which the stop waits for.
 			relay.end(runStoppingMessage)
+		case <-connectionLost:
+			// MMHotline closed the run's connection: its stop, the run's time
+			// limit, or a lock-out cut the run. Nobody receives the run's
+			// results any more, and during a lock-out the agent must take no
+			// further step, so the run kills the agent's process group at
+			// once, without waiting for the current step or a grace period.
+			cut, terminating = true, true
+			connectionLost = nil
+			_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+			relay.end(runEndedMessage)
 		case result, ok := <-lines:
 			if !ok {
 				outputEnded = true
@@ -274,6 +288,12 @@ func RunInsideSandbox(ctx context.Context, in io.Reader, out io.Writer, settings
 			// A command left waiting could hold the agent's output open.
 			relay.end(runEndedMessage)
 		}
+	}
+	if cut {
+		// No final event: nobody reads it, and the agent's commits are
+		// not bundled for nobody. The sandbox exits, and systemd stops
+		// whatever is left of the run.
+		return errRunConnectionClosed
 	}
 	if failure != nil {
 		return fail(failure)
@@ -432,24 +452,30 @@ func readRunLine(reader *bufio.Reader, limit int) ([]byte, error) {
 	}
 }
 
-// readControls reads MMHotline's control lines until the connection closes,
-// which counts as a stop: nobody receives the run's results any more.
-func readControls(reader *bufio.Reader, stops chan<- struct{}, relay *requestRelay, done <-chan struct{}) {
+// errRunConnectionClosed ends a run whose connection MMHotline closed.
+var errRunConnectionClosed = errors.New("MMHotline closed the run's connection, so the run killed the coding agent at once")
+
+// readControls reads MMHotline's control lines until the connection closes.
+// A stop line asks for a stop after the agent's current step. A closed or
+// broken connection is a cut, not a stop: lost closes when the connection
+// can no longer be read.
+func readControls(reader *bufio.Reader, stops chan<- struct{}, lost chan<- struct{}, relay *requestRelay, done <-chan struct{}) {
 	for {
 		line, err := readRunLine(reader, maximumLineSizeWithoutBundle)
+		if err != nil {
+			close(lost)
+			return
+		}
 		var control Control
-		if err == nil && json.Unmarshal(line, &control) == nil && control.Answer != nil {
+		if json.Unmarshal(line, &control) == nil && control.Answer != nil {
 			relay.deliver(*control.Answer)
 		}
-		if err != nil || control.Stop {
+		if control.Stop {
 			// One stop waiting in the channel is enough.
 			select {
 			case stops <- struct{}{}:
 			default:
 			}
-		}
-		if err != nil {
-			return
 		}
 		select {
 		case <-done:

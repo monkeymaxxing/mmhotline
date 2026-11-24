@@ -271,11 +271,6 @@ func pushoverGroupKeyWarning(name string) string {
 // person's own user key is.
 const pushoverUserKeyHelp = "Your own user key is at the top of pushover.net after you sign in, labelled \"Your User Key\". A group key comes from a delivery group's page."
 
-// pushoverDefaultSubscriptions is every severity: Pushover is often a person's
-// only contact method, and Warning and Info go at priorities that wake nobody
-// (Send), so subscribing to SOS alone would leave them unheard.
-func pushoverDefaultSubscriptions() []string { return []string{"sos", "warn", "info"} }
-
 // pushoverEmergency is true for an SOS only. A contact method test goes at
 // ordinary priority and needs no acknowledgement: only an SOS (the test SOS
 // of `incidents send-test-sos`) proves that a phone wakes its owner.

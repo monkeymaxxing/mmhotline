@@ -80,25 +80,28 @@ func (a *App) saveReturnedAgentCommits(runID, base string, bundle []byte) (path 
 }
 
 // receiveReturnedAgentCommits saves a finished run's commits, then handles
-// them in MMHotline's copy until MMHotline stops. waits says MMHotline
-// stopped first: the commits stay saved for the next run after the restart,
-// and nothing is recorded yet. saved is the saved file, "" when it could
-// not be written; the commits are then handled all the same, and a stop
-// during the wait records the failure.
+// them in MMHotline's copy until MMHotline stops or everyone is locked out.
+// waits says MMHotline stopped or the lock-out began first: the commits stay
+// saved for the next run in the systems repository, after the restart or the
+// lock-out, and nothing is recorded yet. None of them reaches origin during
+// a lock-out. saved is the saved file, "" when it could not be written; the
+// commits are then handled all the same, and a stop or a lock-out during the
+// wait records the failure.
 func (a *App) receiveReturnedAgentCommits(runID, base string, bundle []byte) (saved string, commits systemsrepository.ReceivedAgentCommits, waits bool, err error) {
-	stopping := a.mmhotlineStopping()
+	ctx, stop := a.untilALockOut(a.mmhotlineStopping())
+	defer stop()
 	saved, saveErr := a.saveReturnedAgentCommits(runID, base, bundle)
 	if saveErr != nil {
 		fmt.Fprintf(os.Stderr, "mmhotline: could not save the triage agent's commits of run %s before handling them: %s\n", runID, saveErr)
 	}
-	if saved != "" && stopping.Err() != nil {
+	if saved != "" && (ctx.Err() != nil || a.everyoneLockedOut()) {
 		return saved, commits, true, nil
 	}
-	commits, err = systemsrepository.ReceiveAgentCommits(stopping, filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), bundle, base, a.trustedCommit(nil), a.triageAgentsOwnCommits(stopping))
-	if err != nil && saved != "" && stopping.Err() != nil {
+	commits, err = systemsrepository.ReceiveAgentCommits(ctx, filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), bundle, base, a.trustedCommit(nil), a.triageAgentsOwnCommits(ctx), a.mayPushAgentCommits)
+	if err != nil && saved != "" && (ctx.Err() != nil || errors.Is(err, errEveryoneLockedOut)) {
 		return saved, systemsrepository.ReceivedAgentCommits{}, true, nil
 	}
-	return saved, commits, false, err
+	return saved, commits, false, lockedOutErr(ctx, err)
 }
 
 // applySavedAgentCommits handles, oldest first, the commits that finished
@@ -162,8 +165,10 @@ func (a *App) applySavedAgentCommits(ctx context.Context) {
 			fmt.Fprintf(os.Stderr, "mmhotline: could not read the saved commits of run %s: %s\n", bundle.runID, err)
 			continue
 		}
-		commits, err := systemsrepository.ReceiveAgentCommits(ctx, filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), content, bundle.base, a.trustedCommit(nil), a.triageAgentsOwnCommits(ctx))
-		if err != nil && ctx.Err() != nil {
+		commits, err := systemsrepository.ReceiveAgentCommits(ctx, filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), content, bundle.base, a.trustedCommit(nil), a.triageAgentsOwnCommits(ctx), a.mayPushAgentCommits)
+		// Left saved for the next run: MMHotline stops, the run ends, or
+		// everyone is locked out.
+		if err != nil && (ctx.Err() != nil || errors.Is(err, errEveryoneLockedOut)) {
 			return
 		}
 		outcome, reason := receivedAgentCommitsOutcome(commits, err)

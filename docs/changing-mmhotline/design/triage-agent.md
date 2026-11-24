@@ -949,7 +949,9 @@ Its required setting `trusted_commits` chooses the check:
 `every_commit_on_origin`. A settings file without the section trusts no
 commit: the check, every MMX run, and `trust-through` are refused with
 that cause, and a triage agent run fails before its coding agent starts.
-The Stack leaves the section out during a lock-out and relies on this.
+A lock-out does not need this: the lock-out file stops every agent run and
+MMX run, and trusts no commit, on its own
+([everyone locked out](operation.md#everyone-locked-out)).
 Under `triage_agent`, each of the section's keys is refused with
 `moved to systems_repository_commits.KEY`, so an older settings file says
 where the key goes. Reason for a section of its own: a team without the
@@ -1624,6 +1626,10 @@ copy's lock to handle the commits
 - When MMHotline stops while the commits wait for the lock, the wait ends at
   once. The run's own end is recorded as the run ended; the commits'
   outcome is not recorded yet.
+- A [lock-out](operation.md#everyone-locked-out) does the same, and
+  MMHotline also looks for the lock-out file under the copy's lock just
+  before each push, so no commit reaches origin during a lock-out. The
+  first run after the lock-out handles the saved commits.
 - The next run in the systems repository, after the restart, handles each
   saved bundle first, oldest first, records the outcome with the bundle's
   run as at the run's end, and removes the file. So that run starts from the
@@ -1683,8 +1689,14 @@ over the run socket connection:
    `{"answer":{"request_id":"0f3a9c2e5b7d1a48","outcome":"refused","message":"MMHotline refused the request: the playbook path \"deploy\" must end in .yml."}}`,
    whose fields are the ones `--json` prints
    ([below](#requests-from-the-agent)).
-4. MMHotline may send `{"stop":true}` at any time. A closed connection counts
-   as a stop, because nobody receives the run's results any more.
+4. MMHotline may send `{"stop":true}` at any time. A closed connection is a
+   cut, not a stop: the run kills the coding agent's process group with
+   `SIGKILL` at once, without waiting for the current step, sends nothing,
+   and ends, so systemd stops whatever is left of the run. MMHotline closes
+   the connection when its own stop, the run's time limit, or a
+   [lock-out](operation.md#everyone-locked-out) ends the run. Nobody
+   receives the run's results any more, and during a lock-out the agent
+   must take no further step.
 
 Each line fits within 1 MiB, excluding the base64 representation of one Git
 bundle whose binary size is at most 64 MiB, and excluding the request's
@@ -2307,8 +2319,9 @@ MMHotline wakes the person on call:
 - **At once when the agent cannot help**: a run of the session fails
   ([when the agent cannot run](#when-the-agent-cannot-run)), or the agent can
   no longer run because its setup was removed, its sandbox is not installed,
-  or MMHotline's copy of the systems repository is missing. The background
-  loop notices a missing sandbox or copy at its next visit, within a second.
+  MMHotline's copy of the systems repository is missing, or everyone is
+  [locked out](operation.md#everyone-locked-out). The background loop
+  notices a missing sandbox or copy, or the lock-out file, within a second.
 - **At once when a person takes the session over** with Stop on the incident
   page ([a person takes over](#a-person-takes-over)).
 
@@ -2432,8 +2445,9 @@ Each held warn ends exactly once, the first of these:
   session wakes the person on call, for any reason (its wait ended, a run
   failed, the agent reported at sos, the agent asked for approval); a person
   [takes the session over](#a-person-takes-over); or the agent cannot run,
-  because it is not set up, its sandbox is not installed, or MMHotline's
-  copy of the systems repository is missing. A session that ends delivers
+  because it is not set up, its sandbox is not installed, MMHotline's copy
+  of the systems repository is missing, or everyone is
+  [locked out](operation.md#everyone-locked-out). A session that ends delivers
   its held warns too.
 - **Delivered at once** when the [run limit](#once-the-limit-holds) holds
   and no run carried the warn: the limit refuses the run that would.
@@ -2527,10 +2541,21 @@ verdict cannot quiet another finding. The agent names each alert with
 `--about-alert-id` and the alert's ID, which the prompt lists beside each
 alert, once per alert ([requests from the agent](#requests-from-the-agent)).
 
-- A run that carried **exactly one alert** may leave the option out: the
-  report or request then covers that alert. One problem is not enough for
-  this, because two warns can share one `sender_incident_key`, such as two
-  affected versions of one CVE.
+- A run that carried **exactly one alert** may leave the option out of a
+  playbook run request or a report at warn or sos: the request or report
+  then covers that alert. One problem is not enough for this, because two
+  warns can share one `sender_incident_key`, such as two affected versions
+  of one CVE.
+- **A report at info covers only the alerts it names,** also when the run
+  carried one alert. The answer then says that the report covers no
+  warning, and how to name one. Reason: an agent sends info reports on the
+  way, such as "Looking at app002's load", and sometimes by mistake. Before
+  this rule, such a report took over the one warn its run carried, and when
+  the run then failed, nobody heard the warning: the info report reached
+  only contact methods subscribed to Info, which a person's own contact
+  methods are not by default. An info report that names the warn with
+  `--about-alert-id` still closes it on purpose, as when the agent fixed
+  the problem.
 - When the run carried no alert or several, and the option is left out, the
   report is accepted and sent, and the request is judged as usual, but
   neither covers any warn. With several alerts carried, the command's
@@ -3055,7 +3080,10 @@ The failure cases are:
 - the run could not start;
 - the run ended with `failed`;
 - the coding agent's service refused;
-- the one-hour limit ended the run.
+- the one-hour limit ended the run;
+- a lock-out cut the run
+  ([everyone locked out](operation.md#everyone-locked-out)), which also
+  ends the session.
 
 An SOS that [waits for the agent](#an-sos-waits-for-the-agent) wakes the
 person on call at once, and its history says "The triage agent could not run;
@@ -3274,8 +3302,9 @@ quiet minutes alone never end a session while alerts keep arriving, so a
 stretch of unrelated trouble would otherwise stay one session for hours.
 
 A session also ends when the agent can no longer run: when its setup is
-removed, its sandbox is not installed, or MMHotline's copy of the systems
-repository is missing. A session a person took over ends after its
+removed, its sandbox is not installed, MMHotline's copy of the systems
+repository is missing, or everyone is
+[locked out](operation.md#everyone-locked-out). A session a person took over ends after its
 hand-over, not by the 30 quiet minutes ([a person takes over](#a-person-takes-over)).
 MMHotline records when each session started and ended, and why it ended.
 
@@ -5285,7 +5314,9 @@ step: a triage run that is stopped or ends never ends its MMX run halfway,
 which could leave a server between two states. The relay answers the agent's
 waiting command at once ([above](#the-relay-inside-the-run)), and MMHotline
 records the MMX run when it ends. Restarting MMHotline's service is different:
-systemd then stops every process of the service, the MMX run included.
+systemd then stops every process of the service, the MMX run included. So
+is a lock-out, which ends the MMX run with `SIGTERM` at once
+([everyone locked out](operation.md#everyone-locked-out)).
 
 ### One run at a time
 

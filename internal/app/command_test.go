@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -88,6 +89,40 @@ func TestRemovedCommandsAreRefusedAsUnknown(t *testing.T) {
 		}
 	}
 }
+
+// Left out, --alert-severities leaves Info off a person's own contact
+// method and sends every severity to one shared with the team; a choice,
+// even of no alerts, is kept.
+func TestCommandContactMethodsDefaultAlertSeverities(t *testing.T) {
+	t.Parallel()
+	a, _, members := coverageFixture(t)
+	add := func(in ContactMethodsCommandRequest) []string {
+		t.Helper()
+		result, raw := commandRequest(t, a, CommandRequest{Group: "contact-methods", Action: "add", ContactMethods: in}, 200)
+		for _, method := range result.ContactMethods {
+			if method.SendsTo == in.EmailAddress {
+				return method.AlertSeverities
+			}
+		}
+		t.Fatalf("no contact method sends to %s: %s", in.EmailAddress, raw)
+		return nil
+	}
+	none := []string{}
+	for _, test := range []struct {
+		name string
+		in   ContactMethodsCommandRequest
+		want []string
+	}{
+		{"a person's own email", ContactMethodsCommandRequest{SignInEmailAddress: members[1].SignInEmailAddress, ContactMethodType: "email", EmailAddress: "own@example.com"}, []string{"sos", "warn"}},
+		{"an email shared with the team", ContactMethodsCommandRequest{SharedWithTeam: true, ContactMethodType: "email", EmailAddress: "team@example.com"}, []string{"sos", "warn", "info"}},
+		{"no alerts, chosen", ContactMethodsCommandRequest{SignInEmailAddress: members[1].SignInEmailAddress, ContactMethodType: "email", EmailAddress: "quiet@example.com", AlertSeverities: &none}, []string{}},
+	} {
+		if got := add(test.in); strings.Join(slices.Sorted(slices.Values(got)), ",") != strings.Join(slices.Sorted(slices.Values(test.want)), ",") {
+			t.Errorf("%s: alert severities %q, want %q", test.name, got, test.want)
+		}
+	}
+}
+
 func TestCommandContactMethodsHandlerAndPageOwnership(t *testing.T) {
 	t.Parallel()
 	a, admin, members := coverageFixture(t)

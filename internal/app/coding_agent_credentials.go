@@ -463,7 +463,8 @@ func (a *App) startSignInCheck(ctx context.Context, role agentRole, startedBy st
 // agent that succeeded shows that it works; only a sign-in check shows that
 // it does not. It runs in the transaction that records the run's end, before
 // a passing setup test replaces the setup, so a new set-up that fixes a
-// failing sign-in says so.
+// failing sign-in says so. A sign-in check that a lock-out cut short ends
+// as stopped, which shows nothing about the sign-in.
 func (a *App) recordSignInOutcome(ctx context.Context, tx *sql.Tx, run *triageAgentActiveRun, event triageagent.Event, cause runEndCause, now time.Time) error {
 	role := agentRoleOf(run.purpose)
 	succeeded := event.Event == "finished" && event.Reason == ""

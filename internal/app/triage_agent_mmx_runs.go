@@ -48,6 +48,9 @@ func (a *App) RunPlaybook(ctx context.Context, request TriageAgentPlaybookRunReq
 	if !ok {
 		return TriageAgentPlaybookRunDecision{Outcome: triageagent.Refused, Message: "MMX cannot name " + request.Playbook + ", so MMHotline did not run it."}
 	}
+	if a.everyoneLockedOut() {
+		return TriageAgentPlaybookRunDecision{Outcome: triageagent.Refused, Message: a.mmxRefusal(CommitCheck{}, errEveryoneLockedOut)}
+	}
 	// The MMX run is the triage run's current step: a triage run that ends or
 	// is stopped must not end it halfway.
 	ctx = context.WithoutCancel(ctx)
@@ -56,6 +59,10 @@ func (a *App) RunPlaybook(ctx context.Context, request TriageAgentPlaybookRunReq
 	limit := a.triageAgent.mmxRunTimeLimit
 	runContext, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
+	// A lock-out ends the run at once, in its wait for the copy's lock or
+	// while MMX runs: MMX gets SIGTERM, as at the time limit.
+	lockOut := a.lockOut.endsAtALockOut()
+	defer context.AfterFunc(lockOut, cancel)()
 
 	directory := filepath.Join(a.Store.Dir, systemsrepository.DirectoryName)
 	decision := TriageAgentPlaybookRunDecision{Outcome: triageagent.Refused}
@@ -117,6 +124,8 @@ func (a *App) RunPlaybook(ctx context.Context, request TriageAgentPlaybookRunReq
 			exitCode = sql.NullInt64{Int64: int64(state.ExitCode()), Valid: true}
 		}
 		switch {
+		case lockOut.Err() != nil:
+			decision.Message = "MMHotline ran the playbook with MMX, and the run failed: MMHotline ended the MMX run because " + everyoneLockedOutReason + ". The playbook may have stopped partway."
 		case runContext.Err() != nil:
 			decision.Message = fmt.Sprintf("MMHotline ran the playbook with MMX, and the run failed: MMX did not finish within %s, MMHotline's time limit for an MMX run, so MMHotline ended the MMX run. The playbook may have stopped partway.", limit)
 		case !exitCode.Valid:
@@ -134,6 +143,8 @@ func (a *App) RunPlaybook(ctx context.Context, request TriageAgentPlaybookRunReq
 		// Settings that trust no commit, or commits that wait with nothing
 		// trusted before them, say why in the check's own words.
 		switch {
+		case lockOut.Err() != nil || errors.Is(err, errEveryoneLockedOut):
+			decision.Message = a.mmxRefusal(check, errEveryoneLockedOut)
 		case errors.Is(err, errNoCommitIsTrusted):
 			decision.Message = a.mmxRefusal(check, errNoCommitIsTrusted)
 		case len(check.Waiting) > 0:

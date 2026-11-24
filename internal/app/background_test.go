@@ -123,3 +123,73 @@ func TestBackgroundSchedulerSendsAnAlertThatArrivesWhileItsTeamIsIdle(t *testing
 		t.Fatal("the alert was not sent")
 	}
 }
+
+// hangingEmailSender waits in Send, as a mail server that answers after 30
+// seconds does, until released or MMHotline stops.
+type hangingEmailSender struct {
+	EmailContactMethodType
+	sending chan struct{}
+	release chan struct{}
+}
+
+func (s *hangingEmailSender) Send(ctx context.Context, _ ContactMethodSend) DeliveryResult {
+	select {
+	case s.sending <- struct{}{}:
+	default:
+	}
+	select {
+	case <-s.release:
+	case <-ctx.Done():
+	}
+	return DeliveryResult{State: "accepted", IDFromSendingService: "fixture-acceptance"}
+}
+
+// The lock-out file has its own watch: while a visit waits for a slow mail
+// server, a lock-out still takes effect within a second or so, and the
+// watch ends with the background loop.
+func TestALockOutIsSeenWhileAVisitWaitsForAMailServer(t *testing.T) {
+	t.Parallel()
+	a := foundationApp(t)
+	deliveryTestClock(a)
+	lockOut := lockOutFileForTest(t, a)
+	s := memberFixture(t, a, "slow-mail@example.test")
+	savedEmail(t, a, s.Principal, true)
+	source, err := createAlertSource(context.Background(), a, s.Principal, "Backup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sender := &hangingEmailSender{sending: make(chan struct{}, 1), release: make(chan struct{})}
+	a.WebURL = "https://mmhotline.example.com"
+	a.ContactMethodTypes = map[string]ContactMethodType{"email": sender}
+	workerCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		a.RunBackground(workerCtx, func(err error) { t.Errorf("background work: %v", err) })
+	}()
+	defer func() { cancel(); <-done }()
+	alertReceipt(t, intakeHTTP(a, s.Principal, source, `{"sender_alert_id":"disk","severity":"warn","title":"Disk pressure","message":""}`, a.Now()))
+	select {
+	case <-sender.sending:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the alert's email was not sent")
+	}
+	lockEveryoneOut(t, lockOut)
+	for deadline := time.Now().Add(3 * time.Second); !a.lockOut.lockedOutAtTheLastLook(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the lock-out waited for the visit's send")
+		}
+	}
+	select {
+	case <-sender.release:
+		t.Fatal("the send ended early")
+	default:
+	}
+	close(sender.release)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the background loop, with its lock-out watch, did not end with its context")
+	}
+}

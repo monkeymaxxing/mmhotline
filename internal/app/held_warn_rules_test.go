@@ -94,8 +94,8 @@ func TestHeldWarnTheDB01Replay(t *testing.T) {
 		waitSessionIDSaved(t, r.a, "session-one")
 		db01 := r.joins(t, 60*time.Second, db01Warning, "db01-cve")
 		r.at(t, 66*time.Second)
-		// The first run carried one alert, so its report covers it without naming it.
-		report(t, run1, json.NewDecoder(run1.connection), "0000000000000001", "info", "# app001 runs a fixed openssh\n")
+		// An info report covers only the alerts it names.
+		report(t, run1, json.NewDecoder(run1.connection), "0000000000000001", "info", "# app001 runs a fixed openssh\n", app001.ID)
 		run2 := r.resumedRun(t, run1)
 		if !strings.Contains(run2.request.Prompt, "Alert ID: "+db01.ID) || strings.Contains(run2.request.Prompt, "Alert ID: "+app001.ID) {
 			t.Fatalf("the second run's prompt does not carry db01's warning alone:\n%s", run2.request.Prompt)

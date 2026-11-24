@@ -150,9 +150,10 @@ test that an emergency alert wakes them, also in silent mode.
    `sudo mmhotline connect-pushover`: it asks for the application token
    again, then whose phone it adds.
 
-   The new contact method gets SOS, Warning, and Info alerts at once,
-   because Pushover is often a person's only contact method. A person can
-   change that on its card, or an administrator with `--alert-severities`.
+   The new contact method gets SOS and Warning alerts at once; Warning is
+   on because Pushover is often a person's only contact method. Info alerts
+   stay off until the person turns them on. A person can change that on its
+   card, or an administrator with `--alert-severities`.
    Like every personal contact method, it skips times the person is
    unavailable, unless the card's **Send even when I'm unavailable** is
    on, and team mute always stops it. Links in the notifications open

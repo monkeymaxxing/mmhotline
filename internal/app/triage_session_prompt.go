@@ -80,7 +80,7 @@ Whether MMHotline runs a playbook without a person depends on the kinds of actio
 // triageSessionAboutAlertsText tells a triage session's agent to name the
 // alerts each report or playbook run request is about. A software review
 // carries no alerts, so its task leaves it out.
-const triageSessionAboutAlertsText = `Name each alert a report or a playbook run request is about: add --about-alert-id and the alert's ID from the list of alerts to the report or request-playbook-run command, once per alert. MMHotline holds a warning while you look into it. A warning your report names reaches people as your report; a warning that nothing of your run names reaches people when your run ends. When your run carries only one alert, you may leave --about-alert-id out.`
+const triageSessionAboutAlertsText = `Name each alert a report or a playbook run request is about: add --about-alert-id and the alert's ID from the list of alerts to the report or request-playbook-run command, once per alert. MMHotline holds a warning while you look into it. A warning your report names reaches people as your report; a warning that nothing of your run names reaches people when your run ends. When your run carries only one alert, you may leave --about-alert-id out of a warn or sos report and of a playbook run request. An info report covers only the alerts it names: to close a warning with an info report, name the warning with --about-alert-id.`
 
 // triageSessionStartPrompt is the task of a triage session's first run, on
 // the server serverName, with lastNote the last session's note in

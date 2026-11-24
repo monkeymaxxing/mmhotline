@@ -109,7 +109,7 @@ func (a *App) answerTriageAgentRequest(run *triageAgentActiveRun, event triageag
 			return nil
 		}
 		var err error
-		coverage, err = recordCoveredAlerts(run.ctx, tx, run.id, itemKind, event.RequestID, request.AboutAlertIDs)
+		coverage, err = recordCoveredAlerts(run.ctx, tx, run.id, itemKind, event.RequestID, request.AlertSeverity, request.AboutAlertIDs)
 		return err
 	})
 	if errors.Is(err, errTriageAgentRequestIDUsed) {
@@ -185,7 +185,7 @@ func (a *App) decideTriageAgentRequest(run *triageAgentActiveRun, requestID stri
 	}
 	var answer triageagent.Answer
 	if len(bundle) > 0 {
-		commits, err := systemsrepository.ReceiveAgentCommits(run.ctx, filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), bundle, base, a.trustedCommit(nil), a.triageAgentsOwnCommits(run.ctx))
+		commits, err := systemsrepository.ReceiveAgentCommits(run.ctx, filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), bundle, base, a.trustedCommit(nil), a.triageAgentsOwnCommits(run.ctx), a.mayPushAgentCommits)
 		outcome, reason := receivedAgentCommitsOutcome(commits, err)
 		if err := a.Store.WithTransaction(run.ctx, func(tx *sql.Tx) error {
 			return insertTriageAgentCommits(tx, run.id, requestID, base, commits, outcome, reason)

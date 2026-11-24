@@ -80,6 +80,8 @@ type triageAgentActiveRun struct {
 	timeLimit   *time.Timer
 	// closedForShutdown: CloseTriageAgent ended the run, as MMHotline stops.
 	closedForShutdown bool
+	// cutForALockOut: the lock-out file ended the run (cutAgentRunsForALockOut).
+	cutForALockOut bool
 	// stoppedForTriageSession: a software review, a commit review, or a
 	// sign-in check that MMHotline stopped because a triage session needs the one run.
 	stoppedForTriageSession bool
@@ -362,7 +364,8 @@ func lentChatGPTSignIn(ctx context.Context, tx *sql.Tx, role agentRole, request 
 
 // oneTriageRunIsFree says whether a software review or a sign-in check may
 // take the one triage run now: the sandbox is installed, no run is active or
-// starting, and no triage session waits for the run. An open triage session
+// starting, no triage session waits for the run, and the last look found
+// no lock-out file (everyoneLockedOut). An open triage session
 // that needs no run does not matter, and one that needs the run stops them.
 // The end of a run changes the database, which brings the background loop's
 // next visit.
@@ -370,7 +373,7 @@ func (a *App) oneTriageRunIsFree() bool {
 	runtime := &a.triageAgent
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	return runtime.runSocketPath != "" && runtime.proxySocketPath != "" && runtime.activeRun == nil && !runtime.backgroundRunStarting && !runtime.triageSessionWaitsForTheRun
+	return runtime.runSocketPath != "" && runtime.proxySocketPath != "" && runtime.activeRun == nil && !runtime.backgroundRunStarting && !runtime.triageSessionWaitsForTheRun && !a.lockOut.lockedOutAtTheLastLook()
 }
 
 // startBesideTheLoop runs start, which starts a run of the background loop,
@@ -422,6 +425,11 @@ func (a *App) startTriageAgentRunInSystemsRepository(ctx context.Context, purpos
 // file, nil for any other run. A run that fails after it was recorded is
 // returned ended.
 func (a *App) startTriageAgentRun(ctx context.Context, purpose, startedBy string, request triageagent.Request, setup *SettingsCodingAgent, authorize func(tx *sql.Tx, runID string) error) (*triageAgentActiveRun, error) {
+	// A conflict, as when the one run is taken: a review or a check that
+	// was due stays due until the lock-out ends.
+	if a.everyoneLockedOut() {
+		return nil, errEveryoneLockedOut
+	}
 	runtime := &a.triageAgent
 	runtime.mu.Lock()
 	if runtime.runSocketPath == "" || runtime.proxySocketPath == "" {
@@ -753,7 +761,7 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 		return
 	}
 	run.ending = true
-	closedForShutdown, stoppedForTriageSession := run.closedForShutdown, run.stoppedForTriageSession
+	closedForShutdown, stoppedForTriageSession, cutForALockOut := run.closedForShutdown, run.stoppedForTriageSession, run.cutForALockOut
 	if run.timeLimit != nil {
 		run.timeLimit.Stop()
 	}
@@ -794,6 +802,15 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 	// The one place a run's end cause is decided; the words follow it.
 	cause := runEndedOnItsOwn
 	switch {
+	case cutForALockOut && event.Event != "finished":
+		// A result that came first stands; the run is not resumed.
+		event.Event, event.Reason = "failed", everyoneLockedOutCannotRun
+		// The cut shows nothing about the agent's sign-in, so a sign-in
+		// check ends as stopped: the sign-in's health stays as it was, no
+		// warning goes out, and the check stays due for after the lock-out.
+		if signInCheckPurpose(run.purpose) {
+			event.Event = "stopped"
+		}
 	case closedForShutdown && event.Event == "failed":
 		// Closing the connection fails the run; a result that came first stands.
 		cause, event.Reason = runCutByMMHotlineStop, triageRunCutByStop
@@ -932,8 +949,9 @@ func usageAfter(total, earlier triageagent.Usage) triageagent.Usage {
 	return after
 }
 
-// CloseTriageAgent closes the run connections so systemd also stops the
-// sandboxes: the triage run's and a review's. It is MMHotline's stop: no run
+// CloseTriageAgent closes the run connections, so each sandbox kills its
+// coding agent at once and ends, and systemd stops the rest: the triage
+// run's and a review's. It is MMHotline's stop: no run
 // starts or saves its commits after it.
 func (a *App) CloseTriageAgent() {
 	// A run's start and a finished run's commits stop waiting for the

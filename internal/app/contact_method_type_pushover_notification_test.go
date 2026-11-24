@@ -164,9 +164,10 @@ func TestPushoverContactCommandsUseExplicitJSON(t *testing.T) {
 	}
 	result, raw = commandRequest(t, a, request, 200)
 	assertCommandKeys(t, raw, "contact_method_id", "sign_in_email_address", "contact_method_type", "sends_to", "alert_severities", "last_test_message")
-	// Pushover is often a person's only contact method, so it defaults to every
-	// severity: with SOS alone, Warning and Info alerts would reach nobody.
-	if len(result.ContactMethods) != 1 || strings.Join(result.ContactMethods[0].AlertSeverities, ",") != "info,sos,warn" {
+	// Pushover is often a person's only contact method, so it defaults to SOS
+	// and Warning: with SOS alone, Warning alerts would reach nobody. Info
+	// stays off until the person turns it on.
+	if len(result.ContactMethods) != 1 || strings.Join(result.ContactMethods[0].AlertSeverities, ",") != "sos,warn" {
 		t.Fatal(raw)
 	}
 	if _, err := a.DispatchOne(context.Background()); err != nil {

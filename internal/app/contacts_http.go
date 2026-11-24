@@ -155,7 +155,7 @@ func (a *App) renderContactMethodsPage(w http.ResponseWriter, r *http.Request, p
 		HTTPError(w, err)
 		return
 	}
-	fresh := contactMethodView{Info: true, Warn: true, SOS: true, ContactMethod: ContactMethod{SendWhileUnavailableOrMuted: true}}
+	fresh := contactMethodView{ContactMethod: ContactMethod{SendWhileUnavailableOrMuted: true}}
 	data := contactMethodPageData{CSRF: a.CSRFToken(w, r), Error: message, Admin: m.Role == RoleAdministrator, New: map[string]*contactMethodView{}, ShownSecret: shown, PhoneNumbersAvailable: a.twilioSendingService() != nil, PhoneNumberConsent: phoneNumberConsentText}
 	people, err := a.membersForHistory(r.Context(), p)
 	if err != nil {
@@ -205,10 +205,10 @@ func (a *App) renderContactMethodsPage(w http.ResponseWriter, r *http.Request, p
 		if c.Facts().WakesPeople {
 			form.SendWhileUnavailableOrMuted = false
 		}
-		if c.Facts().SOSOnly {
-			form.Info = false
-			form.Warn = false
-		}
+		// A new form is a person's own contact method until an
+		// administrator ticks "Shared with the team".
+		defaults := c.Facts().defaultSubscriptions(false)
+		form.Info, form.Warn, form.SOS = containsMember(defaults, "info"), containsMember(defaults, "warn"), containsMember(defaults, "sos")
 		data.New[c.Name()] = &form
 	}
 	switch r.URL.Query().Get("done") {

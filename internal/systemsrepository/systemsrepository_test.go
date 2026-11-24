@@ -150,7 +150,7 @@ func (r repositories) endRun(t *testing.T, base string) ReceivedAgentCommits {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, bundle, base, originIsTrusted, r.owned)
+	result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, bundle, base, originIsTrusted, r.owned, pushAnyTime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +168,9 @@ func (r repositories) agentWritesPlaybookAndNote(t *testing.T) {
 func originIsTrusted(_ context.Context, originCommitID string) (string, error) {
 	return originCommitID, nil
 }
+
+// pushAnyTime stands in for MMHotline's MayPush when nobody is locked out.
+func pushAnyTime() error { return nil }
 
 // trustedIs stands in for the commit check while a commit after trusted waits.
 func trustedIs(trusted string) TrustedCommit {
@@ -562,7 +565,7 @@ func TestCommitsThatAreRefused(t *testing.T) {
 	t.Run("not a bundle", func(t *testing.T) {
 		r := setUpRepositories(t)
 		base := r.startRun(t)
-		result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, []byte("not a bundle\n"), base, originIsTrusted, r.owned)
+		result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, []byte("not a bundle\n"), base, originIsTrusted, r.owned, pushAnyTime)
 		if err != nil || result.Outcome != Refused || !strings.Contains(result.Reason, "not usable") {
 			t.Fatalf("result: %+v, %v", result, err)
 		}
@@ -572,7 +575,7 @@ func TestCommitsThatAreRefused(t *testing.T) {
 		oversized := make([]byte, MaximumBundleSize+1)
 		base := strings.Repeat("a", 40)
 		size := strconv.Itoa(MaximumBundleSize + 1)
-		result, err := ReceiveAgentCommits(t.Context(), directory, oversized, base, originIsTrusted, TriageAgentsOwnCommits{})
+		result, err := ReceiveAgentCommits(t.Context(), directory, oversized, base, originIsTrusted, TriageAgentsOwnCommits{}, pushAnyTime)
 		if err != nil || result.Outcome != Refused || !strings.Contains(result.Reason, size) {
 			t.Fatalf("result: %+v, %v", result, err)
 		}
@@ -594,12 +597,37 @@ func TestStoppingWhileReceivingIsAnErrorNotARefusal(t *testing.T) {
 	}
 	stopping, stop := context.WithCancel(t.Context())
 	stop()
-	result, err := ReceiveAgentCommits(stopping, r.mmhotline, bundle, base, originIsTrusted, r.owned)
+	result, err := ReceiveAgentCommits(stopping, r.mmhotline, bundle, base, originIsTrusted, r.owned, pushAnyTime)
 	if !errors.Is(err, context.Canceled) || result.Outcome == Refused || result.Outcome == WaitsForAPerson {
 		t.Fatalf("result: %+v, %v", result, err)
 	}
 	if main := r.originMain(t); main != base {
 		t.Fatalf("origin changed to %s", main)
+	}
+}
+
+// MayPush refuses at the last moment, under the copy's lock, such as when
+// everyone is locked out: nothing reaches origin, the refusal is the error,
+// and the commits stay under their private ref for a person.
+func TestMayPushRefusalPushesNothing(t *testing.T) {
+	r := setUpRepositories(t)
+	base := r.startRun(t)
+	r.agentWritesPlaybookAndNote(t)
+	bundle, err := AgentCommitsBundle(t.Context(), r.agent, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lockedOut := errors.New("everyone is locked out")
+	asked := 0
+	result, err := ReceiveAgentCommits(t.Context(), r.mmhotline, bundle, base, originIsTrusted, r.owned, func() error { asked++; return lockedOut })
+	if !errors.Is(err, lockedOut) || asked != 1 || result.Outcome == Pushed || result.PrivateRef == "" {
+		t.Fatalf("result: %+v, %v, asked %d times", result, err, asked)
+	}
+	if main := r.originMain(t); main != base {
+		t.Fatalf("origin changed to %s", main)
+	}
+	if kept := git(t, r.mmhotline, "rev-parse", result.PrivateRef); kept != result.AgentCommitID {
+		t.Fatalf("private ref %s holds %s, want %s", result.PrivateRef, kept, result.AgentCommitID)
 	}
 }
 

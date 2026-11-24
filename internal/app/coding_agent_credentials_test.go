@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -421,6 +422,44 @@ func TestASignInCheckThatFailsBeforeTheStopForASessionIsASignInFailure(t *testin
 	}
 	if got := notices(t, r.a, "warn", "The triage agent cannot sign in to Codex"); got != 1 {
 		t.Fatalf("%d warn alerts after the check failed", got)
+	}
+}
+
+// A lock-out that cuts a sign-in check short shows nothing about the
+// sign-in: the check ends as stopped with the lock-out's reason, no warning
+// goes to administrators, the sign-in still counts as working, and the check
+// runs again once the lock-out file is gone.
+func TestASignInCheckThatALockOutCutsIsNoSignInFailure(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newTriageSessionRig(t, true)
+	useCodexAccessToken(t, r.a)
+	if err := r.a.SetSoftwareReviewInterval(context.Background(), r.p, 8760); err != nil {
+		t.Fatal(err)
+	}
+	lockOut := lockOutFileForTest(t, r.a)
+	r.advance(24 * time.Hour)
+	r.rounds(t)
+	r.nextSignInCheck(t, triageAgentSetupTestPrompt)
+	lockEveryoneOut(t, lockOut)
+	r.a.everyoneLockedOut() // the lock-out watch's look, every second
+	waitNoTriageRun(t, r.a)
+	if count := countRows(t, r.a, `SELECT count(*) FROM triage_agent_runs WHERE purpose='sign_in_check' AND state='stopped' AND failure_reason=?`, everyoneLockedOutCannotRun); count != 1 {
+		t.Fatal("the cut check is not recorded as stopped by the lock-out")
+	}
+	if got := notices(t, r.a, "warn", "The triage agent cannot sign in to Codex"); got != 0 {
+		t.Fatalf("%d warn alerts about the sign-in after a lock-out cut the check", got)
+	}
+	result, _ := commandRequest(t, r.a, CommandRequest{Group: "triage-agent", Action: "show"}, 200)
+	if setup := result.TriageAgent.Setup; setup == nil || !setup.SignInWorks || setup.SignInFailureReason != "" {
+		t.Fatalf("the sign-in after the cut check: %+v", setup)
+	}
+	if err := os.Remove(lockOut); err != nil {
+		t.Fatal(err)
+	}
+	r.rounds(t)
+	r.end(t, r.nextSignInCheck(t, triageAgentSetupTestPrompt), triageagent.Event{Event: "finished", Answer: triageAgentTestSentence})
+	if count := countRows(t, r.a, `SELECT count(*) FROM alerts WHERE source_id='system' AND title LIKE '%sign in%'`); count != 0 {
+		t.Fatalf("%d sign-in alerts, though no check failed", count)
 	}
 }
 

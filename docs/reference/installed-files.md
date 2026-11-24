@@ -164,6 +164,15 @@ MMHotline refuses the file when it is not a regular file, not owned by
 root, writable by others than root, or readable by every user
 ([why](../changing-mmhotline/design/settings-file.md#owner-and-mode)).
 
+### /etc/mmhotline/everyone-locked-out
+
+| Fact | Value |
+| --- | --- |
+| Owner and mode | `root`; contents unused |
+| Holds | Nothing. Its presence means everyone is locked out |
+| Written by | The team's break-in procedure, as root. Install never writes or removes it |
+| Read by | `mmhotline.service`, every second and before each agent run, MMX run, and commit check. While the file exists, MMHotline runs no agent and no MMX for the agent, trusts no commit, and tells people every held alert at once ([everyone locked out](../changing-mmhotline/design/operation.md#everyone-locked-out)) |
+
 ### /etc/mmhotline/backup.env
 
 | Fact | Value |

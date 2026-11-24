@@ -129,6 +129,9 @@ func (a *App) commandCommitReview(review CommitReview, withDiff bool) CommandCom
 // the copy must then hold. New commits that wait are recorded and alerted
 // as before an MMX run.
 func (a *App) checkCommitsForCommand(ctx context.Context, commitID string) (CommitCheck, error) {
+	if a.everyoneLockedOut() {
+		return CommitCheck{}, errEveryoneLockedOut
+	}
 	directory := filepath.Join(a.Store.Dir, systemsrepository.DirectoryName)
 	if _, err := systemsrepository.UpdateFromOrigin(ctx, directory, a.trustedCommit(nil)); err != nil {
 		return CommitCheck{}, fmt.Errorf("MMHotline could not fetch origin into its copy of the systems repository: %w", err)

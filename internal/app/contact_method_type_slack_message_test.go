@@ -222,7 +222,7 @@ func TestSlackConnectsPersonalAndSharedConversations(t *testing.T) {
 	r.sendCode(t, connection.Code, "U0001", "D0001", false)
 	personal := r.methods(t)[0]
 	member, _ := r.a.CurrentMember(ctx, r.member.Principal)
-	if personal.MemberID != member.ID || strings.Join(personal.Subscriptions, ",") != "info,sos,warn" || !personal.SendWhileUnavailableOrMuted {
+	if personal.MemberID != member.ID || strings.Join(personal.Subscriptions, ",") != "sos,warn" || !personal.SendWhileUnavailableOrMuted {
 		t.Fatalf("personal method: %+v", personal)
 	}
 	var secret, linked string
@@ -237,7 +237,8 @@ func TestSlackConnectsPersonalAndSharedConversations(t *testing.T) {
 		t.Fatal("connection did not queue a test")
 	}
 	shared := r.connect(t, "shared_channel", "U0001", "C0001")
-	if shared.MemberID != "" || shared.Setting("slack_conversation_kind") != "channel" {
+	// A person's own direct message leaves Info off; a shared channel gets every severity.
+	if shared.MemberID != "" || shared.Setting("slack_conversation_kind") != "channel" || strings.Join(shared.Subscriptions, ",") != "info,sos,warn" {
 		t.Fatalf("shared method: %+v", shared)
 	}
 	// A fresh code for an existing conversation does not duplicate its contact method.

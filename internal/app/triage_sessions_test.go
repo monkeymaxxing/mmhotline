@@ -215,10 +215,11 @@ func countRows(t *testing.T, a *App, query string, args ...any) int {
 // triageSessionResumePrompt, without the alerts the run carries.
 func promptText(prompt string, _ []string) string { return prompt }
 
-// report sends the agent's report and returns MMHotline's answer.
-func report(t *testing.T, run fakeTriageRun, answers *json.Decoder, requestID, severity, text string) triageagent.Answer {
+// report sends the agent's report, about the alerts named with
+// --about-alert-id, and returns MMHotline's answer.
+func report(t *testing.T, run fakeTriageRun, answers *json.Decoder, requestID, severity, text string, aboutAlertIDs ...string) triageagent.Answer {
 	t.Helper()
-	sendTriageEvent(t, run, triageagent.Event{Event: "report", RequestID: requestID, AlertSeverity: severity, ReportText: text})
+	sendTriageEvent(t, run, triageagent.Event{Event: "report", RequestID: requestID, AlertSeverity: severity, ReportText: text, AboutAlertIDs: aboutAlertIDs})
 	run.connection.SetReadDeadline(time.Now().Add(10 * time.Second))
 	var control triageagent.Control
 	if err := answers.Decode(&control); err != nil || control.Answer == nil || control.Answer.RequestID != requestID {

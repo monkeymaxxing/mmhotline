@@ -57,6 +57,13 @@ var mergeIdentity = []string{
 // moving; a branch that busy needs a person to merge.
 const pushAttempts = 3
 
+// MayPush answers, under the copy's lock just before each push of the
+// agent's commits to origin, whether MMHotline may push them now. An error
+// stops the push and is ReceiveAgentCommits' error; the commits stay under
+// their private ref. The application refuses while everyone is locked out,
+// which can begin while MMHotline handles the commits.
+type MayPush func() error
+
 // TrustedCommit answers, for the commit origin's branch ends at, the trusted
 // commit: the newest commit through which every commit passed the commit
 // check or a person reviewed it, or "" when no commit is trusted yet. The
@@ -151,9 +158,9 @@ func BundleThrough(ctx context.Context, directory, baseCommitID string) (bundle 
 //
 // An error means MMHotline could not finish, such as when origin cannot be
 // reached; the result still names the private ref once the commits are in it.
-func ReceiveAgentCommits(ctx context.Context, directory string, bundle []byte, baseCommitID string, trusted TrustedCommit, owned TriageAgentsOwnCommits) (result ReceivedAgentCommits, err error) {
+func ReceiveAgentCommits(ctx context.Context, directory string, bundle []byte, baseCommitID string, trusted TrustedCommit, owned TriageAgentsOwnCommits, mayPush MayPush) (result ReceivedAgentCommits, err error) {
 	lockErr := withCopyLock(ctx, directory, CopyLockOptions{}, func() error {
-		result, err = receiveAgentCommits(ctx, directory, bundle, baseCommitID, trusted, owned)
+		result, err = receiveAgentCommits(ctx, directory, bundle, baseCommitID, trusted, owned, mayPush)
 		return nil
 	})
 	if lockErr != nil {
@@ -169,7 +176,7 @@ func ReceiveAgentCommits(ctx context.Context, directory string, bundle []byte, b
 	return result, err
 }
 
-func receiveAgentCommits(ctx context.Context, directory string, bundle []byte, baseCommitID string, trusted TrustedCommit, owned TriageAgentsOwnCommits) (ReceivedAgentCommits, error) {
+func receiveAgentCommits(ctx context.Context, directory string, bundle []byte, baseCommitID string, trusted TrustedCommit, owned TriageAgentsOwnCommits, mayPush MayPush) (ReceivedAgentCommits, error) {
 	if err := checkCommitID(baseCommitID); err != nil {
 		return ReceivedAgentCommits{}, err
 	}
@@ -247,7 +254,7 @@ func receiveAgentCommits(ctx context.Context, directory string, bundle []byte, b
 		result.Reason = "a person must approve these changes: " + pathsThatWaitText(result.PathsThatWait)
 		return result, nil
 	}
-	pushed, waitsBecause, err := pushAgentCommits(ctx, directory, branch, result.AgentCommitID, isOwn)
+	pushed, waitsBecause, err := pushAgentCommits(ctx, directory, branch, result.AgentCommitID, isOwn, mayPush)
 	if err != nil {
 		return result, err
 	}
@@ -441,7 +448,7 @@ func changeWaitsBecause(path, newMode string) string {
 // person's. The merge is built with merge-tree and commit-tree, which never
 // touch the working tree or run a hook. It returns the pushed commit, or why
 // the commits wait for a person.
-func pushAgentCommits(ctx context.Context, directory, branch, agentCommitID string, isOwn func(string) (bool, error)) (pushed, waitsBecause string, err error) {
+func pushAgentCommits(ctx context.Context, directory, branch, agentCommitID string, isOwn func(string) (bool, error), mayPush MayPush) (pushed, waitsBecause string, err error) {
 	for range pushAttempts {
 		originCommit, err := fetchOrigin(ctx, directory, branch)
 		if err != nil {
@@ -516,6 +523,10 @@ func pushAgentCommits(ctx context.Context, directory, branch, agentCommitID stri
 				return "", "", fmt.Errorf("commit the merge of the agent's commits: %w", err)
 			}
 			target = strings.TrimSpace(merge)
+		}
+		// The last moment before the commits reach origin.
+		if err := mayPush(); err != nil {
+			return "", "", err
 		}
 		// A plain push: Git refuses it when origin moved since the fetch.
 		_, pushErr := runGit(ctx, directory, nil, "push", "--quiet", "origin", target+":refs/heads/"+branch)

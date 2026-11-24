@@ -15,7 +15,10 @@ import (
 // carried exactly one alert may leave the option out: the report or request
 // then covers that one alert. One problem is not enough for that, because
 // two warns can share one sender_incident_key, such as two affected versions
-// of one CVE. A named alert covers something only when the run carried it.
+// of one CVE. An info report covers only the alerts it names, so an info
+// report the agent sends on the way, or sends by mistake, cannot swallow a
+// held warn that then reaches nobody. A named alert covers something only
+// when the run carried it.
 // A row records one alert one item covers; item_id is the request's ID
 // within the run, as triage_agent_requests keys it, for a report as for a
 // playbook run request. A held warn is taken over only by an item that
@@ -49,23 +52,27 @@ type alertCoverage struct {
 	// whether the agent named alerts.
 	carried int
 	named   bool
+	// infoReport: the item is a report at info, which covers only the
+	// alerts it names.
+	infoReport bool
 	// covered are the alerts the item covers; notCarried are the alerts the
 	// agent named that the run did not carry, which cover nothing.
 	covered, notCarried []string
 }
 
 // recordCoveredAlerts records which alerts the item of itemKind and itemID
-// of run runID covers, from the alert IDs the agent named. The alerts a run
+// of run runID covers, from the alert IDs the agent named; severity is a
+// report's alert severity, "" for a playbook run request. The alerts a run
 // carried are those its prompt showed: the alert MMHotline adds for an SOS
 // report's own incident joins the session as sent by the run, but it is
 // MMHotline's own and was never shown, so triageSessionAlertCondition leaves
 // it out.
-func recordCoveredAlerts(ctx context.Context, tx *sql.Tx, runID, itemKind, itemID string, named []string) (alertCoverage, error) {
+func recordCoveredAlerts(ctx context.Context, tx *sql.Tx, runID, itemKind, itemID, severity string, named []string) (alertCoverage, error) {
 	carried, err := queryStrings(ctx, tx, `SELECT s.alert_id FROM triage_session_alerts s JOIN alerts ON alerts.id=s.alert_id WHERE s.sent_in_run_id=? AND `+triageSessionAlertCondition+` ORDER BY alerts.sequence`, runID)
 	if err != nil {
 		return alertCoverage{}, err
 	}
-	coverage := alertCoverage{carried: len(carried), named: len(named) > 0}
+	coverage := alertCoverage{carried: len(carried), named: len(named) > 0, infoReport: itemKind == coveredByReport && severity == "info"}
 	switch {
 	case coverage.named:
 		for _, id := range named {
@@ -77,7 +84,7 @@ func recordCoveredAlerts(ctx context.Context, tx *sql.Tx, runID, itemKind, itemI
 				coverage.notCarried = append(coverage.notCarried, id)
 			}
 		}
-	case len(carried) == 1:
+	case len(carried) == 1 && !coverage.infoReport:
 		coverage.covered = carried
 	}
 	for _, id := range coverage.covered {
@@ -90,9 +97,10 @@ func recordCoveredAlerts(ctx context.Context, tx *sql.Tx, runID, itemKind, itemI
 
 // answerText is what MMHotline's answer to the agent adds about the
 // coverage of its report or request, named by what: the named alerts the run
-// did not carry, and, when the run carried several alerts and the agent
-// named none, that nothing is covered. With no alert carried there is
-// nothing to name, and with one the item covers it.
+// did not carry, and, when the run carried several alerts, or one and the
+// item is an info report, and the agent named none, that nothing is covered.
+// With no alert carried there is nothing to name, and with one the item
+// covers it.
 func (c alertCoverage) answerText(what string) string {
 	var parts []string
 	if len(c.notCarried) > 0 {
@@ -100,6 +108,9 @@ func (c alertCoverage) answerText(what string) string {
 	}
 	if !c.named && c.carried > 1 {
 		parts = append(parts, fmt.Sprintf("This run carried %d alerts, and your %s named none of them with --about-alert-id, so it covers no warning. A warning that no report or playbook run request of this run names reaches people when this run ends. Name each alert a report or request is about with --about-alert-id ALERT_ID, once per alert, as the prompt lists them.", c.carried, what))
+	}
+	if !c.named && c.carried == 1 && c.infoReport {
+		parts = append(parts, "Your info report named no alert with --about-alert-id, so it covers no warning: an info report covers only the alerts it names. A warning that no report or playbook run request of this run names reaches people when this run ends. To close a warning with an info report, name the warning with --about-alert-id ALERT_ID.")
 	}
 	return strings.Join(parts, " ")
 }

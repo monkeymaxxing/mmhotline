@@ -101,8 +101,9 @@ that.
    that administrator; other people still connect their own chats before
    they can use the buttons.
 
-New Telegram contact methods get Info, Warning, and SOS, also while the
-person is unavailable or the team is muted; change both on the card.
+A person's own Telegram chat gets SOS and Warning, and a team group also
+Info, also while the person is unavailable or the team is muted; change
+both on the card.
 
 ## What MMHotline does with Telegram
 

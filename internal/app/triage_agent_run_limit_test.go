@@ -213,7 +213,7 @@ func TestRunLimitRun50KeepsItsHoldsAndTheRestGoesStraightToPeople(t *testing.T) 
 		t.Fatal("a warn during the limit was held")
 	}
 	// Run 50 reports on its own warn, which nobody hears about.
-	agentRequest(t, run50, json.NewDecoder(run50.connection), reportEvent("0000000000000001", "info", "# app001 runs a fixed openssh\n"))
+	agentRequest(t, run50, json.NewDecoder(run50.connection), reportEvent("0000000000000001", "info", "# app001 runs a fixed openssh\n", app001.ID))
 	sendTriageEvent(t, run50, triageagent.Event{Event: "finished", Answer: "Reported."})
 	waitNoTriageRun(t, r.a)
 	r.at(t, 3*time.Minute)

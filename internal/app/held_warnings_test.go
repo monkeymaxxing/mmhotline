@@ -161,8 +161,8 @@ func TestHeldWarnTakenOverByAPlaybookRunRequest(t *testing.T) {
 }
 
 // A warn the agent fixes: it runs an act_then_report playbook and sends an
-// info report. No warn notification is ever delivered, and the info report
-// goes at Pushover's low priority.
+// info report that names the warn. No warn notification is ever delivered,
+// and the info report goes at Pushover's low priority.
 func TestHeldWarnTheAgentFixesSendsOnlyTheInfoReport(t *testing.T) {
 	parallelStartingProcesses(t)
 	r := newHeldWarnRig(t, 3)
@@ -178,7 +178,7 @@ func TestHeldWarnTheAgentFixesSendsOnlyTheInfoReport(t *testing.T) {
 	if answer := requestPlaybookRun(t, run, answers, "0000000000000001"); answer.Outcome != triageagent.RanAndSucceeded {
 		t.Fatalf("answer: %+v", answer)
 	}
-	report(t, run, answers, "0000000000000002", "info", "# Rebooted app002; the load is normal\n")
+	report(t, run, answers, "0000000000000002", "info", "# Rebooted app002; the load is normal\n", alert.ID)
 	sendTriageEvent(t, run, triageagent.Event{Event: "finished", Answer: "Reported."})
 	waitNoTriageRun(t, r.a)
 	r.at(t, 4*time.Minute)
@@ -279,6 +279,32 @@ func TestHeldWarnTheAgentCannotHandle(t *testing.T) {
 		r.at(t, 30*time.Second)
 		r.reachedSomeone(t, loadWarning)
 		r.sentOnce(t, loadWarning, 0)
+	})
+	// The agent sends an info report on the way and names no alert, then
+	// its run fails: an info report covers only the alerts it names, so the
+	// warn still reaches people, although the run carried only that warn.
+	t.Run("an info report that names no alert, then the run fails: delivered at once", func(t *testing.T) {
+		// A wait of 15 minutes, so only the failure can deliver the warn.
+		r := newHeldWarnRig(t, 15)
+		alert := r.warnArrives(t, loadWarning, "app002-load")
+		run := r.runStarted(t)
+		r.at(t, 30*time.Second)
+		answer := report(t, run, json.NewDecoder(run.connection), "0000000000000001", "info", "# Looking at app002's load\n")
+		if answer.Outcome == triageagent.Refused || !strings.Contains(answer.Message, "Your info report named no alert with --about-alert-id, so it covers no warning") {
+			t.Fatalf("answer: %+v", answer)
+		}
+		// The info report goes out on its own, before the run fails.
+		r.at(t, 3*time.Minute)
+		if outcome, _, ended := r.hold(t, alert.ID); ended || len(r.pushovers(loadWarning)) != 0 {
+			t.Fatalf("the unnamed info report ended the hold: %q", outcome)
+		}
+		sendTriageEvent(t, run, triageagent.Event{Event: "failed", Reason: "The coding agent's service refused the request: 529 Overloaded."})
+		waitNoTriageRun(t, r.a)
+		r.at(t, 3*time.Minute+30*time.Second)
+		r.sentOnce(t, loadWarning, 0)
+		if outcome, _, ended := r.hold(t, alert.ID); outcome != "delivered" || !ended {
+			t.Fatalf("hold: %q %v", outcome, ended)
+		}
 	})
 	t.Run("the run ends having done nothing: delivered at once", func(t *testing.T) {
 		r := newHeldWarnRig(t, 3)
@@ -382,7 +408,7 @@ func TestHeldWarnSurvivesARestart(t *testing.T) {
 		alert := r.warnArrives(t, loadWarning, "app002-load")
 		restart(t, r, time.Minute)
 		resumed := r.runStarted(t)
-		report(t, resumed, json.NewDecoder(resumed.connection), "0000000000000001", "info", "# Freed space on app002\n")
+		report(t, resumed, json.NewDecoder(resumed.connection), "0000000000000001", "info", "# Freed space on app002\n", alert.ID)
 		r.at(t, 6*time.Minute)
 		if got := r.pushovers(loadWarning); len(got) != 0 {
 			t.Fatalf("the original warn was delivered: %+v", got)

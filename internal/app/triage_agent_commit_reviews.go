@@ -323,9 +323,12 @@ type CommitCheck struct {
 // repository, and for the commit-reviews check command. It records each
 // commit that newly waits, with one warn alert, and moves the checked-through
 // commit forward to the trusted commit. The copy must hold target; the
-// caller fetched origin first.
+// caller fetched origin first. During a lock-out it trusts no commit.
 func (a *App) checkCommitsThrough(ctx context.Context, target string) (CommitCheck, error) {
 	check := CommitCheck{CheckedCommitID: target}
+	if a.everyoneLockedOut() {
+		return check, errEveryoneLockedOut
+	}
 	var keys systemsrepository.CommitSigningKeys
 	var trusted, last string
 	err := a.Store.db.QueryRowContext(ctx, `SELECT commit_signing_public_key,trusted_commit_signing_public_keys_json,last_checked_commit_id FROM triage_agent_commit_check_state WHERE id=1`).Scan(&keys.TriageAgent, &trusted, &last)
@@ -411,7 +414,13 @@ func (a *App) moveCommitCheckpoint(ctx context.Context, last, checkpoint string)
 	if checkpoint == "" || checkpoint == last {
 		return nil
 	}
+	var lockOut lockOutLookInATransaction
+	defer func() { a.actOnALockOutLook(lockOut.lockedOut, lockOut.changed) }()
 	return a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+		// The check began before a lock-out that no look has seen yet.
+		if a.lookForALockOutInATransaction(&lockOut) {
+			return errEveryoneLockedOut
+		}
 		return setCommitCheckpointTx(ctx, tx, checkpoint)
 	})
 }
@@ -457,8 +466,11 @@ func (a *App) triageAgentsOwnCommits(ctx context.Context) systemsrepository.Tria
 // runs only when nothing waits on origin's branch, so a request judged at
 // the trusted commit while a commit waits is refused, not judged again.
 func (a *App) mmxRefusal(check CommitCheck, err error) string {
-	if errors.Is(err, errNoCommitIsTrusted) {
+	switch {
+	case errors.Is(err, errNoCommitIsTrusted):
 		return "MMHotline did not run the playbook: " + noCommitIsTrustedReason + "."
+	case errors.Is(err, errEveryoneLockedOut):
+		return "MMHotline did not run the playbook: " + everyoneLockedOutReason + "."
 	}
 	if err != nil {
 		return "MMHotline did not run the playbook: " + err.Error()
@@ -793,7 +805,14 @@ func (a *App) markCommitReviewedTx(ctx context.Context, tx *sql.Tx, reviewer com
 // database, whose history the first check would otherwise read whole
 // against today's keys. It returns the check through commitID afterwards and
 // what changed.
-func (a *App) trustCommitsThrough(ctx context.Context, p Principal, commitID string) (CommitCheck, string, error) {
+func (a *App) trustCommitsThrough(ctx context.Context, p Principal, commitID string) (_ CommitCheck, _ string, err error) {
+	if a.everyoneLockedOut() {
+		return CommitCheck{}, "", errEveryoneLockedOut
+	}
+	// A lock-out ends the wait for the copy's lock and the fetch at once.
+	ctx, stop := a.untilALockOut(ctx)
+	defer stop()
+	defer func() { err = lockedOutErr(ctx, err) }()
 	directory := filepath.Join(a.Store.Dir, systemsrepository.DirectoryName)
 	// The fetch runs no check: a first check would read the whole history,
 	// which this command exists to avoid.
@@ -855,10 +874,16 @@ func (a *App) trustCommitsThrough(ctx context.Context, p Principal, commitID str
 			}
 		}
 		server, _ := os.Hostname()
+		var lockOut lockOutLookInATransaction
 		err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 			m, err := RequireMember(ctx, tx, p, true)
 			if err != nil {
 				return err
+			}
+			// A lock-out that began after the first look, and that no look
+			// has seen yet, still stops the trust.
+			if a.lookForALockOutInATransaction(&lockOut) {
+				return errEveryoneLockedOut
 			}
 			result, err := tx.ExecContext(ctx, `INSERT INTO triage_agent_commit_trust_throughs(commit_id,unix_user,server_name,trusted_at) VALUES(?,?,?,?)`, commitID, p.UnixUser, server, a.Now().Unix())
 			if err != nil {
@@ -879,6 +904,7 @@ func (a *App) trustCommitsThrough(ctx context.Context, p Principal, commitID str
 			// The bulk trust is visible to the team.
 			return RecordSystemAlert(ctx, tx, "unix-user:"+p.UnixUser, "", "info", p.UnixUser+" on "+server+" marked every commit through "+short+" trusted", p.UnixUser+" on "+server+" marked every commit through "+short+" trusted with sudo mmhotline commit-reviews trust-through. MMX runs and triage agent runs pass every commit through it; later commits still go through the commit check.", a.Now())
 		})
+		a.actOnALockOutLook(lockOut.lockedOut, lockOut.changed)
 		if err != nil {
 			return CommitCheck{}, "", err
 		}

@@ -124,8 +124,9 @@ not wake anyone: use [Pushover](connect-pushover.md) or
    their own Slack accounts before they can use the buttons. Post a code
    only in the conversation you mean to connect.
 
-New Slack contact methods get Info, Warning, and SOS, also while the
-person is unavailable or the team is muted; change both on the card.
+A person's own Slack direct message gets SOS and Warning, and a channel
+shared with the team also Info, also while the person is unavailable or the
+team is muted; change both on the card.
 
 ## What MMHotline does with Slack
 

@@ -133,7 +133,11 @@ func runManagementCommand(group string, args []string) error {
 			})
 		}
 		if action == "add" || action == "change" {
-			flags.Func("alert-severities", "comma-separated sos,warn,info; empty means no alerts", func(value string) error {
+			usage := "comma-separated sos,warn,info; empty means no alerts; left out, the contact method keeps its alerts"
+			if action == "add" {
+				usage = "comma-separated sos,warn,info; empty means no alerts; left out: sos,warn for a person's own contact method, sos,warn,info for one shared with the team or an outgoing webhook, and sos for an automated voice call"
+			}
+			flags.Func("alert-severities", usage, func(value string) error {
 				values := []string{}
 				if value != "" {
 					values = strings.Split(value, ",")

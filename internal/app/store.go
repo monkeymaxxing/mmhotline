@@ -69,6 +69,8 @@ type App struct {
 	customScheduleSandboxSlots *customScheduleSandboxSlots
 	customScheduleRuns         *customScheduleRunLimiter
 	triageAgent                triageAgentRuntime
+	// lockOut watches the lock-out file (everyone_locked_out.go).
+	lockOut *lockOutWatch
 
 	// FleetViewSocket is where systemd runs the settings file's
 	// fleet_view_command as root for each connection: the dashboard's
@@ -86,7 +88,7 @@ type App struct {
 func New(store *Store) *App {
 	deadline := &teamDeadline{}
 	store.teamChanged = deadline.changed
-	a := &App{Store: store, Now: time.Now, contactMethodTypesChanged: make(chan struct{}), rejected: newRejectedRequests(), alertSourceCheckInTracking: newAlertSourceCheckInTracking(), teamDeadline: deadline, customScheduleSandboxSlots: newCustomScheduleSandboxSlots(), customScheduleRuns: &customScheduleRunLimiter{}, triageAgent: triageAgentRuntime{mmxSearchPath: MMXSearchPath, mmxRunTimeLimit: mmxRunTimeLimit, codingAgentAPIBaseURLs: codingAgentAPIBaseURLs("")}, Cloudflare: cloudflareapi.CloudflareAddresses(), downAlarm: newDownAlarmRuntime()}
+	a := &App{Store: store, Now: time.Now, contactMethodTypesChanged: make(chan struct{}), rejected: newRejectedRequests(), alertSourceCheckInTracking: newAlertSourceCheckInTracking(), teamDeadline: deadline, customScheduleSandboxSlots: newCustomScheduleSandboxSlots(), customScheduleRuns: &customScheduleRunLimiter{}, triageAgent: triageAgentRuntime{mmxSearchPath: MMXSearchPath, mmxRunTimeLimit: mmxRunTimeLimit, codingAgentAPIBaseURLs: codingAgentAPIBaseURLs("")}, Cloudflare: cloudflareapi.CloudflareAddresses(), downAlarm: newDownAlarmRuntime(), lockOut: newLockOutWatch()}
 	a.triageAgent.playbookRuns, a.triageAgent.playbookRunner = a, a
 	return a
 }

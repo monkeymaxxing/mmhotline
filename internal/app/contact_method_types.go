@@ -159,6 +159,21 @@ type deliveryOutcome struct {
 	FromReport               bool
 }
 
+// defaultSubscriptions are the severities a new contact method subscribes
+// to when nobody chose them: SOS and Warning for a person's own contact
+// method, so Info stays quiet until the person turns it on; every severity
+// for one shared with the team, such as a team chat, and for one that
+// programs read; SOS alone for a contact method type that carries only SOS.
+func (f ContactMethodTypeFacts) defaultSubscriptions(shared bool) []string {
+	switch {
+	case f.SOSOnly:
+		return []string{"sos"}
+	case shared || f.ForMachines:
+		return []string{"sos", "warn", "info"}
+	}
+	return []string{"sos", "warn"}
+}
+
 // contactMethodTypes lists every contact method type MMHotline knows. The values here carry no
 // configuration; they answer Name and Facts. Configured contact method types that can
 // send live in App.ContactMethodTypes.
