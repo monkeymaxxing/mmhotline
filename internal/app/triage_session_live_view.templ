@@ -186,6 +186,9 @@ templ triageSessionLiveView(frame pageFrame, session TriageSessionLiveView, csrf
 				if run.FailureReason != "" {
 					<p class="form-error" role="alert">{ run.FailureReason }</p>
 				}
+				if run.WaitingForSystemsRepository != "" {
+					<p>{ run.WaitingForSystemsRepository }</p>
+				}
 				<details class="fold">
 					<summary>Run steps</summary>
 					if run.EarlierSteps > 0 {

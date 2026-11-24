@@ -269,7 +269,10 @@ func run(args []string) error {
 			return err
 		}
 	}
-	if err := application.InitializeTriageAgent(context.Background(), triageAgentRunSocket, reviewAgentRunSocket, triageAgentProxySocket); err != nil {
+	// ctx ends at a signal, so a triage agent run's start that waits for the
+	// systems repository's lock, or a finished run's commits that wait for
+	// it, never hold up the stop.
+	if err := application.InitializeTriageAgent(ctx, triageAgentRunSocket, reviewAgentRunSocket, triageAgentProxySocket); err != nil {
 		return err
 	}
 	defer application.CloseTriageAgent()

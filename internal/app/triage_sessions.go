@@ -139,6 +139,7 @@ func (a *App) DriveTriageSession(ctx context.Context) error {
 	runtime.mu.Lock()
 	installed := runtime.runSocketPath != "" && runtime.proxySocketPath != ""
 	busy := runtime.activeRun != nil || runtime.backgroundRunStarting
+	runtime.triageSessionWaitsForTheRun = false
 	runtime.mu.Unlock()
 	copyExists := a.systemsRepositoryCopyExists()
 	now := a.Now().UTC()
@@ -205,9 +206,9 @@ func (a *App) DriveTriageSession(ctx context.Context) error {
 		}
 		switch next {
 		case handOverStopTheRun:
-			// The stop every run gets, after the agent's current step. It is
-			// sent again at each visit, as a run still starting has no
-			// connection yet; a second stop changes nothing.
+			// The stop every run gets, after the agent's current step; a run
+			// still starting ends before it begins. It is sent again at each
+			// visit; a second stop changes nothing.
 			runToStop = session.RunningRunID
 			return nil
 		case handOverWait:
@@ -275,6 +276,7 @@ func (a *App) DriveTriageSession(ctx context.Context) error {
 // free.
 func (a *App) stopRunForTriageSession() {
 	a.triageAgent.mu.Lock()
+	a.triageAgent.triageSessionWaitsForTheRun = true
 	run := a.triageAgent.activeRun
 	givesWay := run != nil && givesWayToTriageSessions(run.purpose)
 	if givesWay {
@@ -282,8 +284,8 @@ func (a *App) stopRunForTriageSession() {
 	}
 	a.triageAgent.mu.Unlock()
 	if givesWay {
-		// A run still starting has no connection yet; its first event
-		// brings another visit, which sends the stop.
+		// A run still starting, such as one waiting for the copy's lock,
+		// ends before it begins.
 		_ = a.writeTriageAgentControl(run, triageagent.Control{Stop: true})
 	}
 }

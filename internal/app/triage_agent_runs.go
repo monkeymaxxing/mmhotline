@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -46,9 +45,21 @@ type triageAgentRuntime struct {
 	// own goroutine, before it holds the one run (startBesideTheLoop).
 	backgroundRunStarting bool
 	backgroundRunStarts   sync.WaitGroup
+	// triageSessionWaitsForTheRun is set while a triage session needs the
+	// one run that another run holds; each DriveTriageSession turn sets it
+	// anew. A run stopped while it starts ends at once, so without it a
+	// review or a check would take the run back in the same visit.
+	triageSessionWaitsForTheRun bool
 	// approvedPlaybookRuns are the approved playbook runs going beside the
 	// background loop, which waits for them before the stores close.
 	approvedPlaybookRuns sync.WaitGroup
+	// stopping ends when MMHotline stops: with the context serve gives
+	// InitializeTriageAgent, which a signal ends first, or at
+	// CloseTriageAgent. A run's start and the saving of a finished run's
+	// commits wait for the copy's lock under it, so neither holds up a stop.
+	// Read it with mmhotlineStopping.
+	stopping context.Context
+	stop     context.CancelFunc
 }
 type triageAgentActiveRun struct {
 	id string
@@ -72,6 +83,10 @@ type triageAgentActiveRun struct {
 	// stoppedForTriageSession: a software review, a commit review, or a
 	// sign-in check that MMHotline stopped because a triage session needs the one run.
 	stoppedForTriageSession bool
+	// waitingForCopyLock: the run's start waits for the systems repository
+	// copy's lock, which another holder, such as an MMX run, has. The
+	// session's page says so.
+	waitingForCopyLock bool
 	// result is the run's final event as recorded, set before done closes.
 	result triageagent.Event
 	// setup is a setup test's setup from the settings file, which the test
@@ -257,7 +272,9 @@ func (a *App) saveReturnedChatGPTSignIn(run *triageAgentActiveRun, returned stri
 // sockets: all three, or none in local development without the sandbox.
 const TriageAgentSocketFlagsTogether = "--triage-agent-run-socket, --review-agent-run-socket, and --triage-agent-proxy-socket must be supplied together"
 
-// InitializeTriageAgent runs before listeners start, including in local development.
+// InitializeTriageAgent runs before listeners start, including in local
+// development. ctx ends when MMHotline stops, which ends every run's start
+// and the saving of a finished run's commits at once.
 func (a *App) InitializeTriageAgent(ctx context.Context, runSocketPath, reviewRunSocketPath, proxySocketPath string) error {
 	if (runSocketPath == "") != (proxySocketPath == "") || (runSocketPath == "") != (reviewRunSocketPath == "") {
 		return fmt.Errorf("%w: %s", ErrInvalid, TriageAgentSocketFlagsTogether)
@@ -293,8 +310,21 @@ func (a *App) InitializeTriageAgent(ctx context.Context, runSocketPath, reviewRu
 	}
 	a.triageAgent.mu.Lock()
 	a.triageAgent.runSocketPath, a.triageAgent.reviewRunSocketPath, a.triageAgent.proxySocketPath = runSocketPath, reviewRunSocketPath, proxySocketPath
+	a.triageAgent.stopping, a.triageAgent.stop = context.WithCancel(ctx)
 	a.triageAgent.mu.Unlock()
 	return nil
+}
+
+// mmhotlineStopping is a context that ends when MMHotline stops: with the
+// context InitializeTriageAgent got, or at CloseTriageAgent.
+func (a *App) mmhotlineStopping() context.Context {
+	runtime := &a.triageAgent
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.stopping == nil {
+		runtime.stopping, runtime.stop = context.WithCancel(context.Background())
+	}
+	return runtime.stopping
 }
 
 // startCodingAgentSetupTest runs role's setup test with setup: one test
@@ -331,15 +361,16 @@ func lentChatGPTSignIn(ctx context.Context, tx *sql.Tx, role agentRole, request 
 }
 
 // oneTriageRunIsFree says whether a software review or a sign-in check may
-// take the one triage run now: the sandbox is installed, and no run is
-// active or starting. An open triage session does not matter, because one
-// that needs the run stops them. The end of a run changes the database,
-// which brings the background loop's next visit.
+// take the one triage run now: the sandbox is installed, no run is active or
+// starting, and no triage session waits for the run. An open triage session
+// that needs no run does not matter, and one that needs the run stops them.
+// The end of a run changes the database, which brings the background loop's
+// next visit.
 func (a *App) oneTriageRunIsFree() bool {
 	runtime := &a.triageAgent
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	return runtime.runSocketPath != "" && runtime.proxySocketPath != "" && runtime.activeRun == nil && !runtime.backgroundRunStarting
+	return runtime.runSocketPath != "" && runtime.proxySocketPath != "" && runtime.activeRun == nil && !runtime.backgroundRunStarting && !runtime.triageSessionWaitsForTheRun
 }
 
 // startBesideTheLoop runs start, which starts a run of the background loop,
@@ -445,52 +476,42 @@ func (a *App) startTriageAgentRun(ctx context.Context, purpose, startedBy string
 		go func() { a.finishTriageAgentRun(run, a.checkAPIKeyWithModelsList(run.ctx, run.request)) }()
 		return run, nil
 	}
-	sent := request
-	if inSystemsRepository(purpose) {
-		// The one run is reserved first, so MMHotline's copy is never handled for two runs at once.
-		bundle, base, err := a.trustedRunBase(ctx)
-		if err != nil {
-			a.finishTriageAgentRun(run, triageagent.Event{Event: "failed", Reason: "Could not prepare the systems repository: " + err.Error()})
-			return run, nil
-		}
+	// The preparation, from the systems repository's fetch to the connection
+	// to the sandbox, ends when MMHotline stops or the run is stopped, and is
+	// checked after every step: waiting for the copy's lock is not a failure.
+	preparing, endPreparing := context.WithCancel(ctx)
+	defer endPreparing()
+	defer context.AfterFunc(run.ctx, endPreparing)()
+	defer context.AfterFunc(a.mmhotlineStopping(), endPreparing)()
+	preparing = systemsrepository.ReportCopyLockWaits(preparing, func(waiting bool) {
 		runtime.mu.Lock()
-		run.request.SystemsRepositoryBaseCommitID = base
+		run.waitingForCopyLock = waiting
 		runtime.mu.Unlock()
-		sent.SystemsRepositoryBaseCommitID, sent.SystemsRepositoryBundle = base, bundle
-		// Before the run starts, so the proxy lets the agent read the servers
-		// and the vendor pages from its first step, and its SSH settings know
-		// the servers' host keys.
-		sent.InventoryServers = a.listInventoryServers(ctx, run.id)
-		a.listVendorPageHosts(ctx, run.id, base)
-		// A software review's task is the team's file at the commit the run
-		// starts from; without a usable file, the review fails and counts.
-		if purpose == "software_review" {
-			if sent.Prompt, err = a.softwareReviewPromptAt(ctx, base); err != nil {
-				a.finishTriageAgentRun(run, triageagent.Event{Event: "failed", Reason: err.Error()})
-				return run, nil
-			}
+	})
+	sent, failure := a.prepareRunRequest(preparing, run, request)
+	var connection net.Conn
+	if failure == "" && preparing.Err() == nil {
+		if connection, err = (&net.Dialer{Timeout: 15 * time.Second}).DialContext(preparing, "unix", socket); err != nil {
+			failure = "Could not connect to the triage agent sandbox."
 		}
-		// The commits reach the agent only in its prompt, as data; its copy
-		// and its rules are at the trusted commit.
-		if purpose == "commit_review" {
-			if sent.Prompt, err = a.commitReviewPrompt(ctx, run.id); err != nil {
-				a.finishTriageAgentRun(run, triageagent.Event{Event: "failed", Reason: err.Error()})
-				return run, nil
-			}
-		}
-	}
-	connection, err := (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "unix", socket)
-	if err != nil {
-		a.finishTriageAgentRun(run, triageagent.Event{Event: "failed", Reason: "Could not connect to the triage agent sandbox."})
-		return run, nil
 	}
 	run.writeMu.Lock()
 	runtime.mu.Lock()
-	run.connection = connection
-	if run.ctx.Err() != nil {
-		connection.Close()
+	// Under the lock a stop reads the connection under, so a stop either
+	// ended the preparation or is sent on the connection.
+	began := failure == "" && preparing.Err() == nil && run.ctx.Err() == nil
+	if began {
+		run.connection = connection
 	}
 	runtime.mu.Unlock()
+	if !began {
+		run.writeMu.Unlock()
+		if connection != nil {
+			connection.Close()
+		}
+		a.endRunBeforeItBegan(ctx, run, failure)
+		return run, nil
+	}
 	connection.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	err = json.NewEncoder(connection).Encode(sent)
 	connection.SetWriteDeadline(time.Time{})
@@ -520,6 +541,94 @@ func (a *App) startTriageAgentRun(ctx context.Context, purpose, startedBy string
 	go a.readTriageAgentRun(run)
 	return run, nil
 }
+
+// prepareRunRequest gets a run's request ready under ctx, which ends when
+// MMHotline stops or the run is stopped: for a run in the systems repository,
+// the saved commits of an earlier run, the fetch, the bundle, the inventory's
+// servers, the vendor pages' hosts, and a review's prompt. It returns the
+// request to send, or why the run fails. After ctx ends it returns at once,
+// and the caller reads why from the contexts.
+func (a *App) prepareRunRequest(ctx context.Context, run *triageAgentActiveRun, request triageagent.Request) (triageagent.Request, string) {
+	sent := request
+	if !inSystemsRepository(run.purpose) {
+		return sent, ""
+	}
+	// The one run is reserved first, so MMHotline's copy is never handled for
+	// two runs at once. Commits a finished run saved before MMHotline stopped
+	// go first, so this run starts from them.
+	a.applySavedAgentCommits(ctx)
+	if ctx.Err() != nil {
+		return sent, ""
+	}
+	bundle, base, err := a.trustedRunBase(ctx)
+	if ctx.Err() != nil {
+		return sent, ""
+	}
+	if err != nil {
+		return sent, "Could not prepare the systems repository: " + err.Error()
+	}
+	a.triageAgent.mu.Lock()
+	run.request.SystemsRepositoryBaseCommitID = base
+	a.triageAgent.mu.Unlock()
+	sent.SystemsRepositoryBaseCommitID, sent.SystemsRepositoryBundle = base, bundle
+	// Before the run starts, so the proxy lets the agent read the servers
+	// and the vendor pages from its first step, and its SSH settings know
+	// the servers' host keys.
+	if sent.InventoryServers = a.listInventoryServers(ctx, run.id); ctx.Err() != nil {
+		return sent, ""
+	}
+	if a.listVendorPageHosts(ctx, run.id, base); ctx.Err() != nil {
+		return sent, ""
+	}
+	switch run.purpose {
+	case "software_review":
+		// A software review's task is the team's file at the commit the run
+		// starts from; without a usable file, the review fails and counts.
+		sent.Prompt, err = a.softwareReviewPromptAt(ctx, base)
+	case "commit_review":
+		// The commits reach the agent only in its prompt, as data; its copy
+		// and its rules are at the trusted commit.
+		sent.Prompt, err = a.commitReviewPrompt(ctx, run.id)
+	}
+	if err != nil && ctx.Err() == nil {
+		return sent, err.Error()
+	}
+	return sent, ""
+}
+
+// triageRunStoppedBeforeItBegan is why a run ended that was stopped while
+// MMHotline prepared it, such as while it waited for the copy's lock.
+const triageRunStoppedBeforeItBegan = "The run was stopped before the coding agent started."
+
+// endRunBeforeItBegan ends a run whose preparation ended before the sandbox
+// got its request. MMHotline's stop cuts it short, as any run so cut, so a
+// triage session's run is resumed and a review starts again; a stop ends it
+// stopped before it began, which a stop for a triage session records as
+// such, so it neither counts nor moves the review schedule; anything else is
+// the failure. ctx is the start's own context: for a run in the systems
+// repository it ends only when MMHotline stops, as the background loop's
+// does and RunSoftwareReviewNow's does.
+func (a *App) endRunBeforeItBegan(ctx context.Context, run *triageAgentActiveRun, failure string) {
+	stopping := a.mmhotlineStopping()
+	a.triageAgent.mu.Lock()
+	cutShort := run.closedForShutdown || stopping.Err() != nil || (inSystemsRepository(run.purpose) && ctx.Err() != nil)
+	if cutShort {
+		run.closedForShutdown = true
+	}
+	stopped := run.ctx.Err() != nil
+	a.triageAgent.mu.Unlock()
+	switch {
+	case cutShort:
+		a.finishTriageAgentRun(run, triageagent.Event{Event: "failed"})
+	case stopped:
+		a.finishTriageAgentRun(run, triageagent.Event{Event: "stopped", Reason: triageRunStoppedBeforeItBegan, StoppedBeforeSessionID: true})
+	case failure != "":
+		a.finishTriageAgentRun(run, triageagent.Event{Event: "failed", Reason: failure})
+	default:
+		a.finishTriageAgentRun(run, triageagent.Event{Event: "failed", Reason: "Could not connect to the triage agent sandbox."})
+	}
+}
+
 func (a *App) StopTriageAgentRun(runID string) error {
 	a.triageAgent.mu.Lock()
 	run := a.triageAgent.activeRun
@@ -531,11 +640,20 @@ func (a *App) StopTriageAgentRun(runID string) error {
 }
 
 // writeTriageAgentControl sends one control line to a run that is not ending.
+// A stop of a run whose start has not reached the sandbox yet, such as one
+// that waits for the copy's lock, ends its preparation at once: the run has
+// no step to finish.
 func (a *App) writeTriageAgentControl(run *triageAgentActiveRun, control triageagent.Control) error {
 	a.triageAgent.mu.Lock()
 	connection, ending := run.connection, run.ending
+	if !ending && connection == nil && control.Stop {
+		run.cancel()
+	}
 	a.triageAgent.mu.Unlock()
 	if ending || connection == nil {
+		if control.Stop && !ending {
+			return nil
+		}
 		return ErrNotFound
 	}
 	run.writeMu.Lock()
@@ -642,13 +760,17 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 	a.triageAgent.mu.Unlock()
 	run.tunnels.Wait()
 	// The agent's commits reach the Git host while the one run stays reserved,
-	// so the next run starts from them. A run without a base sent none.
+	// so the next run starts from them. A run without a base sent none. They
+	// are saved first: when MMHotline stops while they wait for the copy's
+	// lock, the next run after the restart handles them.
 	base := run.request.SystemsRepositoryBaseCommitID
 	received := base != "" && len(event.AgentCommitsBundle) > 0
 	var commits systemsrepository.ReceivedAgentCommits
 	var commitsErr error
+	var savedCommits string
+	commitsWait := false
 	if received {
-		commits, commitsErr = systemsrepository.ReceiveAgentCommits(context.Background(), filepath.Join(a.Store.Dir, systemsrepository.DirectoryName), event.AgentCommitsBundle, base, a.trustedCommit(nil), a.triageAgentsOwnCommits(context.Background()))
+		savedCommits, commits, commitsWait, commitsErr = a.receiveReturnedAgentCommits(run.id, base, event.AgentCommitsBundle)
 	}
 	event.Answer, event.Reason, event.SessionID = run.redact(event.Answer), run.redact(event.Reason), run.redact(event.SessionID)
 	testRun := testRunPurpose(run.purpose)
@@ -703,7 +825,7 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 		if err != nil {
 			return err
 		}
-		if received {
+		if received && !commitsWait {
 			outcome, reason := receivedAgentCommitsOutcome(commits, commitsErr)
 			if err = insertTriageAgentCommits(tx, run.id, "", base, commits, outcome, reason); err != nil {
 				return err
@@ -752,6 +874,10 @@ func (a *App) finishTriageAgentRun(run *triageAgentActiveRun, event triageagent.
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mmhotline: could not save the triage agent run result")
+	} else if savedCommits != "" && !commitsWait {
+		// Recorded with the run; a file left by an exit before this line
+		// is found recorded and removed (applySavedAgentCommits).
+		_ = os.Remove(savedCommits)
 	}
 	a.triageAgent.mu.Lock()
 	if a.triageAgent.activeReview == run {
@@ -800,9 +926,14 @@ func usageAfter(total, earlier triageagent.Usage) triageagent.Usage {
 }
 
 // CloseTriageAgent closes the run connections so systemd also stops the
-// sandboxes: the triage run's and a review's.
+// sandboxes: the triage run's and a review's. It is MMHotline's stop: no run
+// starts or saves its commits after it.
 func (a *App) CloseTriageAgent() {
+	// A run's start and a finished run's commits stop waiting for the
+	// copy's lock; the commits stay saved for the next start.
+	a.mmhotlineStopping()
 	a.triageAgent.mu.Lock()
+	a.triageAgent.stop()
 	var runs []*triageAgentActiveRun
 	for _, run := range []*triageAgentActiveRun{a.triageAgent.activeRun, a.triageAgent.activeReview} {
 		if run == nil {

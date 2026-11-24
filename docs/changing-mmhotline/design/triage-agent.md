@@ -445,7 +445,13 @@ user, and its settings, such as a user or a key, do not fit the agent.
 
 MMHotline keeps the latest listing in `triage_agent_inventory_servers`, each
 server's name and inventory, and why a run could not list servers in
-`triage_agent_runs.inventory_servers_not_listed_because`.
+`triage_agent_runs.inventory_servers_not_listed_because`. A listing that
+MMHotline's stop or the run's stop ends, such as while `mmx nodes` runs,
+keeps nothing and ends the run's start
+([waiting for the copy's lock](#waiting-for-the-copys-lock)); only a listing
+that fails by itself lets the run go on without the servers. The run
+request's list of servers has its own size limit
+([the run socket](#the-run-socket)).
 
 ### The agent's ssh
 
@@ -1428,7 +1434,10 @@ forward to the new trusted commit.
    branch. The coding agent
    starts with the agent's copy as its working directory.
 3. When the run ends, whether finished, stopped, or failed, its final event
-   carries a bundle of the commits on the agent's `main` after the base. Each
+   carries a bundle of the commits on the agent's `main` after the base.
+   MMHotline saves that bundle in its state directory before it waits for
+   the copy's lock, so MMHotline's stop never loses it
+   ([a finished run's commits and MMHotline's stop](#a-finished-runs-commits-and-mmhotlines-stop)). Each
    [playbook request](#requests-from-the-agent) during the run also carries
    a bundle of the commits on the agent's `main` after the base.
    Changes the agent did not commit are not sent.
@@ -1555,6 +1564,80 @@ the preceding run's commits only when the commits reached origin and no
 commit before them waits for review
 ([one run's commits, step by step](#one-runs-commits-step-by-step)).
 
+### Waiting for the copy's lock
+
+A run in the systems repository starts in steps, while it holds the one run:
+the commits a finished run saved before MMHotline stopped
+([below](#a-finished-runs-commits-and-mmhotlines-stop)), the fetch, the
+bundle, the inventory's servers, the vendor pages' hosts, a review's
+prompt, and the connection to the sandbox. The commits, the fetch, the
+bundle, and the listing of the servers hold the copy's lock. While another
+holder has the lock, such as an `every_server` MMX run that a person's helper
+started, the run's start waits for it
+([waiting for another run](#waiting-for-another-run)). Waiting is not a
+failure: an MMX run takes minutes, and a run's start that failed after a
+few seconds would deliver the warnings the run holds.
+
+- **The session's page says what the run waits for:** "Waiting for the
+  systems repository, which MMX is using:" and the line the holder wrote
+  into the lock file, cut at 300 characters. When the lock file names
+  nobody, the page says "Waiting for the systems repository, which another
+  process is using." Held warnings and an SOS waiting for the agent keep
+  their own deadlines, so they still reach people on time while the run
+  waits.
+- **A stop ends the start at once.** The start has no agent step to finish,
+  so a person's Stop, the session's end, or a session that needs the one run
+  ends it before the sandbox gets the request. The run is recorded as
+  stopped with "The run was stopped before the coding agent started." A
+  software review, a commit review, or a sign-in check stopped for a session
+  is recorded as stopped for a triage session
+  (`end_cause` `stopped_for_a_triage_session`), as when the stop reaches a
+  running agent. So such a review does not count toward the review schedule
+  and does not move it ([when a software review starts](#when-a-software-review-starts)).
+  In the background loop's visit that stopped the run, no review or check
+  takes the freed run: the session's run starts at the next visit.
+- **MMHotline's stop ends the start too,** and records the run as cut short,
+  as any run MMHotline's stop cuts short
+  ([after a restart](#after-a-restart)). The start runs under a context
+  that ends when MMHotline stops or the run is stopped, and MMHotline checks
+  it after every step. A software review a person started with
+  `run-software-review` also stops with MMHotline, though not when the
+  command stops waiting for its answer.
+
+Why: on 2026-11-24 at 18:08 a run at monkeymaxxing.com waited for the lock
+that an `every_server` MMX run held. That MMX run restarted MMHotline, whose
+stop ended the wait. The start was recorded as a failure, not as cut short
+by MMHotline, so the run's held warning went out at once.
+
+### A finished run's commits and MMHotline's stop
+
+When a run in the systems repository ends with commits, MMHotline first
+writes the run's bundle to MMHotline's state directory, then waits for the
+copy's lock to handle the commits
+([one run's commits, step by step](#one-runs-commits-step-by-step)):
+
+- The file is `/var/lib/mmhotline/triage_agent_returned_commits/RUN_ID_BASE.bundle`,
+  with the run's ID and the commit the run started from, mode 0600.
+  MMHotline writes it under a temporary name, `.partial-*`, and renames it
+  once the whole bundle is on the disk.
+- When MMHotline stops while the commits wait for the lock, the wait ends at
+  once. The run's own end is recorded as the run ended; the commits'
+  outcome is not recorded yet.
+- The next run in the systems repository, after the restart, handles each
+  saved bundle first, oldest first, records the outcome with the bundle's
+  run as at the run's end, and removes the file. So that run starts from the
+  agent's commits. A bundle whose outcome is already recorded, because
+  MMHotline's process ended between the record and the removal, is removed.
+  A `.partial-*` file is removed: its run was cut short before its end.
+- When the file cannot be written, such as on a full disk, MMHotline still
+  handles the commits, and a stop during the wait records the outcome
+  `failed`.
+
+Why a file per run and not a table: a bundle may be 64 MiB, and the file
+holds it only until the next run. Why the next run and not MMHotline's start:
+the commits wait for the same lock, and serve must not wait for an MMX run
+before it accepts alerts.
+
 ### The run socket
 
 MMHotline and `mmhotline triage-agent run-inside-sandbox` exchange JSON lines
@@ -1603,9 +1686,13 @@ over the run socket connection:
    as a stop, because nobody receives the run's results any more.
 
 Each line fits within 1 MiB, excluding the base64 representation of one Git
-bundle whose binary size is at most 64 MiB. The 1 MiB bounds the prompt, the
-credential, the steps, the requests, and the answers. The bundle has a
-separate limit.
+bundle whose binary size is at most 64 MiB, and excluding the request's
+`inventory_servers`, which has its own limit of 16 MiB as JSON. The 1 MiB
+bounds the prompt, the credential, the steps, the requests, and the answers.
+At about 100 bytes a server, the server list in the 1 MiB stopped runs near
+8,000 servers; 16 MiB lists about 160,000, far beyond the fleets MMHotline
+serves, and keeps the line, which the sandbox reads whole into memory,
+bounded. The sandbox refuses a longer list and names the limit.
 
 ### The connection to each coding agent
 
@@ -2706,7 +2793,10 @@ The triage session page shows:
 
 - a **Triage agent** panel first: the phase, since when, who pressed Stop,
   and Stop, which returns to the triage session page. The running or latest
-  run shows its state and any failure. **Run steps** folds the latest 50
+  run shows its state and any failure. While a run's start waits for the
+  systems repository copy's lock, it says "Waiting for the systems
+  repository, which MMX is using:" and who holds the lock
+  ([waiting for the copy's lock](#waiting-for-the-copys-lock)). **Run steps** folds the latest 50
   steps; **Session details** folds what a session is, when the session ends,
   and the session ID;
 - **Alerts in this session**: each alert, oldest first, with its time,
@@ -2780,7 +2870,11 @@ MMHotline records when each session started and ended, and why it ended.
 A run that MMHotline's own stop or restart cuts short is resumed:
 
 - When MMHotline stops, it closes the run connection and records the run as
-  failed with "MMHotline stopped during the run."
+  failed with "MMHotline stopped during the run." This includes a run whose
+  start, such as a wait for the copy's lock, was still going
+  ([waiting for the copy's lock](#waiting-for-the-copys-lock)): a start
+  MMHotline's stop ended is never the run's failure, so the warnings it
+  holds keep their deadlines.
 - When MMHotline's process ended without stopping, MMHotline finds the run
   still marked as running when it starts again, and records it as failed with
   "MMHotline restarted during the run."
@@ -2792,7 +2886,9 @@ each incident of the interrupted run's session. Alerts and
 wait again. On the first visit after MMHotline starts again, the background
 loop resumes the session with the
 interrupted run's alerts and team notes. The prompt tells the agent why the
-last run ended.
+last run ended. Commits a finished run saved before MMHotline stopped go to
+origin at the start of that run
+([a finished run's commits and MMHotline's stop](#a-finished-runs-commits-and-mmhotlines-stop)).
 
 #### The record of a cut-short run
 
@@ -2982,6 +3078,9 @@ due, so the review starts on time even when nothing else happens.
   MMHotline records a review interrupted for a session as
   stopped, with "MMHotline stopped the software review because a triage
   session needed the agent; it starts again once the session's run ends."
+  This includes a review whose start was still waiting, such as for the
+  copy's lock: the stop ends it before the coding agent starts
+  ([waiting for the copy's lock](#waiting-for-the-copys-lock)).
   Only the stop's own end counts as that interruption: a review that fails
   on its own before the stop reaches it, such as when the coding agent's
   service refuses its credential, is a failed review, which counts.
@@ -4717,7 +4816,9 @@ of MMHotline's short holds.
 
 Waiting is normal, not a failure. While another holder has the lock,
 MMHotline records since when the MMX run waits, so a page can say the run is
-waiting. The wait counts toward the time limit.
+waiting. The wait counts toward the time limit. A triage agent run's start
+waits for the lock the same way
+([waiting for the copy's lock](#waiting-for-the-copys-lock)).
 
 While MMHotline waits for the lock, for an MMX run or a short hold such as
 the fetch at a triage agent run's start, it keeps a marker beside the lock,
