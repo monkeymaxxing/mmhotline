@@ -193,7 +193,17 @@ func heldWarnAlertResolved(ctx context.Context, tx *sql.Tx, e Alert, at time.Tim
 	if e.Severity != "resolved-warn" || e.SenderIncidentKey == "" {
 		return nil
 	}
-	return endHeldWarnsBecauseResolved(ctx, tx, at, "alert_id IN (SELECT id FROM alerts WHERE source_id=? AND sender_incident_key=? AND severity='warn')", e.SourceID, e.SenderIncidentKey)
+	ofThisProblem := "alert_id IN (SELECT id FROM alerts WHERE source_id=? AND sender_incident_key=? AND severity='warn')"
+	if err := endHeldWarnsBecauseResolved(ctx, tx, at, ofThisProblem, e.SourceID, e.SenderIncidentKey); err != nil {
+		return err
+	}
+	// A hold this resolve could not end is past its deadline. Mark it for
+	// delivery now, in the transaction that makes its resolved message wait
+	// for it (resolutionWaitsForItsWarns): a marked hold can no longer be
+	// resolved, taken over, or extended, so a visit that read the clock
+	// before the deadline cannot end it unsent and leave the resolved
+	// message waiting forever.
+	return requestHeldWarnRelease(ctx, tx, heldWarnDeadlineReason, at, ofThisProblem, e.SourceID, e.SenderIncidentKey)
 }
 
 // endHeldWarnsBecauseResolved ends, sending nothing, the holds that where

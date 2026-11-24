@@ -861,6 +861,35 @@ func TestHeldWarnResolvedPastItsDeadlineFollowsTheWarning(t *testing.T) {
 	}
 }
 
+// A resolve past a held warn's deadline marks the warn for delivery in the
+// same transaction that makes its resolved message wait. A visit that read
+// the clock before the deadline then cannot end the warn as resolved, which
+// would leave its resolved message waiting forever.
+func TestHeldWarnResolvedPastItsDeadlineCannotBeEndedByAnEarlierClock(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	warn := admitSignedAlert(t, r.a, r.source, "warn", loadWarning, "app002-load")
+	r.advance(16 * time.Minute)
+	resolved := admitSignedAlert(t, r.a, r.source, "resolved-warn", "Load on app002 is normal", "app002-load")
+	earlierClock := r.a.Now().Add(-2 * time.Minute)
+	if err := r.a.Store.WithTransaction(context.Background(), func(tx *sql.Tx) error {
+		return endHeldWarnsBecauseResolved(context.Background(), tx, earlierClock, "alert_id=?", warn.ID)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if outcome, _, _, released := r.holdOf(t, warn.ID); outcome == "resolved" || !released && outcome != "delivered" {
+		t.Fatalf("the overdue warn after a visit with an earlier clock: outcome %q, released %v; want it marked for delivery", outcome, released)
+	}
+	backgroundRounds(t, r.a)
+	var warnings, ends int
+	if err := r.a.Store.db.QueryRow(`SELECT count(*) FILTER (WHERE alert_id=?),count(*) FILTER (WHERE alert_id=?) FROM deliveries WHERE state!='suppressed'`, warn.ID, resolved.ID).Scan(&warnings, &ends); err != nil {
+		t.Fatal(err)
+	}
+	if warnings == 0 || ends != warnings {
+		t.Fatalf("%d warning and %d resolved deliveries; want the warning and its end to each person", warnings, ends)
+	}
+}
+
 // When one held incident's end meets the full ordinary part of the delivery
 // queue, the step goes on to the next incident's SOS email, for which the
 // part reserved for SOS has room.

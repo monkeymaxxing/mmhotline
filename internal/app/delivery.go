@@ -729,7 +729,9 @@ func (a *App) reserveDelivery(ctx context.Context, publicURL string, kinds []str
 		// ordinary notices from the same team. Among SOS deliveries, the
 		// alert source with the fewest due goes first, so one alert source's
 		// flood never pushes another alert source's SOS behind its backlog.
-		d, err = scanDelivery(tx.QueryRowContext(ctx, `SELECT `+deliveryColumns+` FROM (SELECT d.*,(d.severity='sos' OR d.purpose='sos_escalation') AS sos,count(*) OVER (PARTITION BY (d.severity='sos' OR d.purpose='sos_escalation'),(SELECT a.source_id FROM alerts a WHERE a.id=d.alert_id)) AS due_from_source FROM deliveries d WHERE d.contact_method_type IN (?`+strings.Repeat(",?", len(kinds)-1)+`) AND `+pendingDelivery+` AND d.next_attempt>0 AND d.next_attempt<=?) ORDER BY sos DESC,CASE WHEN sos THEN due_from_source ELSE 0 END,next_attempt,created_at,id LIMIT 1`, args...))
+		// Deliveries due at once go in the order they were queued, so a
+		// warning goes before the resolved message queued after it.
+		d, err = scanDelivery(tx.QueryRowContext(ctx, `SELECT `+deliveryColumns+` FROM (SELECT d.*,d.rowid AS queued_order,(d.severity='sos' OR d.purpose='sos_escalation') AS sos,count(*) OVER (PARTITION BY (d.severity='sos' OR d.purpose='sos_escalation'),(SELECT a.source_id FROM alerts a WHERE a.id=d.alert_id)) AS due_from_source FROM deliveries d WHERE d.contact_method_type IN (?`+strings.Repeat(",?", len(kinds)-1)+`) AND `+pendingDelivery+` AND d.next_attempt>0 AND d.next_attempt<=?) ORDER BY sos DESC,CASE WHEN sos THEN due_from_source ELSE 0 END,next_attempt,created_at,queued_order LIMIT 1`, args...))
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
