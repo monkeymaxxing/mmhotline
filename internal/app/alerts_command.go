@@ -35,6 +35,9 @@ type CommandAlert struct {
 	// RepeatCount and LastRepeatTitle are the later warns folded into this
 	// one; absent when none were.
 	RepeatCount     int64  `json:"repeat_count,omitempty"`
+	// PassedOverForTheRunLimit: the triage agent's run limit sent the alert
+	// straight to people, and the agent will not come back to it.
+	PassedOverForTheRunLimit bool `json:"passed_over_for_the_run_limit,omitempty"`
 	LastRepeatTitle string `json:"last_repeat_title,omitempty"`
 	PageURL         string `json:"page_url"`
 }
@@ -79,7 +82,7 @@ func (a *App) commandAlerts(alerts []Alert) []CommandAlert {
 }
 
 func (a *App) commandAlert(alert Alert) CommandAlert {
-	return CommandAlert{AlertID: alert.ID, Severity: alert.Severity, Title: alert.Title, Message: alert.Message, Notes: alert.Notes, ReceivedAt: alert.ReceivedAt, HappenedAt: alert.HappenedAt, AlertSourceID: alert.SourceID, IncidentID: alert.IncidentID, SenderAlertID: alert.SenderAlertID, SenderIncidentKey: alert.SenderIncidentKey, RepeatCount: alert.RepeatCount, LastRepeatTitle: alert.LastRepeatTitle, PageURL: a.WebURL + "/alerts/" + alert.ID}
+	return CommandAlert{AlertID: alert.ID, Severity: alert.Severity, Title: alert.Title, Message: alert.Message, Notes: alert.Notes, ReceivedAt: alert.ReceivedAt, HappenedAt: alert.HappenedAt, AlertSourceID: alert.SourceID, IncidentID: alert.IncidentID, SenderAlertID: alert.SenderAlertID, SenderIncidentKey: alert.SenderIncidentKey, RepeatCount: alert.RepeatCount, LastRepeatTitle: alert.LastRepeatTitle, PassedOverForTheRunLimit: alert.PassedOverForTheRunLimit, PageURL: a.WebURL + "/alerts/" + alert.ID}
 }
 
 // Line is the alert in one line, as lists print it.
@@ -93,7 +96,11 @@ func (alert CommandAlert) Line() string {
 
 // Text is the alert's line with its message, its alert source, and its page.
 func (alert CommandAlert) Text() string {
-	text := alert.Line() + "\n  Alert source: " + alert.AlertSourceID + ". Page: " + alert.PageURL + "\n  " + indentedText(alert.Message, "  ")
+	text := alert.Line() + "\n  Alert source: " + alert.AlertSourceID + ". Page: " + alert.PageURL
+	if alert.PassedOverForTheRunLimit {
+		text += "\n  " + runLimitPassedOverLine
+	}
+	text += "\n  " + indentedText(alert.Message, "  ")
 	if alert.Notes != "" {
 		text += "\n  Note: " + alert.Notes
 	}

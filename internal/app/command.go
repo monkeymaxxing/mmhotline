@@ -23,6 +23,7 @@ type CommandRequest struct {
 	StatusPage         StatusPageCommandRequest         `json:"status_page"`
 	// The read-only groups: what happened, for people and coding agents on
 	// the server, who cannot reach the pages behind Cloudflare Access.
+	TriageAgent      TriageAgentCommandRequest      `json:"triage_agent"`
 	Incidents        IncidentsCommandRequest        `json:"incidents"`
 	Alerts           AlertsCommandRequest           `json:"alerts"`
 	TriageSessions   TriageSessionsCommandRequest   `json:"triage_sessions"`
@@ -35,6 +36,8 @@ type CommandResult struct {
 	SettingsFile       *SettingsFileView             `json:"settings_file,omitempty"`
 	TriageAgent        *TriageAgentView              `json:"triage_agent,omitempty"`
 	TriageAgentRunID   string                        `json:"triage_agent_run_id,omitempty"`
+	// TriageAgentUsage is what triage-agent usage prints.
+	TriageAgentUsage *TriageAgentUsage `json:"triage_agent_usage,omitempty"`
 	ReviewAgent        *ReviewAgentView              `json:"review_agent,omitempty"`
 	ReviewAgentRunID   string                        `json:"review_agent_run_id,omitempty"`
 	AgentPlaybookRules []InventoryAgentPlaybookRules `json:"agent_playbook_rules,omitempty"`
@@ -108,7 +111,7 @@ func (a *App) CommandHandler() http.Handler {
 			result.WebURL = ""
 			err = a.settingsCommand(r.Context(), request.Action, &result)
 		case "triage-agent":
-			err = a.triageAgentCommand(r.Context(), principal, request.Action, &result)
+			err = a.triageAgentCommand(r.Context(), principal, request.Action, request.TriageAgent, &result)
 		case "review-agent":
 			err = a.reviewAgentCommand(r.Context(), principal, request.Action, &result)
 		case "agent-playbook-rules":
@@ -169,6 +172,9 @@ func (r CommandResult) Text() string {
 	}
 	if r.TriageAgent != nil {
 		lines = append(lines, r.TriageAgent.Text())
+	}
+	if r.TriageAgentUsage != nil {
+		lines = append(lines, r.TriageAgentUsage.Text())
 	}
 	if r.ReviewAgent != nil {
 		lines = append(lines, r.ReviewAgent.Text())

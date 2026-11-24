@@ -21,7 +21,7 @@ import (
 )
 
 var commandActions = map[string][]string{
-	"triage-agent":         {"show", "check-sign-in", "run-software-review"},
+	"triage-agent":         {"show", "check-sign-in", "run-software-review", "usage"},
 	"review-agent":         {"show", "check-sign-in"},
 	"agent-playbook-rules": {"show", "check-whether-a-playbook-needs-a-person"},
 	"sending-services":     {"list"},
@@ -93,6 +93,8 @@ func runManagementCommand(group string, args []string) error {
 		validate = incidentsFlags(flags, action, &request.Incidents, &waitForClaimMinutes)
 	case "alerts":
 		validate = alertsFlags(flags, &request.Alerts)
+	case "triage-agent":
+		validate = triageAgentFlags(flags, action, &request.TriageAgent)
 	case "triage-sessions":
 		validate = triageSessionsFlags(flags, action, &request.TriageSessions)
 	case "approval-requests":

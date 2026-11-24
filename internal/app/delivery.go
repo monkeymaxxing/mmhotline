@@ -168,11 +168,18 @@ func QueueNotification(ctx context.Context, tx *sql.Tx, n Notification) error {
 	}
 	if n.AlertID != "" {
 		var received int64
-		err = tx.QueryRowContext(ctx, `SELECT received_at FROM alerts WHERE id=?`, n.AlertID).Scan(&received)
+		var passedOver bool
+		err = tx.QueryRowContext(ctx, `SELECT received_at,passed_over_for_the_run_limit FROM alerts WHERE id=?`, n.AlertID).Scan(&received, &passedOver)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		alertReceivedAt = deadlineTime(received)
+		// An alert the triage agent's run limit sent straight to people
+		// says so first, before its own message; its title, which a phone
+		// shows first, stays its own, and the stored alert is unchanged.
+		if passedOver && (n.Severity == "warn" || n.Severity == "sos") {
+			n.Message = strings.TrimSuffix(runLimitPassedOverLine+"\n\n"+n.Message, "\n\n")
+		}
 	}
 	// A triage agent report's notifications carry its summary, not the report
 	// (triageAgentReportNotificationMessage). An incident's notifications carry

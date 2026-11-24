@@ -245,6 +245,10 @@ var databaseFormatUpgrades = []func(*sql.Tx) error{
 	// Format 5: an alert source's repeated_warnings setting, the repeats
 	// folded into a warn, and the folded repeats' retry identities.
 	addRepeatedWarnings,
+	// Format 6: the triage agent's run limit: its notice on the setup row,
+	// the alerts it passed over, the scheduled software review it skipped,
+	// and an index on the runs' start times, which the count reads.
+	addRunLimit,
 }
 
 // currentDatabaseFormat is the format Setup creates and Open upgrades to.

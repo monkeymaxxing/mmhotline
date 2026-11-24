@@ -606,6 +606,8 @@ func incidentActionLabel(kind string) string {
 		return "Held while the triage agent replaces a server"
 	case "triage_agent_hold_ended":
 		return "Waking the person on call"
+	case runLimitSOSWokeKind:
+		return "Woken without the agent's wait"
 	case "already_woken_for_triage_session":
 		return "Already woken for the triage session"
 	case "playbook_run_refused_by_the_review_agent":

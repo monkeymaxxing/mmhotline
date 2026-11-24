@@ -166,6 +166,9 @@ func (a *App) whyTheTriageAgentCannotReview(ctx context.Context, tx *sql.Tx) (st
 	case !a.systemsRepositoryCopyExists():
 		return "MMHotline's copy of the systems repository is missing", nil
 	}
+	if holds, err := runLimitHolds(ctx, tx); err != nil || holds {
+		return map[bool]string{true: "the triage agent reached its run limit (triage_agent.most_runs_in_24_hours)"}[holds], err
+	}
 	return "", nil
 }
 

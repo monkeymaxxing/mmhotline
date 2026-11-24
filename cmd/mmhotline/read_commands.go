@@ -68,6 +68,20 @@ func alertsFlags(flags *flag.FlagSet, in *app.AlertsCommandRequest) func() error
 	return func() error { return nil }
 }
 
+// triageAgentFlags are the flags of triage-agent usage, which only reads.
+func triageAgentFlags(flags *flag.FlagSet, action string, in *app.TriageAgentCommandRequest) func() error {
+	if action != "usage" {
+		return func() error { return nil }
+	}
+	timeFlag(flags, "since", "count the runs that started, and the alerts that arrived, at or after `TIME`", &in.Since)
+	return func() error {
+		if in.Since.IsZero() {
+			return errors.New("--since is required, such as --since 2026-11-17T09:00:00Z")
+		}
+		return nil
+	}
+}
+
 func triageSessionsFlags(flags *flag.FlagSet, action string, in *app.TriageSessionsCommandRequest) func() error {
 	if action == "list" {
 		return func() error { return nil }

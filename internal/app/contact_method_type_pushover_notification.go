@@ -328,7 +328,10 @@ func (c *PushoverNotificationContactMethodType) Send(ctx context.Context, m Cont
 			for _, alert := range m.CombinedAlerts {
 				titles = append(titles, alert.Title)
 			}
-			text = linesWithin(titles, 1024-utf8.RuneCountInString(instruction)-2)
+			text = linesWithin(titles, 1024-utf8.RuneCountInString(instruction)-2-runLimitLineRunes(m.CombinedAlerts))
+			if anyPassedOverForTheRunLimit(m.CombinedAlerts) {
+				text = runLimitPassedOverLine + "\n\n" + text
+			}
 		}
 		text = truncateRunes(text, 1024-utf8.RuneCountInString(instruction)-2)
 		if text != "" {
@@ -342,7 +345,10 @@ func (c *PushoverNotificationContactMethodType) Send(ctx context.Context, m Cont
 			for _, alert := range m.CombinedAlerts {
 				titles = append(titles, severityLabel(alert.Severity)+": "+alert.Title)
 			}
-			text = linesWithin(titles, 1024)
+			text = linesWithin(titles, 1024-runLimitLineRunes(m.CombinedAlerts))
+			if anyPassedOverForTheRunLimit(m.CombinedAlerts) {
+				text = runLimitPassedOverLine + "\n\n" + text
+			}
 		} else if m.Title != "" || m.AlertMessage != "" {
 			// About one alert: the title field names it, so the message starts
 			// with the alert's message. A message about no alert, such as a
@@ -432,4 +438,13 @@ func linesWithin(lines []string, limit int) string {
 		text = next
 	}
 	return text
+}
+
+// runLimitLineRunes is the room runLimitPassedOverLine takes at the start of
+// a combined message, so the list of titles leaves room for it.
+func runLimitLineRunes(alerts []CombinedAlert) int {
+	if !anyPassedOverForTheRunLimit(alerts) {
+		return 0
+	}
+	return utf8.RuneCountInString(runLimitPassedOverLine) + 2
 }

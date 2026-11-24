@@ -29,6 +29,10 @@ type Alert struct {
 	// LastRepeatTitle is the latest one's title (repeated_warnings.go).
 	RepeatCount     int64
 	LastRepeatTitle string
+	// PassedOverForTheRunLimit: the triage agent's run limit held, so the
+	// alert went straight to people and never to the agent
+	// (triage_agent_run_limit.go).
+	PassedOverForTheRunLimit bool
 }
 
 // happenedGap describes a late arrival: "Happened at 14:02 UTC. Received at
@@ -389,6 +393,12 @@ func admitAlert(ctx context.Context, tx *sql.Tx, sourceID, actor, replayKey, inc
 	if err != nil {
 		return Alert{}, err
 	}
+	// While the triage agent's run limit holds, an alert that would go to
+	// the agent goes straight to people: marked before its hold or its wait
+	// is decided.
+	if e.PassedOverForTheRunLimit, err = passOverAtIntakeForTheRunLimit(ctx, tx, e.ID); err != nil {
+		return Alert{}, err
+	}
 	switch {
 	case newIncident:
 		i, err := createIncident(ctx, tx, e, actor, at, sosRecipients)
@@ -514,14 +524,14 @@ func (a *App) ManualSOS(ctx context.Context, p Principal, title, message string)
 	return e, err
 }
 
-const alertColumns = `sequence,id,source_id,sender_alert_id,actor,incident_id,sender_incident_key,severity,title,message,notes,received_at,happened_at,repeat_count,last_repeat_title`
+const alertColumns = `sequence,id,source_id,sender_alert_id,actor,incident_id,sender_incident_key,severity,title,message,notes,received_at,happened_at,repeat_count,last_repeat_title,passed_over_for_the_run_limit`
 
 type scanner interface{ Scan(...any) error }
 
 func scanAlert(row scanner) (Alert, error) {
 	var e Alert
 	var at, happened int64
-	err := row.Scan(&e.Sequence, &e.ID, &e.SourceID, &e.SenderAlertID, &e.Actor, &e.IncidentID, &e.SenderIncidentKey, &e.Severity, &e.Title, &e.Message, &e.Notes, &at, &happened, &e.RepeatCount, &e.LastRepeatTitle)
+	err := row.Scan(&e.Sequence, &e.ID, &e.SourceID, &e.SenderAlertID, &e.Actor, &e.IncidentID, &e.SenderIncidentKey, &e.Severity, &e.Title, &e.Message, &e.Notes, &at, &happened, &e.RepeatCount, &e.LastRepeatTitle, &e.PassedOverForTheRunLimit)
 	e.HappenedAt = deadlineTime(happened)
 	if errors.Is(err, sql.ErrNoRows) {
 		return e, ErrNotFound

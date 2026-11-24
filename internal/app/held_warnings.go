@@ -115,9 +115,10 @@ func warnWaitsForTheAgent(ctx context.Context, tx *sql.Tx) (time.Duration, error
 // in it), and the alert is one that starts or joins a session
 // (triageSessionAlertCondition) from an alert source: not a notice from
 // MMHotline, not one made by hand (a person who raises an alert wants people
-// now), and not one meant for chosen people only.
+// now), not one meant for chosen people only, and not one the triage
+// agent's run limit passed over.
 func holdWarnForTheAgent(ctx context.Context, tx *sql.Tx, e Alert, onlyForChosenPeople bool, at time.Time) (bool, error) {
-	if e.Severity != "warn" || e.SourceID == "system" || e.SourceID == "manual" || onlyForChosenPeople {
+	if e.Severity != "warn" || e.SourceID == "system" || e.SourceID == "manual" || onlyForChosenPeople || e.PassedOverForTheRunLimit {
 		return false, nil
 	}
 	wait, err := warnWaitsForTheAgent(ctx, tx)

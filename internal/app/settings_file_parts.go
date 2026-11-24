@@ -91,6 +91,7 @@ var settingsFileParts = append([]settingsFilePart{
 	settingsSOSWaitsForTheAgentPart,
 	settingsWarnWaitsForTheAgentPart,
 	settingsSendAMessageWhenTheAgentStartsLookingPart,
+	settingsMostRunsIn24HoursPart,
 	settingsSOSWaitsForAServerReplacementPart,
 	{name: "triage_agent.software_review_interval_hours", value: triageAgentValue(func(agent SettingsTriageAgent) any { return agent.SoftwareReviewIntervalHours }), apply: func(ctx context.Context, a *App, s Settings) error {
 		if s.TriageAgent == nil {

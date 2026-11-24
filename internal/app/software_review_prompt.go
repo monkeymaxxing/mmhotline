@@ -54,7 +54,7 @@ func readSoftwareReviewTask(ctx context.Context, directory, commitID string) (st
 // serverName with the team's task. lastReview is when the last review that
 // finished started, or zero when none has; inventories are those of
 // MMHotline's copy.
-func softwareReviewPrompt(serverName string, lastReview time.Time, inventories []string, task string) string {
+func softwareReviewPrompt(serverName string, lastReview time.Time, inventories []string, task, usage string) string {
 	since := "never"
 	if !lastReview.IsZero() {
 		since = lastReview.UTC().Format("2006-01-02 15:04:05 UTC")
@@ -71,7 +71,11 @@ The team's task for this review is below, quoted from %s in the systems reposito
 %s
 ----- end of %s -----
 
+MMHotline's record of the triage agent's last 7 days, for a task that reviews what the agent costs and how its holds went:
+
+%s
+
 Send the reports the team's task asks for. When you find nothing new, send no report: the review's record already shows that it ran, what it cost, and when it finished, and a report about nothing would only add an alert. When MMHotline's logging proxy refuses a host you need, such as a host that a vendor page sends you to, name the refused host in a report so a person can add the host to the allowed list.
 
-%s`, serverName, since, softwareReviewTaskFile, softwareReviewTaskFile, strings.TrimRight(task, "\n"), softwareReviewTaskFile, triageSessionCommandsText(inventories))
+%s`, serverName, since, softwareReviewTaskFile, softwareReviewTaskFile, strings.TrimRight(task, "\n"), softwareReviewTaskFile, usage, triageSessionCommandsText(inventories))
 }

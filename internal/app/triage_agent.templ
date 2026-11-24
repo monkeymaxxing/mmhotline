@@ -70,6 +70,21 @@ templ triageAgentPageBody(frame pageFrame, data triageAgentPageData) {
 					</div>
 				</details>
 			}
+			if data.RunLimit != nil {
+				<section class="panel" id="run-limit">
+					<div class="panel-head">
+						<h2>Run limit</h2>
+					</div>
+					<div class="panel-body">
+						if data.RunLimit.LimitHolds() {
+							<p class="line-warn">{ data.RunLimit.Text() }</p>
+						} else {
+							<p>{ data.RunLimit.Text() }</p>
+						}
+						<p class="small muted">The limit counts the runs MMHotline starts by itself: triage sessions' runs, scheduled software reviews, and commit reviews. It stops only agent runs, never alerts. Set it with <code>triage_agent.most_runs_in_24_hours</code> in the settings file.</p>
+					</div>
+				</section>
+			}
 			<section class="panel">
 				<div class="panel-head">
 					<h2>Software review</h2>
@@ -86,6 +101,9 @@ templ triageAgentPageBody(frame pageFrame, data triageAgentPageData) {
 					</details>
 					if data.SoftwareReviewIntervalChangedAt != nil {
 						<p>Set by { data.SoftwareReviewIntervalChangedBy } at { frame.Clock(*data.SoftwareReviewIntervalChangedAt) }.</p>
+					}
+					if data.SoftwareReviewSkippedForTheRunLimitAt != nil {
+						<p>The scheduled software review due at { frame.Clock(*data.SoftwareReviewSkippedForTheRunLimitAt) } was skipped: the triage agent's run limit had been reached.</p>
 					}
 					if !data.ScheduledSoftwareReviewIsOff() {
 						if data.NextSoftwareReviewDueAt != nil {
