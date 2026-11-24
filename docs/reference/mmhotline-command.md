@@ -417,17 +417,18 @@ before the schedule that names them:
 15. `triage_agent.sos_waits_for_the_agent_minutes`
 16. `triage_agent.warn_waits_for_the_agent_minutes`
 17. `triage_agent.send_a_message_when_the_agent_starts_looking`
-18. `triage_agent.sos_waits_for_a_server_replacement_minutes`
-19. `triage_agent.software_review_interval_hours`
-20. `mmhotline_down_alarm.wake_the_person_on_call_after_minutes_without_a_check_in, mmhotline_down_alarm.wake_the_backup_after_minutes_without_a_check_in`
-21. `review_agent`
-22. `sending_services.pushover`
-23. `sending_services.twilio`
-24. `sending_services.telegram`
-25. `sending_services.slack`
-26. `sending_services.mail_server`
-27. `mmhotline_down_alarm`
-28. `status_page`
+18. `triage_agent.most_runs_in_24_hours`
+19. `triage_agent.sos_waits_for_a_server_replacement_minutes`
+20. `triage_agent.software_review_interval_hours`
+21. `mmhotline_down_alarm.wake_the_person_on_call_after_minutes_without_a_check_in, mmhotline_down_alarm.wake_the_backup_after_minutes_without_a_check_in`
+22. `review_agent`
+23. `sending_services.pushover`
+24. `sending_services.twilio`
+25. `sending_services.telegram`
+26. `sending_services.slack`
+27. `sending_services.mail_server`
+28. `mmhotline_down_alarm`
+29. `status_page`
 
 Each line ends in one of these. Text output counts the parts that did
 not change on one last line, such as `12 parts unchanged.`, and prints a
