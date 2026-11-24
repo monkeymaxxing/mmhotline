@@ -492,7 +492,8 @@ const sosNotificationWaitIsOver = `subscribed_alert_notification_waits_for_the_w
 // wait, once its wait for the triage agent is over. An SOS that resolved
 // during the wait, with nobody claiming it, is sent to nobody: the agent's
 // work, or the alert source, ended it before a person was needed, as nobody
-// is woken for it either.
+// is woken for it either. One that resolved after its wait was over, before
+// this step, is sent with its resolved message after it.
 func queueSOSNotificationAfterItsWait(ctx context.Context, tx *sql.Tx, incidentID string, now time.Time) error {
 	var status, step, alertID string
 	var claimedAt int64
@@ -514,7 +515,21 @@ func queueSOSNotificationAfterItsWait(ctx context.Context, tx *sql.Tx, incidentI
 	if err = tx.QueryRowContext(ctx, `SELECT source_id,title,message,notes,happened_at FROM alerts WHERE id=?`, alertID).Scan(&sourceID, &title, &message, &notes, &happened); err != nil {
 		return err
 	}
-	return QueueNotification(ctx, tx, Notification{Key: alertID, AlertID: alertID, IncidentID: incidentID, Severity: "sos", Title: title, Message: message, Notes: notes, Purpose: notificationPurpose(sourceID), HappenedAt: deadlineTime(happened), At: now})
+	if err = QueueNotification(ctx, tx, Notification{Key: alertID, AlertID: alertID, IncidentID: incidentID, Severity: "sos", Title: title, Message: message, Notes: notes, Purpose: notificationPurpose(sourceID), HappenedAt: deadlineTime(happened), At: now}); err != nil || status != "resolved" {
+		return err
+	}
+	// It resolved after the wait was over and before this step: its
+	// resolved message went only to contact methods told about it then, so
+	// those getting the SOS now get its end after it.
+	i, err := readIncident(ctx, tx, incidentID)
+	if err != nil {
+		return err
+	}
+	resolvedTitle, resolvedMessage, err := resolvedSOSText(ctx, tx, i)
+	if err != nil {
+		return err
+	}
+	return QueueNotification(ctx, tx, Notification{Key: "resolved-after-its-wait:" + incidentID, AlertID: alertID, IncidentID: incidentID, Severity: "resolved-sos", Title: resolvedTitle, Message: resolvedMessage, Purpose: "subscribed_alert", At: now})
 }
 
 // triageSessionAlreadyWoke returns an unresolved incident of the open triage

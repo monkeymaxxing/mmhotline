@@ -537,6 +537,31 @@ func TestHeldSOSEmailWaitsWithTheWakingStep(t *testing.T) {
 			}
 		}
 	})
+	// The claim ends the wait, and the resolve comes before the background
+	// step queues the email: the email still goes, and its end follows it.
+	t.Run("sent with its end when it resolves before the email is queued", func(t *testing.T) {
+		r := newHeldWarnRig(t, 15)
+		r.addEmail(t)
+		sos := r.sosArrives(t, "The server db02 stopped answering", "db02")
+		r.runStarted(t)
+		r.at(t, 2*time.Minute)
+		ctx := context.Background()
+		i, err := r.a.GetIncident(ctx, r.s.Principal, sos.IncidentID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i, err = r.a.ClaimIncident(ctx, r.s.Principal, i.ID, i.Revision, ""); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = r.a.ResolveIncident(ctx, r.s.Principal, i.ID, i.Revision, ""); err != nil {
+			t.Fatal(err)
+		}
+		r.at(t, 3*time.Minute)
+		states := r.emailStates(t, sos.IncidentID)
+		if len(states) < 2 || states[len(states)-2] != "sos not suppressed" || states[len(states)-1] != "resolved-sos not suppressed" {
+			t.Fatalf("emails %q; want the SOS, then its end", states)
+		}
+	})
 }
 
 // A run carries only the alerts its prompt shows; the rest wait for the
