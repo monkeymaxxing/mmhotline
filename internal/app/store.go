@@ -238,6 +238,9 @@ var databaseFormatUpgrades = []func(*sql.Tx) error{
 	func(tx *sql.Tx) error { _, err := tx.Exec(statusPageIncidentNoticesSchema); return err },
 	// Format 3: what ended each triage agent run, as a value decisions read.
 	addRunEndCause,
+	// Format 4: an alert source's repeated_warnings setting, the repeats
+	// folded into a warn, and the folded repeats' retry identities.
+	addRepeatedWarnings,
 }
 
 // currentDatabaseFormat is the format Setup creates and Open upgrades to.

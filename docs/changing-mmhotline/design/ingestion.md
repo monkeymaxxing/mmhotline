@@ -36,9 +36,10 @@ a signed receipt, so the private network needs no TLS or other protection.
 ## Alert sources in the settings file
 
 The settings file's `alert_sources` lists each alert source: the team's own
-`alert_source_id`, a `name`, one or two `signing_secrets`, and its check-in
+`alert_source_id`, a `name`, one or two `signing_secrets`, its check-in
 times, `warn_after_no_check_in_for_minutes` and
-`sos_after_no_check_in_for_minutes`. Applying the settings file saves and enables each listed source, and disables
+`sos_after_no_check_in_for_minutes`, and the optional `repeated_warnings`
+([repeated warnings](#repeated-warnings)). Applying the settings file saves and enables each listed source, and disables
 each source the settings file leaves out. A disabled source's signing secrets
 stop working at once, and the source's alerts and check-ins stay.
 Listing a disabled source again enables the source with the listed secrets.
@@ -173,7 +174,10 @@ are admitted.
 A successful response is
 `{"mmhotline_alert_id":"...","mmhotline_incident_id":"...","already_received":false}`.
 Omit `mmhotline_incident_id` when there is no incident; `already_received` is true
-for a duplicate. `mmhotline_alert_id` identifies the durable alert.
+for a duplicate. `mmhotline_alert_id` identifies the durable alert. For a
+warn folded into an earlier one, it is the earlier warn's ID, and the answer
+adds `"recorded_as_repeat_of_earlier_alert":true`
+([repeated warnings](#repeated-warnings)).
 The successful response is not proof of delivery to a contact method or
 acknowledgement.
 Rejected input creates no accepted alert. Responses also carry a receipt
@@ -278,6 +282,77 @@ requests cannot force database writes. The counts start again after a
 restart.
 Notices about MMHotline's own limits go only to administrators' contact
 methods, never to webhooks.
+
+### Repeated warnings
+
+Built. An alert source's `repeated_warnings` setting in the settings file
+says what intake does with a warn that repeats an earlier one:
+
+- `keep_each`, the default when the setting is left out: every warn is
+  its own alert, delivered as usual. Reason for the default: for most
+  senders a changed message under one key ("retry underway", then "restore
+  required") is new news. MMWatchdog's fleet hub must also keep every
+  warning: its warning that a new server has a finding has the same key and
+  first line as the first warning, and must be investigated.
+- `fold_by_sender_incident_key_and_first_message_line`: repeats are folded
+  into the earlier warn. This is for a sender such as MMWatchdog's nodes
+  sending directly while the fleet hub is down, under their own alert
+  source, such as `mmwatchdog_nodes_while_the_hub_is_down`. Thousands of
+  servers then send one finding, with the same key and the same exact
+  finding on the first line of the message. Without folding, the burst uses
+  up the 120 alerts a minute of the source and the 1,000 Warning and Info
+  alerts an hour of the installation, and unrelated warnings are refused for
+  the rest of the hour.
+
+For a folding source, a warn is a **repeat** when it has a
+`sender_incident_key`, and an earlier warn of the same alert source has the
+same key and the same first line of its message, was received within the
+last hour, and is unresolved. Unresolved means that no `resolved-warn` with
+the same source and key arrived after it, the same matching intake uses for
+resolved messages. The first line is the message up to its first line break.
+An alert without a severity is the warn intake saves it as.
+
+- The earlier warn's repeat count goes up by one, and it keeps the repeat's
+  title as the last repeat's title. No alert row is added, so storage stays
+  bounded. The alert's page and `alerts list` show the count and the title.
+- The repeat is not delivered again, and starts or joins nothing.
+- A repeat is recognized before both intake limits, so it counts toward
+  neither, and a burst of repeats leaves room for unrelated alerts.
+- A warn without a key is never a repeat: two keyless warnings may be
+  unrelated. A new exact finding under the key has a different first line,
+  so it is a new alert, delivered and investigated. An SOS is never folded,
+  and SOS alerts never count toward the limits anyway.
+- A `resolved-warn` ends the folding window, so the next outage starts
+  fresh. So does the hour: a finding that lasts longer is delivered again
+  once an hour, so people hear it goes on, and the installation's hourly
+  limit sees at most one alert an hour for it.
+- A check without an exact finding, such as an HTTPS check, puts its own
+  failure message on the first line. A message that differs only in a
+  number, such as a response time, is then not folded. That errs toward an
+  extra alert.
+
+The answer to the sender for a repeat is a `200`, as for an accepted alert,
+with the earlier warn's ID:
+`{"mmhotline_alert_id":"<the earlier warn's ID>","already_received":false,"recorded_as_repeat_of_earlier_alert":true}`.
+The existing fields keep their meaning, so a sender needs no change.
+`recorded_as_repeat_of_earlier_alert` appears only when true, so the person
+reading a sender's log can tell why the ID names another alert.
+
+**A folded repeat keeps its retry identity.** Its replay key (the
+`sender_alert_id`, or else the signature) and a SHA-256 of its severity,
+title, message, and key are kept with the earlier warn's ID for 24 hours,
+and checked before folding and before both limits. A sender's retry after a
+lost receipt is answered as the duplicate it is,
+`{"mmhotline_alert_id":"<the earlier warn's ID>","already_received":true,"recorded_as_repeat_of_earlier_alert":true}`,
+and is never admitted as new or counted again, even after a `resolved-warn`
+ended the window. A different alert that reuses the `sender_alert_id` is
+refused with today's signed `400`, "sender_alert_id already used for a
+different alert". Reason for 24 hours: a sender retries until its retry
+deadline, minutes or hours after the first attempt. Each alert source keeps
+at most 20,000 such identities, about 10 MB at about 500 bytes each: room
+for 5,000 servers each sending 4 findings in a day. Past the bound a repeat
+is still folded and counted, without its retry identity. A retry of it is
+then folded again, which only adds one to the repeat count.
 
 ## Alert source signing
 
@@ -442,7 +517,9 @@ to match alerts.
   answered as already received. A refused SOS opens MMHotline's own SOS, as
   any refused SOS does ([intake limits](#intake-limits-and-rejected-requests)).
   The comparison reads the stored alert's own fields, so it covers every
-  stored alert and needs no extra column.
+  stored alert and needs no extra column. A repeat folded into an earlier
+  warn has no row of its own, so its content is kept as a SHA-256 for 24
+  hours ([repeated warnings](#repeated-warnings)).
 - **Incidents** are keyed by source and sender incident key, and the key
   matches any unresolved incident (open or claimed). An SOS whose key has no
   unresolved incident opens one. Another SOS with the key of an open incident
@@ -495,6 +572,16 @@ unresolved incident, resolution by key, an unmatched resolution, a failure
 after resolution, and the answers of the alert-intake and check-in routes.
 Verify that an alert confirmed by a successful receipt survives a process
 restart and remains inspectable.
+
+For [repeated warnings](#repeated-warnings), test that a `keep_each` source,
+and a source without the setting, delivers a second warning with the same
+key and first line; that 5,000 repeats in one minute from a folding source
+are delivered once while an unrelated warn from the same source and one from
+another source are accepted; that a keyless warn, a new first line, and an
+SOS are never folded; that a `resolved-warn` and the hour end the window;
+that a retry of a folded repeat is a duplicate and a reused
+`sender_alert_id` with different content is refused; and that the settings
+check refuses an unknown value.
 
 Also test `happened_at` validation and the gap
 message; the check-in route, including a body signed for the alert-intake

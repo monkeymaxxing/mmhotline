@@ -510,7 +510,7 @@ func checkOnCallScheduleSettings(schedule SettingsOnCallSchedule, people []strin
 var alertSourceIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 // checkAlertSourcesSettings checks each alert source: its ID, name, signing
-// secrets, and check-in times.
+// secrets, repeated warnings, and check-in times.
 func checkAlertSourcesSettings(sources []SettingsAlertSource, problems *settingsProblems) {
 	var ids []string
 	for index, source := range sources {
@@ -541,6 +541,9 @@ func checkAlertSourcesSettings(sources []SettingsAlertSource, problems *settings
 				problems.add(secretPath, fmt.Sprintf("is the same secret as signing_secrets[%d]", slices.Index(secrets, string(decoded))))
 			}
 			secrets = append(secrets, string(decoded))
+		}
+		if _, err := checkRepeatedWarnings(source.RepeatedWarnings); err != nil {
+			problems.addError(path+".repeated_warnings", err)
 		}
 		warning, err := alertSourceWarningMinutes(source.WarnAfterNoCheckInForMinutes)
 		if err != nil {

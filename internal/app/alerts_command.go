@@ -32,7 +32,11 @@ type CommandAlert struct {
 	IncidentID        string    `json:"incident_id,omitempty"`
 	SenderAlertID     string    `json:"sender_alert_id,omitempty"`
 	SenderIncidentKey string    `json:"sender_incident_key,omitempty"`
-	PageURL           string    `json:"page_url"`
+	// RepeatCount and LastRepeatTitle are the later warns folded into this
+	// one; absent when none were.
+	RepeatCount     int64  `json:"repeat_count,omitempty"`
+	LastRepeatTitle string `json:"last_repeat_title,omitempty"`
+	PageURL         string `json:"page_url"`
 }
 
 // maximumAlertsListed is as many alerts as one ListAlerts read gives, which
@@ -75,7 +79,7 @@ func (a *App) commandAlerts(alerts []Alert) []CommandAlert {
 }
 
 func (a *App) commandAlert(alert Alert) CommandAlert {
-	return CommandAlert{AlertID: alert.ID, Severity: alert.Severity, Title: alert.Title, Message: alert.Message, Notes: alert.Notes, ReceivedAt: alert.ReceivedAt, HappenedAt: alert.HappenedAt, AlertSourceID: alert.SourceID, IncidentID: alert.IncidentID, SenderAlertID: alert.SenderAlertID, SenderIncidentKey: alert.SenderIncidentKey, PageURL: a.WebURL + "/alerts/" + alert.ID}
+	return CommandAlert{AlertID: alert.ID, Severity: alert.Severity, Title: alert.Title, Message: alert.Message, Notes: alert.Notes, ReceivedAt: alert.ReceivedAt, HappenedAt: alert.HappenedAt, AlertSourceID: alert.SourceID, IncidentID: alert.IncidentID, SenderAlertID: alert.SenderAlertID, SenderIncidentKey: alert.SenderIncidentKey, RepeatCount: alert.RepeatCount, LastRepeatTitle: alert.LastRepeatTitle, PageURL: a.WebURL + "/alerts/" + alert.ID}
 }
 
 // Line is the alert in one line, as lists print it.
@@ -92,6 +96,9 @@ func (alert CommandAlert) Text() string {
 	text := alert.Line() + "\n  Alert source: " + alert.AlertSourceID + ". Page: " + alert.PageURL + "\n  " + indentedText(alert.Message, "  ")
 	if alert.Notes != "" {
 		text += "\n  Note: " + alert.Notes
+	}
+	if repeats := repeatsSentence(alert.RepeatCount, alert.LastRepeatTitle); repeats != "" {
+		text += "\n  " + repeats
 	}
 	if gap := happenedGap(alert.HappenedAt, alert.ReceivedAt); gap != "" {
 		text += "\n  " + gap

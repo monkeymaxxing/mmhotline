@@ -25,6 +25,10 @@ type Alert struct {
 	Sequence                                                                                           int64
 	ID, SourceID, SenderAlertID, IncidentID, SenderIncidentKey, Severity, Title, Message, Notes, Actor string
 	ReceivedAt, HappenedAt                                                                             time.Time
+	// RepeatCount counts the later warns folded into this one, and
+	// LastRepeatTitle is the latest one's title (repeated_warnings.go).
+	RepeatCount     int64
+	LastRepeatTitle string
 }
 
 // happenedGap describes a late arrival: "Happened at 14:02 UTC. Received at
@@ -183,15 +187,29 @@ func refusedAlertFields(body []byte) (senderAlertID, severity string) {
 	return senderAlertID, severity
 }
 
+// IntakeOutcome says what intake did with an accepted alert, for the answer
+// to the sender.
+type IntakeOutcome struct {
+	// AlreadyReceived: the request repeats one MMHotline already accepted.
+	AlreadyReceived bool
+	// RecordedAsRepeatOfEarlierAlert: the alert was folded into an earlier
+	// warn, which the answer's alert ID names (repeated_warnings.go).
+	RecordedAsRepeatOfEarlierAlert bool
+}
+
+// errSenderAlertIDReused refuses a different alert that reuses a
+// sender_alert_id, so it is never answered as received and then dropped.
+var errSenderAlertIDReused = fmt.Errorf("%w: sender_alert_id already used for a different alert; give each new alert its own sender_alert_id", ErrInvalid)
+
 // AdmitGeneric admits one signed generic alert. It also returns the signing
 // secret that verified the request, to sign the receipt, or nil when the
 // signature was not verified.
-func (a *App) AdmitGeneric(ctx context.Context, sourceID, signature string, body []byte) (Alert, bool, []byte, error) {
+func (a *App) AdmitGeneric(ctx context.Context, sourceID, signature string, body []byte) (Alert, IntakeOutcome, []byte, error) {
 	var alert Alert
-	duplicate := false
+	var outcome IntakeOutcome
 	now := a.Now().UTC()
 	if !alertSourceIDPattern.MatchString(sourceID) {
-		return alert, false, nil, ErrUnauthorized
+		return alert, outcome, nil, ErrUnauthorized
 	}
 	var in GenericAlert
 	var receiptKey []byte
@@ -235,12 +253,24 @@ func (a *App) AdmitGeneric(ctx context.Context, sourceID, signature string, body
 			// different alert that reuses the sender_alert_id is refused, so
 			// it is never answered as received and then dropped.
 			if !sameAlertContent(alert, in) {
-				return fmt.Errorf("%w: sender_alert_id already used for a different alert; give each new alert its own sender_alert_id", ErrInvalid)
+				return errSenderAlertIDReused
 			}
-			duplicate = true
+			outcome.AlreadyReceived = true
 			return nil
 		}
 		if !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		// A repeat folded into an earlier warn, and a retry of one, are
+		// recognized before both intake limits, so a burst of repeats
+		// leaves room for unrelated alerts.
+		var repeat bool
+		if alert, repeat, err = retryOfFoldedRepeat(ctx, tx, sourceID, replayKey, in, now); err != nil || repeat {
+			outcome = IntakeOutcome{AlreadyReceived: repeat, RecordedAsRepeatOfEarlierAlert: repeat}
+			return err
+		}
+		if alert, repeat, err = foldRepeatedWarning(ctx, tx, sourceID, replayKey, in, now); err != nil || repeat {
+			outcome.RecordedAsRepeatOfEarlierAlert = repeat
 			return err
 		}
 		// SOS and resolved SOS alerts are never limited by rate; the team's
@@ -279,7 +309,7 @@ func (a *App) AdmitGeneric(ctx context.Context, sourceID, signature string, body
 	} else {
 		a.heardFromAlertSource(sourceID, now)
 	}
-	return alert, duplicate, receiptKey, err
+	return alert, outcome, receiptKey, err
 }
 
 // sameAlertContent says whether a stored alert says what the new alert says:
@@ -477,14 +507,14 @@ func (a *App) ManualSOS(ctx context.Context, p Principal, title, message string)
 	return e, err
 }
 
-const alertColumns = `sequence,id,source_id,sender_alert_id,actor,incident_id,sender_incident_key,severity,title,message,notes,received_at,happened_at`
+const alertColumns = `sequence,id,source_id,sender_alert_id,actor,incident_id,sender_incident_key,severity,title,message,notes,received_at,happened_at,repeat_count,last_repeat_title`
 
 type scanner interface{ Scan(...any) error }
 
 func scanAlert(row scanner) (Alert, error) {
 	var e Alert
 	var at, happened int64
-	err := row.Scan(&e.Sequence, &e.ID, &e.SourceID, &e.SenderAlertID, &e.Actor, &e.IncidentID, &e.SenderIncidentKey, &e.Severity, &e.Title, &e.Message, &e.Notes, &at, &happened)
+	err := row.Scan(&e.Sequence, &e.ID, &e.SourceID, &e.SenderAlertID, &e.Actor, &e.IncidentID, &e.SenderIncidentKey, &e.Severity, &e.Title, &e.Message, &e.Notes, &at, &happened, &e.RepeatCount, &e.LastRepeatTitle)
 	e.HappenedAt = deadlineTime(happened)
 	if errors.Is(err, sql.ErrNoRows) {
 		return e, ErrNotFound
