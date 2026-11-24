@@ -361,8 +361,15 @@ func admitAlert(ctx context.Context, tx *sql.Tx, sourceID, actor, replayKey, inc
 	}
 	switch {
 	case newIncident:
-		if _, err = createIncident(ctx, tx, e, actor, at, sosRecipients); err != nil {
+		i, err := createIncident(ctx, tx, e, actor, at, sosRecipients)
+		if err != nil {
 			return Alert{}, err
+		}
+		// An SOS whose first waking step waits for the triage agent sends
+		// its email and chat when the wait is over
+		// (queueSOSNotificationAfterItsWait), not before the agent looked.
+		if i.Step == triageAgentStep {
+			return e, nil
 		}
 	// An SOS that joined an open incident by its key contacts nobody again:
 	// the incident's escalation is already waking people. One that joined a

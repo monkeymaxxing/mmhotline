@@ -109,6 +109,9 @@ type Event struct {
 	// decision on a commit it reviewed, approve or needs_a_person.
 	CommitID             string `json:"commit_id,omitempty"`
 	CommitReviewDecision string `json:"commit_review_decision,omitempty"`
+	// AboutAlertIDs are on report and playbook_run_requested: the alerts
+	// the agent named with --about-alert-id.
+	AboutAlertIDs []string `json:"about_alert_ids,omitempty"`
 	// ChatGPTSignIn is on chatgpt_sign_in_changed: the content of Codex's
 	// auth.json after Codex changed it, for MMHotline to check and keep.
 	ChatGPTSignIn string `json:"chatgpt_sign_in,omitempty"`

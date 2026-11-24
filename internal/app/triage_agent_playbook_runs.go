@@ -424,6 +424,16 @@ func (a *App) judgeAndRunPlaybook(ctx context.Context, request TriageAgentPlaybo
 			}
 			return recordCoveredPlaybookRun(ctx, tx, waiting, coveredBy, waiting.JudgedAt)
 		}
+		// A new warned run or approval request tells a person now, so it
+		// takes over the held warns the request names, before an approval
+		// request wakes the person on call and releases the others. A
+		// playbook that ran, or one an earlier approval covers, tells
+		// nobody and takes nothing over.
+		if waiting.TriageSessionID != "" {
+			if err := heldWarnTakenOver(ctx, tx, request.RunID, coveredByPlaybookRequest, request.RequestID, "playbook_run_request", "/triage-sessions/"+waiting.TriageSessionID, waiting.JudgedAt); err != nil {
+				return err
+			}
+		}
 		if setting.Rule == warnWaitThenAct {
 			runsUnlessStoppedAt = waiting.runsAt()
 			return a.warnOfPlaybookRun(ctx, tx, waiting)

@@ -59,15 +59,19 @@ A person can use different contact method types for different severities.
 | warn | Personal Pushover and email, and shared main alert chat |
 | sos | Personal Pushover and email, optional phone call, and shared main alert chat |
 
-A warn that starts a triage session, or joins one while an SOS of it waits, may wait before its notifications are
-queued: with the settings file's `triage_agent.warn_waits_for_the_agent_minutes`
-above 0, MMHotline saves the alert and queues nothing until the wait ends,
-unless the triage agent's own request or report takes the warn over, in
+A warn from an alert source that starts or joins a triage session may wait
+before its notifications are queued: with the settings file's
+`triage_agent.warn_waits_for_the_agent_minutes` above 0 (15 when left out),
+MMHotline saves the alert and queues nothing until the hold ends, unless the
+triage agent's own report or request that names the warn takes it over, in
 which case nothing is ever queued for the warn
 ([a warn waits for the agent](triage-agent.md#a-warn-waits-for-the-agent)).
-When the wait ends, the warn is queued as any warn is, and the contact
-methods subscribed then receive it. Info alerts, SOS alerts, and notices from
-MMHotline are never held this way.
+When the hold ends, a background step queues the warn as any warn is, and
+the contact methods subscribed then receive it; with the delivery queue
+full, it waits for room. An SOS whose first waking step waits for the agent
+queues its email and chat the same way, when the wait is over
+([an SOS waits for the agent](triage-agent.md#an-sos-waits-for-the-agent)).
+Info alerts and notices from MMHotline are never held this way.
 
 Pushover and phone calls follow the active SOS target. An SOS subscription on
 Pushover or automated voice call contact methods wakes a person only while an

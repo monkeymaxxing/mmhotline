@@ -221,9 +221,14 @@ alert is committed.
   alerts need ([the queue limits](notifications.md)).
 - A warn from an alert source is saved and acknowledged as any alert is.
   When the settings file's `triage_agent.warn_waits_for_the_agent_minutes` is
-  above 0 and the triage agent is set up, MMHotline queues no notification for
+  above 0 (15 when left out), the triage agent is set up, and no person has
+  taken the open triage session over, MMHotline queues no notification for
   the warn at intake: the background loop delivers it, or the agent takes it
   over ([a warn waits for the agent](triage-agent.md#a-warn-waits-for-the-agent)).
+- An SOS whose first waking step waits for the triage agent queues no
+  email or chat at intake either, so the alert source's share of pending SOS
+  deliveries does not refuse it then; they go when the wait is over
+  ([an SOS waits for the agent](triage-agent.md#an-sos-waits-for-the-agent)).
 - If MMHotline refuses a correctly signed SOS, MMHotline opens an SOS
   incident for the team about the refusal.
   Examples include an invalid alert, a sender's clock more than 5 minutes

@@ -148,12 +148,12 @@ func (relay *requestRelay) handle(connection net.Conn) Answer {
 	case <-relay.ending:
 		return refused("", relay.endReason())
 	}
-	event := Event{Event: "report", RequestID: newRequestID(), AlertSeverity: request.AlertSeverity, ReportText: request.ReportText}
+	event := Event{Event: "report", RequestID: newRequestID(), AlertSeverity: request.AlertSeverity, ReportText: request.ReportText, AboutAlertIDs: request.AboutAlertIDs}
 	if request.Kind == CommitReviewRequest {
 		event.Event, event.CommitID, event.CommitReviewDecision = "commit_review", request.CommitID, request.CommitReviewDecision
 	}
 	if request.Kind == PlaybookRunRequest {
-		event = Event{Event: "playbook_run_requested", RequestID: event.RequestID, Playbook: request.Playbook, Inventory: request.Inventory, Diagnosis: request.Diagnosis}
+		event = Event{Event: "playbook_run_requested", RequestID: event.RequestID, Playbook: request.Playbook, Inventory: request.Inventory, Diagnosis: request.Diagnosis, AboutAlertIDs: request.AboutAlertIDs}
 		// None is fine: the playbook may already be on MMHotline's branch.
 		if event.AgentCommitsBundle, err = systemsrepository.AgentCommitsBundle(relay.ctx, relay.agentCopy, relay.base); err != nil {
 			return refused(event.RequestID, "Your commits could not be sent to MMHotline: "+err.Error())

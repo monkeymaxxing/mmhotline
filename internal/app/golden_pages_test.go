@@ -588,6 +588,12 @@ func TestGoldenPages(t *testing.T) {
 		prepareApprovals(t, r.a, "")
 		r.a.triageAgent.playbookRunner = &fakeRunner{calls: make(chan fakeRunnerCall, 4)}
 		sos, _, _ := approvalSession(t, r)
+		// The approval request woke the person on call, so the background
+		// loop queues the SOS's email and chat, which waited with the first
+		// waking step, within a second.
+		if err := r.a.DeliverReleasedHeldAlerts(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 		g.replaceRepositoryCommits(filepath.Join(r.a.Store.Dir, "systems_repository"))
 		g.advance(time.Minute)
 		waiting := onlyApprovalRecord(t, r.a)
@@ -602,12 +608,16 @@ func TestGoldenPages(t *testing.T) {
 		g.get("approval_request", "waiting", "/approvals/"+waiting.id, responder)
 		g.get("triage_agent", "on_with_a_session_run", "/triage-agent", responder)
 		g.get("on_call", "one_person_by_day_of_week", "/on-call", responder)
-		incidentPage := g.request("GET", "/incidents/"+sos.IncidentID, responder, nil).Body.String()
-		delivery := regexp.MustCompile(`href="/deliveries/([0-9a-f]{32})"`).FindStringSubmatch(incidentPage)
-		if delivery == nil {
-			t.Fatal("the incident page links to no delivery")
+		// The SOS's notice to the waking contact method type, which only the
+		// incident's escalation sends.
+		var notice string
+		if err := r.a.Store.db.QueryRow(`SELECT id FROM deliveries WHERE incident_id=? AND purpose='subscribed_alert' AND state='suppressed'`, sos.IncidentID).Scan(&notice); err != nil {
+			t.Fatal(err)
 		}
-		g.get("delivery", "sos_notice_not_sent", "/deliveries/"+delivery[1], responder)
+		if incidentPage := g.request("GET", "/incidents/"+sos.IncidentID, responder, nil).Body.String(); !strings.Contains(incidentPage, `href="/deliveries/`+notice+`"`) {
+			t.Fatal("the incident page does not link the SOS's notice")
+		}
+		g.get("delivery", "sos_notice_not_sent", "/deliveries/"+notice, responder)
 		g.get("agent_playbook_rules", "routine_fixes_without_permission", "/agent-playbook-rules", responder)
 
 		// More playbook runs of the same request, as TestApprovalsListOrder

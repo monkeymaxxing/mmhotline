@@ -1761,9 +1761,8 @@ MMHotline's own SOS alerts count when an alert source stops checking in or
 has SOS alerts refused.
 
 With the settings file's `triage_agent.warn_waits_for_the_agent_minutes` above
-0, the warn that starts a session is held for the agent, and so is a warn that
-joins a session while an SOS of it waits for the agent
-([a warn waits for the agent](#a-warn-waits-for-the-agent)).
+0, every warn from an alert source that starts or joins a session is held for
+the agent ([a warn waits for the agent](#a-warn-waits-for-the-agent)).
 
 The following alerts and messages never start or join a session:
 
@@ -1799,8 +1798,9 @@ problem of its own. The session's work is done when:
 
 The old session ends with "An alert about a new problem arrived after the
 session's work was done, and started a new session." The new triage session
-starts with a [start message](#the-start-message) and a new coding agent
-session, as any triage session does. The new coding agent session starts
+starts with a new coding agent session, and with a
+[start message](#the-start-message) when the team turned it on, as any
+triage session does. The new coding agent session starts
 from the note. A session a person
 [took over](#a-person-takes-over) ends after its hand-over instead.
 
@@ -1825,7 +1825,9 @@ learned:
 
 - An alert that arrives while the session's run is active waits. When the run
   ends, MMHotline sends the `resume` action with the coding agent's session
-  ID and a prompt containing every alert that arrived meanwhile.
+  ID and a prompt containing the alerts that arrived meanwhile, as many as
+  the prompt's 64 KiB shows ([the task prompt](#the-task-prompt)). The
+  alerts the prompt leaves out wait for the next run.
 - An alert that arrives while the triage session is open and no run is
   active resumes the coding agent session at once.
 - For a playbook run that waited for a person, MMHotline sends the outcome
@@ -1852,8 +1854,10 @@ fetch.
 
 ### The start message
 
-When a session starts, MMHotline tells the person on call, quietly, that the
-agent is at work:
+The start message is off by default. With the settings file's
+`triage_agent.send_a_message_when_the_agent_starts_looking: true`, when a
+session starts, MMHotline tells the person on call, quietly, that the agent
+is at work:
 
 ```text
 [Info] The AI triage agent is looking into: Disk of db001 is 99% full (started 03:10 UTC)
@@ -1875,6 +1879,16 @@ says when MMHotline wakes the person on call.
 A session sends one start message, never one per resume. Being info from
 MMHotline, the message never starts a session or opens an incident.
 
+The default is off because the message reached people before the agent had
+looked: it is an ordinary info alert, which Pushover delivers to the phone,
+and the point of the hold is that nothing reaches a person until the agent
+has looked ([a warn waits for the agent](#a-warn-waits-for-the-agent)). The
+dashboard and the session's page show the agent at work without it. A team
+that wants to hear when the agent starts tells its coding agent: "Set
+triage_agent.send_a_message_when_the_agent_starts_looking to true in
+MMHotline's settings file and apply MMHotline's settings." A session reads
+the applied value as it starts.
+
 ### An SOS waits for the agent
 
 An SOS that joins a session gives the agent the settings file's
@@ -1882,8 +1896,18 @@ An SOS that joins a session gives the agent the settings file's
 trouble before anyone is woken. The default is 3 minutes; this document's examples
 use 5. The joining SOS's incident opens as usual,
 but the first waking step waits: Pushover emergency and phone call to the
-person on call. Email and chat get the SOS at once, as an
-ordinary subscribed alert, because email and chat wake nobody.
+person on call. The SOS's email and chat, its ordinary subscribed alert,
+wait with the waking step: they wake nobody, but they reach a person, and
+nothing reaches a person before the agent has looked. They go when the wait
+is over: the person on call is woken, or a person claims or escalates the
+incident. An SOS that resolves during the wait, with nobody claiming it,
+sends its email and chat to nobody, as it wakes nobody. MMHotline queues
+them in a step of its own after the wake, not in the wake's transaction, so
+the alert source's share of SOS deliveries
+([notifications](notifications.md)) can never undo a wake: with the share
+full, they wait for room, also across a restart. An SOS that joins a session
+which already woke its people sends its email and chat at once, as its
+waking step starts at once.
 
 MMHotline wakes the person on call:
 
@@ -1960,92 +1984,83 @@ when the deadline passed while MMHotline was stopped.
 
 ### A warn waits for the agent
 
-A warn alert that starts a triage session is held for the settings file's
-`triage_agent.warn_waits_for_the_agent_minutes`, from 0 to 15 minutes. The
-default is 0, which holds nothing: a warn reaches people at once, as it did
-before the setting, and a team chooses to hold warnings. A team's template
-may set 3. MMHotline reads the applied value as the warn arrives, so a
-changed wait applies to the next warn; one already held keeps its deadline.
+Nothing reaches a person before the agent has looked. Every warn alert from
+an alert source that starts or joins a triage session is held for the
+settings file's `triage_agent.warn_waits_for_the_agent_minutes`, from 0 to
+30 minutes. 0 holds nothing. Left out, the wait is 15 minutes. MMHotline
+reads the applied value as the warn arrives, so a changed wait applies to
+the next warn; one already held keeps its deadline.
 
-A held warn's notifications are delivered at the end of the wait, unless in
-that session, after the warn arrived, the triage agent:
+The default of 15 minutes covers a run, which takes 30 to 70 seconds, plus
+a wait behind another run, a software review that makes way, or an MMX run
+that holds the systems repository; a warn is not urgent. The maximum of 30
+minutes is there because a warning held longer than half an hour no longer
+gives a person the news in time to plan the day's work. A team that wants
+quiet beyond that routes the check to info.
 
-- requested a playbook run that MMHotline accepted: the playbook ran, waits
-  with MMHotline's warning or an approval request, or an earlier approval
-  covers it ([requests from the agent](#requests-from-the-agent)); or
-- sent a report of any severity ([reports to people](#reports-to-people)).
+A warn that starts a session and a warn that joins one follow the same
+rules. The first run of a session carries the warn that started it, as any
+run carries the alerts its prompt shows ([runs of a session](#runs-of-a-session)).
 
-Then the held warn's notifications are never sent: the agent's request or
-report took the warn over. The report's own notifications, or MMHotline's
-warning about the playbook run, decide what people hear. A refused playbook
-request takes nothing over.
-
-MMHotline delivers the held warn at once, not at the end of the wait, when
-the triage agent cannot take it: the agent is not set up, its sandbox is not
-installed, MMHotline's copy of the systems repository is missing
-([what starts or joins a session](#what-starts-or-joins-a-session)), the
-session ended, or the session's run failed or ended without a request or
-report (the agent could not run, the run failed, or it finished having done
-nothing). After a person's Stop, the agent's hand-over report takes the warn over
-as any report does; without one, the warn is delivered when the session
-ends or the wait ends. A run that MMHotline's own stop or restart cut short is resumed, so
-it does not deliver the warn. A playbook request MMHotline has not answered
-yet, because its MMX run is still going, keeps the warn held until the end of
-the wait.
-
-Info alerts are unchanged, an SOS keeps
-[its own wait](#an-sos-waits-for-the-agent), and resolved messages are
-unchanged: they are already silent on Pushover. A warn from MMHotline or one
-made by hand is never held.
-
-**A warn that joins a session.** A warn that joins an open session is held
-too while one of the session's SOS incidents waits for the agent, because
-its first waking step is held: its own wait, or a server replacement
+A warn's wait ends at its deadline: its arrival plus the wait. When the warn
+joins a session in which an SOS waits for the agent, the deadline is that
+SOS's deadline if it is later, and the warn is held with that SOS, the one
+that waits longest. A server replacement that moves the SOS's deadline
+moves the deadline of every held warn of the session to the same time
 ([an SOS waits for a server replacement](#an-sos-waits-for-a-server-replacement)).
-A warn that joins when no SOS of the session waits is delivered at once, as
-any warn is.
+The stored deadline is not recomputed from the SOS as it is now: the warn
+must stay held when its SOS resolves, since the outage's resolved message is
+no reason to announce its warnings, and the agent's report that covers them
+comes after it.
 
-The reason is one sound at the start of an outage the agent is fixing. A
-real outage sent one SOS and then four warnings from the same outage in
-the next two and a half minutes: two servers stopped reporting to the fleet
-hub, and two Caddy checks failed. The agent was already replacing a
-server, all four warnings resolved by themselves, and the person heard five
-warnings where one, the replacement's, was enough.
+Each held warn ends exactly once, the first of these:
 
-A joined warn ends exactly once, the first of these:
-
-- **Taken over**, nothing sent, when the agent sends a report of any
-  severity, or a playbook request MMHotline accepted, from a run that
-  carried the warn, that is, a run whose alerts included it. This is
-  narrower than for the warn that started the session, which any report
-  of the session takes over. A busy session has several problems, and a
-  report about one must not swallow the warning about another. The
-  report's page says which alerts it concerns
-  ([reports to people](#reports-to-people)), and a run concerns the alerts
-  it carried.
+- **Taken over**, nothing sent, by a report of any severity, or a playbook
+  run request for which MMHotline tells a person now, that names the warn
+  from a run that carried it
+  ([reports and requests name their alerts](#reports-and-requests-name-their-alerts)).
+  "Tells a person now" means the transaction that judges the request makes
+  a new [approval request](#asking-for-approval) or a new
+  [warning before a run](#the-warning). The report's notifications, or
+  MMHotline's message about the playbook run, decide what people hear.
+  Other outcomes take nothing over: a playbook that simply ran
+  (`ran_and_succeeded` or `ran_and_failed`), a playbook an earlier approval
+  already covered, commits that wait for a person's review, which are saved
+  without an alert, and a refused request. None of these tells anyone, so
+  the hold stays until a report names the warn, the warn resolves, or its
+  deadline.
 - **Resolved**, nothing sent, when the warn's own alert resolves while it is
   held: a resolved-warn message arrives from the same alert source with the
   same `sender_incident_key`. Nobody needed to hear it, as with a held SOS
   that resolves. The alert's page says "The warning's alert resolved while
-  the triage agent handled the outage." A warn without a
+  MMHotline held it for the triage agent." A warn without a
   `sender_incident_key` cannot be matched and ends another way.
-- **Delivered at once** when an SOS of the session wakes the person on
-  call, for any reason: its wait ended, a run failed, the agent reported at
-  sos, a person took the session over, or the agent could not run. The
-  person is told everything then.
-- **Delivered at its deadline**, the later of the warn's arrival plus the
-  wait, and the deadline of the waiting SOS when the warn joined. A server
-  replacement that later moves the SOS's deadline moves the held warns'
-  deadlines to the same time. The stored deadline is not recomputed from
-  the SOS as it is now: the warn must stay held when its SOS resolves, since
-  the outage's resolved message is no reason to announce its warnings, and
-  the agent's report that covers them comes after it.
+- **Delivered when its carrying run ends** without naming it, or fails. A
+  playbook run request of that run that names the warn and still waits for
+  its MMX run keeps that warn held; every other warn the run carried is
+  delivered at the run's end. A run that MMHotline's own stop or restart cut
+  short is resumed and carries its alerts again, so it delivers nothing.
+- **Delivered at once** when people are told everything: an SOS of the
+  session wakes the person on call, for any reason (its wait ended, a run
+  failed, the agent reported at sos, the agent asked for approval); a person
+  [takes the session over](#a-person-takes-over); or the agent cannot run,
+  because it is not set up, its sandbox is not installed, or MMHotline's
+  copy of the systems repository is missing. A session that ends delivers
+  its held warns too.
+- **Delivered at its deadline** otherwise, even while the agent still works
+  on it.
 
-The warn is also delivered at once in the cases above, when the agent cannot
-run or the session ended, and when the run that carried it fails or ends
-without a request or report. Until a run carries the warn, because the run
-that is active carries only what it started with, only the deadline and the
-other rules apply: a joined warn must wait for the run that will read it.
+Until a run carries the warn, only its deadline and the events that tell
+people everything apply: a warn that arrives during a run waits for the run
+that will read it.
+
+The db01 case shows why every warn follows these rules. On
+monkeymaxxing.com, app001's warn started a session; db01's warn arrived
+during the first run and joined it. The old rules held a joining warn only
+while an SOS waited, so db01's warning rang the phone 31 seconds before the
+agent's verdict that nothing was needed. Now the first run's report names
+app001's warn, the second run's report names db01's, and the phone stays
+silent. Had the second run failed, db01's warning would have gone out then.
 
 The reason for the wait is one sound for one change. Without it, a warn that
 the agent then fixes reaches people twice: the warning, and the agent's
@@ -2054,47 +2069,99 @@ a playbook under `warn_wait_then_act` reaches people as MMHotline's one
 warning about the run, and a change the agent fixes with `act_then_report`
 reaches people as the agent's one info report, which Pushover sends at low
 priority, without sound. The price is delay: a warn the agent cannot handle
-reaches people at the end of the wait, at most 15 minutes after it arrived,
+reaches people at the end of the wait, at most 30 minutes after it arrived,
 and a warn is not urgent by definition, which is why only a warn is held and
 an SOS keeps the shorter, claimable wait.
 
-The rule to keep: every held warn ends either delivered once, or taken over
-by the agent's own request or report, or, for a joined warn, resolved while
-held. A held warn is never both cancelled and unsent for any other reason,
-because a duplicate is better than a dropped alert. When MMHotline cannot
-tell, it delivers.
+Info alerts are unchanged, an SOS keeps
+[its own wait](#an-sos-waits-for-the-agent), and resolved messages are
+unchanged: they are already silent on Pushover. A warn from MMHotline or one
+made by hand is never held, and neither is a warn that arrives while a
+person has taken the open session over: the agent works on nothing more in
+it.
 
-MMHotline decides to hold a warn when it saves the alert, since a delivery
-queued at that point would be sent before the background loop reads the alert.
-The loop then reads the alert, as it reads every alert, and either keeps the
-hold because the warn started a session, or delivers it because it joined one
-or no session took it. The hold is a row of `held_warn_alerts` per held warn,
-beside the alert: `held_until` is the alert's arrival plus the wait,
-`triage_session_id` is the session the warn started or joined,
-`held_with_sos_incident_id` is the SOS incident a joined warn is held with, the
-one that waits longest, and is empty for a warn that started its session, and
-the row ends once with an outcome and its reason: `delivered`, `taken_over`
-with whether a report or a request took it over and a link to it, or
-`resolved`. For a joined warn `held_until` is the later of the wait and that
-SOS's deadline. The deliveries are queued
-when the hold ends, in the same transaction that records the outcome, and
-nothing is queued when the agent takes the warn over. So a restart keeps the
-deadline, and neither drops nor repeats a held warn. The background loop
+The rule to keep: every held warn ends either delivered once, or taken over
+by the agent's own request or report that names it, or resolved while held.
+A held warn is never both cancelled and unsent for any other reason, because
+a duplicate is better than a dropped alert. When MMHotline cannot tell, it
+delivers.
+
+**How a hold is kept.** MMHotline decides to hold a warn when it saves the
+alert, since a delivery queued at that point would be sent before the
+background loop reads the alert. The hold is a row of `held_warn_alerts` per
+held warn, beside the alert: `held_until` is the deadline,
+`triage_session_id` is the session the warn joined, and
+`held_with_sos_incident_id` is the SOS the warn waits with, or empty. The row
+ends once with an outcome and its reason: `delivered`, `taken_over` with
+whether a report or a request took it over and a link to it, or `resolved`.
+
+A delivery takes two steps. The transaction that decides a warn must reach
+people, such as an SOS's wake, a person's Stop, or the end of the carrying
+run, only marks the hold: `release_requested_at` and `release_reason`. A
+background step of its own, after the incidents' and the session's turns
+and outside their transactions, queues the marked warns and those past their
+deadline, each in its own transaction, at most 100 a visit. So a full
+delivery queue never undoes an SOS's wake, the session's work, or a
+person's Stop: a warn that meets a full queue stays marked and goes at a
+later visit, also after a restart. A marked warn can no longer be taken over
+or resolved: MMHotline has decided to tell people. The background loop
 visits at the earliest deadline, so a deadline passes within a second.
 
 The alert's page and the dashboard say while the warn is held: "MMHotline
-holds this warning for up to 3 minutes while the triage agent looks into it;
-it reaches people then, unless the agent takes it over." For a joined warn
-they say "MMHotline holds this warning with the SOS the triage agent is
-handling (The server db02 stopped answering); it reaches people if the
-person on call is woken, or at 03:22, unless the agent's report covers it or
-it resolves first." Afterwards the page
-says "MMHotline delivered this warning at 03:13 UTC." with the reason, such as
-"The wait ended, and the triage agent had sent no report and asked for no
-playbook run.", or "Taken over by the triage agent's report at 03:11 UTC.",
-or "the triage agent's playbook run request", linking the report or the
-triage session, or "MMHotline sent nothing for this warning. The warning's
-alert resolved while the triage agent handled the outage."
+holds this warning for up to 15 minutes while the triage agent looks into
+it; it reaches people then, unless the agent's report or playbook run
+request names it." For a warn that waits with an SOS they say "MMHotline
+holds this warning with the SOS the triage agent is handling (The server
+db02 stopped answering); it reaches people if the person on call is woken,
+or at 03:22, unless the agent's report names it or it resolves first." A
+marked warn that waits for room in the delivery queue says "MMHotline is
+sending this warning now." with the reason. Afterwards the page says
+"MMHotline delivered this warning at 03:13 UTC." with the reason, such as
+"The wait ended before a report or playbook run request of the triage agent
+named the warning." or "The triage agent's run ended, and no report or
+playbook run request of it named the warning.", or "Taken over by the
+triage agent's report at 03:11 UTC.", or "the triage agent's playbook run
+request", linking the report or the triage session, or "MMHotline sent
+nothing for this warning. The warning's alert resolved while MMHotline held
+it for the triage agent."
+
+### Reports and requests name their alerts
+
+A report or a playbook run request covers only the alerts it names, so one
+verdict cannot quiet another finding. The agent names each alert with
+`--about-alert-id` and the alert's ID, which the prompt lists beside each
+alert, once per alert ([requests from the agent](#requests-from-the-agent)).
+
+- A run that carried **exactly one alert** may leave the option out: the
+  report or request then covers that alert. One problem is not enough for
+  this, because two warns can share one `sender_incident_key`, such as two
+  affected versions of one CVE.
+- When the run carried no alert or several, and the option is left out, the
+  report is accepted and sent, and the request is judged as usual, but
+  neither covers any warn. With several alerts carried, the command's
+  answer says so and asks the agent to name the alerts. The report's
+  incident and an sos report's wake then follow the run's work, as below,
+  so leaving the option out never opens a second incident or leaves an SOS
+  waiting.
+- A named alert covers something only when the run carried it. The answer
+  lists the named alerts the run did not carry.
+- "Carried" counts the alerts the run's prompt showed. The alert MMHotline
+  adds for an sos report's own incident joins the session as sent by the
+  run, but it is MMHotline's own and was never shown, so it does not count.
+
+With named alerts, the incident a report goes with, the incident's history,
+and the SOS escalation of an sos report follow the named alerts' problems,
+not every problem the run carried ([reports to people](#reports-to-people)).
+A report at sos that names a warn-only problem opens an incident of its own,
+as a report about a problem with no incident does, even when the run also
+carried a claimed incident of another problem.
+
+MMHotline records what each item covers in
+`triage_agent_covered_alerts(run_id, item_kind, item_id, alert_id)`:
+`item_kind` is `report` or `playbook_request`, and `item_id` is the
+request's ID within the run. It records the named alerts the run carried,
+or the one alert the one-alert rule covers, when MMHotline receives the
+report or request. A held warn is taken over only by an item that covers it.
 
 ### An SOS waits for a server replacement
 
@@ -2272,7 +2339,9 @@ gets:
 - how to ask for a playbook run, with the diagnosis file required by the
   playbook-run request. The prompt also gives the report command and the
   exit codes of the two commands
-  ([requests](#requests-from-the-agent));
+  ([requests](#requests-from-the-agent)), and asks the agent to name each
+  alert a report or request is about with `--about-alert-id`, since a
+  warning nothing names reaches people when the run ends;
 - the task forms each kind of action accepts. MMHotline generates the
   accepted forms from the table used to judge tasks
   ([the kinds of action](#the-kinds-of-action)). The accepted forms help the
@@ -2327,13 +2396,16 @@ agent's first playbook request named `production`. Because the agent takes
 an example inventory for an instruction, the `--help` of
 `mmhotline triage-agent request-playbook-run` names no example inventory.
 
-Each alert shows its source's name, its severity, title, and message, the
-time MMHotline received it in UTC, and its incident's page at the settings
-file's `web_url`, or for a warn alert, which has no incident, the alert's
-own page:
+Each alert shows its source's name, its severity, its alert ID, which the
+agent names with `--about-alert-id`
+([reports and requests name their alerts](#reports-and-requests-name-their-alerts)),
+title, and message, the time MMHotline received it in UTC, and its
+incident's page at the settings file's `web_url`, or for a warn alert,
+which has no incident, the alert's own page:
 
 ```text
 Alert 1 of 2: sos from Monitoring
+Alert ID: 2c7e9a4b1d3f5e7a9c2b4d6f8a1c3e5b
 Title: Database on db001 is down
 Received: 2026-11-03 04:12:00 UTC
 Incident: https://mmhotline.example.com/incidents/0f3a9c2e5b7d1a480f3a9c2e5b7d1a48
@@ -2364,6 +2436,14 @@ coding agent reads the whole prompt into its context, and 64 KiB, about
 the run request's 1 MiB line. When the alerts do not fit, the list ends with
 a line such as "And 187 more alerts, which MMHotline left out to keep this
 prompt short."
+
+A run carries only the alerts its prompt shows. The alerts left out wait for
+the next run, and their deadlines deliver them if no run reaches them: a
+report cannot cover a warning the agent never saw. Every run carries at
+least one waiting alert. When playbook results and notes fill the prompt,
+the first waiting alert goes in with its message cut to fit and marked
+"(cut)". Otherwise a run could carry nothing, and the next run would start
+with the same prompt. There is no fixed count of alerts: the 64 KiB decides.
 
 ### Notes from the team
 
@@ -2442,7 +2522,17 @@ keeps its notes.
 
 ### Reports to people
 
-A report from a session's run concerns two groups of alerts:
+A report that names alerts with `--about-alert-id` concerns the session's
+alerts about the named alerts' problems: their alert source and
+`sender_incident_key`, or the named alert alone without a key
+([reports and requests name their alerts](#reports-and-requests-name-their-alerts)).
+A report at sos that names only a warn-only problem then opens an incident
+of its own, even when the run also carried a claimed incident of another
+problem. Named alerts the run did not carry count for nothing; when the
+report names none the run carried, it is handled as a report without names.
+
+A report without named alerts from a session's run concerns two groups of
+alerts:
 
 - alerts carried to the agent by the reporting run;
 - alerts carried by an earlier run that requested a playbook run which
@@ -2637,6 +2727,11 @@ in the logging proxy for a read that cannot change a server.
 
 **What else a Stop changes**, in the transaction that records it:
 
+- **Every held warn of the session is released for delivery at once**, and
+  a warn that arrives later is not held: the agent works on nothing more,
+  and the person who took over must hear everything
+  ([a warn waits for the agent](#a-warn-waits-for-the-agent)). The Stop only
+  marks the warns, so a full delivery queue cannot undo it.
 - **An SOS that waits for the agent wakes the person on call at once**, as
   when the agent cannot help: the agent no longer works on it, so the wait
   has no purpose. The waiting SOS incident's history says "Barbara stopped
@@ -3245,8 +3340,10 @@ The agent sends a report with the report's alert severity by running
 ```sh
 mmhotline triage-agent request-playbook-run \
   --playbook one_time_playbooks/2026-11-03_free_disk_space_on_app002.yml \
-  --inventory production --diagnosis-file diagnosis.md
-mmhotline triage-agent report --alert-severity warn --report-file report.md
+  --inventory production --diagnosis-file diagnosis.md \
+  --about-alert-id 9d7c01664b2e4a1f8c3e5d7a9b1c3e5f
+mmhotline triage-agent report --alert-severity warn --report-file report.md \
+  --about-alert-id 9d7c01664b2e4a1f8c3e5d7a9b1c3e5f
 ```
 
 - `--playbook` is a path in the systems repository, such as the one above or
@@ -3265,6 +3362,12 @@ mmhotline triage-agent report --alert-severity warn --report-file report.md
 - `--alert-severity` is `info`, `warn`, or `sos`. `--report-file` holds the report in
   Markdown, at most 64 KiB. A report file larger than 64 KiB is refused
   with the file's size.
+- `--about-alert-id` names an alert the report or request is about, by the
+  ID the prompt lists, 32 lowercase hexadecimal characters; it is repeated
+  once per alert, at most 1,000 times
+  ([reports and requests name their alerts](#reports-and-requests-name-their-alerts)).
+  The command, the relay, and MMHotline each check the form;
+  `review-commit` takes no alert.
 - `--json` prints the answer's fields instead of the text: `request_id`,
   `outcome`, `message`, `commits_outcome` (what MMHotline did with the
   commits a playbook request carried), and `playbook_run_output`.

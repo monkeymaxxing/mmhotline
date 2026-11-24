@@ -90,6 +90,7 @@ var settingsFileParts = append([]settingsFilePart{
 	}, shownNotes: vendorPageHostsSettingsNotes},
 	settingsSOSWaitsForTheAgentPart,
 	settingsWarnWaitsForTheAgentPart,
+	settingsSendAMessageWhenTheAgentStartsLookingPart,
 	settingsSOSWaitsForAServerReplacementPart,
 	{name: "triage_agent.software_review_interval_hours", value: triageAgentValue(func(agent SettingsTriageAgent) any { return agent.SoftwareReviewIntervalHours }), apply: func(ctx context.Context, a *App, s Settings) error {
 		if s.TriageAgent == nil {
@@ -166,12 +167,22 @@ var settingsSOSWaitsForTheAgentPart = settingsFilePart{
 	keepsValues: true,
 }
 
-// settingsWarnWaitsForTheAgentPart is how long a warn alert that starts a
-// triage session is held for the triage agent. A warn reads the applied
-// value as it arrives.
+// settingsWarnWaitsForTheAgentPart is how long a warn alert from an alert
+// source is held for the triage agent. A warn reads the applied value as it
+// arrives; a value left out is kept as null, which is the default.
 var settingsWarnWaitsForTheAgentPart = settingsFilePart{
 	name:        "triage_agent.warn_waits_for_the_agent_minutes",
 	value:       triageAgentValue(func(agent SettingsTriageAgent) any { return agent.WarnWaitsForTheAgentMinutes }),
+	apply:       func(context.Context, *App, Settings) error { return nil },
+	keepsValues: true,
+}
+
+// settingsSendAMessageWhenTheAgentStartsLookingPart says whether a new
+// triage session sends the person on call the quiet start message. A
+// session reads the applied value as it starts.
+var settingsSendAMessageWhenTheAgentStartsLookingPart = settingsFilePart{
+	name:        "triage_agent.send_a_message_when_the_agent_starts_looking",
+	value:       triageAgentValue(func(agent SettingsTriageAgent) any { return agent.SendAMessageWhenTheAgentStartsLooking }),
 	apply:       func(context.Context, *App, Settings) error { return nil },
 	keepsValues: true,
 }

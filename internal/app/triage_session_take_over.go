@@ -196,6 +196,12 @@ func (a *App) TakeOverTriageSession(ctx context.Context, p Principal, sessionID 
 				return err
 			}
 		}
+		// The agent works on nothing more, so every held warning reaches
+		// people now; they are only marked here, so a full delivery queue
+		// cannot undo the Stop.
+		if err = releaseEveryHeldWarn(ctx, tx, m.Name+" took the triage session over from the triage agent.", now); err != nil {
+			return err
+		}
 		return wakeIncidentsHeldForTriageAgent(ctx, tx, m.Name+" stopped the triage agent; waking the person on call", now)
 	})
 }

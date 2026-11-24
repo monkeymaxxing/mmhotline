@@ -69,7 +69,7 @@ The settings file /etc/mmhotline/mmhotline_settings.yml has no problems.
 | Owner and mode | MMHotline refuses a file whose owner is not an allowed owner (`root`), that group or other users can write (any of mode bits `0022`), or that other users can read (mode bit `0004`). The install's choice is owner `root`, group `mmhotline`, mode `0640`, so the `mmhotline` user can read it. Reason: the file decides what MMHotline does, `fleet_view_command` runs as root, and the file holds the team's secrets. `settings check` skips this rule, so a deploy tool can check a copy on a laptop; `settings apply`, `install`, and MMHotline's start apply it. [Installed files](installed-files.md#etcmmhotlinemmhotline_settingsyml) says who sets the owner. |
 | Unknown keys | Refused, so a typo never passes silently. |
 | Required keys | Every top-level key without "optional" below is required. Inside a section that is present, every key is required unless its table says optional. |
-| Defaults | None, except `triage_agent.warn_waits_for_the_agent_minutes`, which is 0 when left out, and an action kind that `action_kinds` leaves out, which needs a person ([rules_for_running_agent_playbooks](#rules_for_running_agent_playbooks)). Reason: the person or agent who writes the file states every setting. `warn_waits_for_the_agent_minutes` left out keeps a file written before the key existed working: nothing is held, as before. |
+| Defaults | None, except `triage_agent.warn_waits_for_the_agent_minutes`, which is 15 when left out, `triage_agent.send_a_message_when_the_agent_starts_looking`, which is `false` when left out, and an action kind that `action_kinds` leaves out, which needs a person ([rules_for_running_agent_playbooks](#rules_for_running_agent_playbooks)). Reason: the person or agent who writes the file states every setting. The two triage agent keys may be left out so a file written before them keeps working, with the defaults their table gives with reasons. |
 | Optional sections | Leaving out an optional section, such as `status_page`, turns its feature off. `settings apply` then reports the part as `not set up, because the settings file leaves it out.` |
 | First line | When the first line is a comment, the pages and `settings show` print it next to the file's path. Use it to say how the file is changed, such as `# Managed by MMX from mmhotline_settings.yml in the systems repository`. |
 | Secrets | Values marked secret below never appear in a problem, a page, a log, or command output. A YAML syntax error names only its line. |
@@ -513,29 +513,40 @@ triage agent's setup.
 | `triage_agent.listed_hosts` | Yes | Extra hosts the agent may reach, each `{host: NAME, port: N}`, such as `[{host: packages.example.com, port: 443}]`; usually `[]`. Do not list the hosts MMHotline adds by itself: it lists the coding agent's service, OSV.dev's API, CISA's list of known exploited vulnerabilities on `raw.githubusercontent.com`, each inventory server at port 22, and the vendor pages' hosts in `software_outside_the_distribution.yml`. |
 | `triage_agent.software_review_interval_hours` | Yes | `off`, or 1 to 8760 hours between scheduled software reviews |
 | `triage_agent.sos_waits_for_the_agent_minutes` | Yes | 0 to 15 minutes an SOS from an alert source waits for the agent before MMHotline wakes the person on call. 0 wakes the person at once while the agent still looks. 5 is a good start: the wait gives the agent a chance to fix the problem before anyone is woken. An SOS that joins a triage session which already woke the person on call does not wait or wake them again. |
-| `triage_agent.warn_waits_for_the_agent_minutes` | Optional; left out means 0 | 0 to 15 minutes MMHotline holds a warning that starts a triage session, or joins one while its SOS waits for the agent. 0 holds nothing. 3 makes a routine fix reach people as one message, the agent's report. The rules for a held warning are below the table. |
+| `triage_agent.warn_waits_for_the_agent_minutes` | Optional; left out means 15 | 0 to 30 minutes MMHotline holds a warning from an alert source while the triage agent looks into it. 0 holds nothing. The default of 15 covers a run, which takes 30 to 70 seconds, plus a wait behind another run, a software review that makes way, or an MMX run that holds the systems repository; a warning is not urgent. The rules for a held warning are below the table. |
+| `triage_agent.send_a_message_when_the_agent_starts_looking` | Optional; left out means `false` | `true` or `false`. `true` sends the person on call a quiet info message, "The AI triage agent is looking into: …", when a triage session starts. The default is `false`: the message is an ordinary info alert, which Pushover delivers to the phone, so it reached people before the agent had looked, and the dashboard and the session's page already show the agent at work. To turn it on, tell the coding agent: "Set triage_agent.send_a_message_when_the_agent_starts_looking to true in MMHotline's settings file and apply MMHotline's settings." |
 | `triage_agent.sos_waits_for_a_server_replacement_minutes` | Yes | 0 to 60 minutes a waiting SOS keeps waiting after the agent starts replacing a server, counted from the replacement's start. 0 turns the longer wait off. MMHotline sends one warn alert as the replacement starts. |
 
-How `warn_waits_for_the_agent_minutes` works:
+How `warn_waits_for_the_agent_minutes` works, the same for every warning,
+whether it starts a session or joins one:
 
-- MMHotline delivers a held warning at the end of the wait.
-- If the agent asked for a playbook run or sent a report of any severity,
-  even `info`, in that session meanwhile, the agent's request or report
-  takes the warning over, and MMHotline sends nothing for the warning. So
-  an agent that a log misleads into reporting "all fine" also keeps the
-  warning from people.
-- MMHotline delivers the warning at once when the agent cannot take it: the
-  agent is not set up, its sandbox is not installed, MMHotline's copy of the
-  systems repository is missing, or its run fails or ends without a request
-  or report.
-- A warning that joins a session while an SOS waits is held together with
-  that SOS. An SOS keeps its own wait.
+- MMHotline delivers a held warning at the end of the wait, even while the
+  agent still works on it.
+- A report of any severity, even `info`, that names the warning with
+  `--about-alert-id` takes the warning over, and MMHotline sends nothing for
+  the warning. So does a playbook run request that names it when MMHotline
+  asks a person about the run: a new approval request or a warning before
+  the run. A run that carried only one alert may leave the option out. A
+  playbook that simply ran takes nothing over. An agent that a log misleads
+  into reporting "all fine" also keeps the named warning from people.
+- MMHotline delivers the warning when the run that carried it fails or
+  ends without naming it.
+- MMHotline delivers the warning at once when people are told everything:
+  an SOS of the session wakes the person on call, a person takes the
+  session over, or the agent cannot run because it is not set up, its
+  sandbox is not installed, or MMHotline's copy of the systems repository
+  is missing.
+- A warning that joins a session while an SOS waits waits at least as long
+  as that SOS. An SOS keeps its own wait.
 
 Limits and their reasons:
 
-- `sos_waits_for_the_agent_minutes` and `warn_waits_for_the_agent_minutes`
-  stop at 15. Reason: a stuck or wrong agent must not hold an SOS or a
-  warning longer.
+- `sos_waits_for_the_agent_minutes` stops at 15. Reason: a stuck or wrong
+  agent must not hold an SOS longer.
+- `warn_waits_for_the_agent_minutes` stops at 30. Reason: a warning held
+  longer than half an hour no longer gives a person the news in time to
+  plan the day's work. A team that wants quiet beyond that routes the check
+  to info.
 - `sos_waits_for_a_server_replacement_minutes` stops at 60. Reason: one MMX
   run ends after one hour, so a replacement cannot take longer. 10 is a
   good start: a measured replacement by the agent took about 5 to 6
@@ -556,7 +567,8 @@ What `settings check` says when a value is wrong, each after its key path:
 | `listed_hosts[N]` | `port must be 1 to 65535`; `host must be a DNS name or an IP address`; `Loopback addresses are never allowed.` (also link-local, unspecified, and multicast addresses); `packages.example.com:443 is listed twice` |
 | `software_review_interval_hours` | `must be off, or a whole number of hours from 1 to 8760` |
 | `sos_waits_for_the_agent_minutes` | `must be a whole number of minutes from 0 to 15: 0 wakes the person on call at once, and a stuck or wrong agent must not hold an SOS longer than 15 minutes` |
-| `warn_waits_for_the_agent_minutes` | `must be a whole number of minutes from 0 to 15: 0 holds no warning, and a stuck or wrong agent must not hold a warning longer than 15 minutes` |
+| `warn_waits_for_the_agent_minutes` | `must be a whole number of minutes from 0 to 30: 0 holds no warning, and a warning held longer than half an hour no longer gives a person the news in time to plan the day's work` |
+| `send_a_message_when_the_agent_starts_looking` | `must be true or false` |
 | `sos_waits_for_a_server_replacement_minutes` | `must be a whole number of minutes from 0 to 60: 0 turns the longer wait off, and an MMX run longer than its one-hour limit cannot finish a replacement` |
 
 Notes that `settings check` and `settings apply` print, which never fail

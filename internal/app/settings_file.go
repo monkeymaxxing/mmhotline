@@ -112,10 +112,14 @@ type SettingsTriageAgent struct {
 	// scheduled software reviews.
 	SoftwareReviewIntervalHours string `yaml:"software_review_interval_hours"`
 	SOSWaitsForTheAgentMinutes  int    `yaml:"sos_waits_for_the_agent_minutes"`
-	// WarnWaitsForTheAgentMinutes is how long a warn alert that starts a
-	// triage session is held for the agent, 0 to 15; it may be left out,
-	// which is 0: nothing is held.
-	WarnWaitsForTheAgentMinutes int `yaml:"warn_waits_for_the_agent_minutes" settings:"optional"`
+	// WarnWaitsForTheAgentMinutes is how long a warn alert from an alert
+	// source is held for the agent, 0 to 30, 0 holding nothing; it may be
+	// left out, which is 15 (warnWaitsForTheAgentDefaultMinutes).
+	WarnWaitsForTheAgentMinutes *int `yaml:"warn_waits_for_the_agent_minutes" settings:"optional"`
+	// SendAMessageWhenTheAgentStartsLooking turns on the quiet info message
+	// to the person on call when a triage session starts; it may be left
+	// out, which is false (sendAMessageWhenTheAgentStartsLookingDefault).
+	SendAMessageWhenTheAgentStartsLooking bool `yaml:"send_a_message_when_the_agent_starts_looking" settings:"optional"`
 	// SOSWaitsForAServerReplacementMinutes is how long an SOS waits after the
 	// triage agent starts replacing a server, 0 to 60; 0 turns it off.
 	SOSWaitsForAServerReplacementMinutes int `yaml:"sos_waits_for_a_server_replacement_minutes"`

@@ -77,13 +77,16 @@ func (a *App) answerTriageAgentRequest(run *triageAgentActiveRun, event triageag
 		return fmt.Errorf("The sandbox sent a request MMHotline cannot answer: %s.", err)
 	}
 	// The agent holds the credential, so nothing it sends is kept with it.
-	request := triageagent.AgentRequest{Kind: triageagent.ReportRequest, AlertSeverity: run.redact(event.AlertSeverity), ReportText: run.redact(event.ReportText)}
+	request := triageagent.AgentRequest{Kind: triageagent.ReportRequest, AlertSeverity: run.redact(event.AlertSeverity), ReportText: run.redact(event.ReportText), AboutAlertIDs: event.AboutAlertIDs}
 	switch event.Event {
 	case "playbook_run_requested":
-		request = triageagent.AgentRequest{Kind: triageagent.PlaybookRunRequest, Playbook: run.redact(event.Playbook), Inventory: run.redact(event.Inventory), Diagnosis: run.redact(event.Diagnosis)}
+		request = triageagent.AgentRequest{Kind: triageagent.PlaybookRunRequest, Playbook: run.redact(event.Playbook), Inventory: run.redact(event.Inventory), Diagnosis: run.redact(event.Diagnosis), AboutAlertIDs: event.AboutAlertIDs}
 	case "commit_review":
 		request.Kind, request.CommitID, request.CommitReviewDecision = triageagent.CommitReviewRequest, run.redact(event.CommitID), run.redact(event.CommitReviewDecision)
 	}
+	// What the report or request covers, in a triage session's run: the
+	// alerts it named, checked here, at MMHotline's trust boundary.
+	var coverage alertCoverage
 	err := a.Store.WithTransaction(run.ctx, func(tx *sql.Tx) error {
 		var used bool
 		if err := tx.QueryRowContext(run.ctx, `SELECT EXISTS(SELECT 1 FROM triage_agent_requests WHERE run_id=? AND request_id=?)`, run.id, event.RequestID).Scan(&used); err != nil {
@@ -98,7 +101,15 @@ func (a *App) answerTriageAgentRequest(run *triageAgentActiveRun, event triageag
 		if triageagent.CheckAgentRequest(request) == nil {
 			decision = request.CommitReviewDecision
 		}
-		_, err := tx.ExecContext(run.ctx, `INSERT INTO triage_agent_requests(run_id,request_id,kind,playbook,inventory,alert_severity,report_text,diagnosis,commit_id,commit_review_decision,requested_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, run.id, event.RequestID, request.Kind, request.Playbook, request.Inventory, request.AlertSeverity, request.ReportText, request.Diagnosis, request.CommitID, decision, a.Now().Unix())
+		if _, err := tx.ExecContext(run.ctx, `INSERT INTO triage_agent_requests(run_id,request_id,kind,playbook,inventory,alert_severity,report_text,diagnosis,commit_id,commit_review_decision,requested_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, run.id, event.RequestID, request.Kind, request.Playbook, request.Inventory, request.AlertSeverity, request.ReportText, request.Diagnosis, request.CommitID, decision, a.Now().Unix()); err != nil {
+			return err
+		}
+		itemKind := map[string]string{triageagent.ReportRequest: coveredByReport, triageagent.PlaybookRunRequest: coveredByPlaybookRequest}[request.Kind]
+		if run.purpose != "triage_session" || itemKind == "" || triageagent.CheckAgentRequest(request) != nil {
+			return nil
+		}
+		var err error
+		coverage, err = recordCoveredAlerts(run.ctx, tx, run.id, itemKind, event.RequestID, request.AboutAlertIDs)
 		return err
 	})
 	if errors.Is(err, errTriageAgentRequestIDUsed) {
@@ -109,24 +120,18 @@ func (a *App) answerTriageAgentRequest(run *triageAgentActiveRun, event triageag
 	}
 	answer := a.decideTriageAgentRequest(run, event.RequestID, request, event.AgentCommitsBundle)
 	answer.RequestID = event.RequestID
+	if text := coverage.answerText(map[bool]string{true: "report", false: "playbook run request"}[request.Kind == triageagent.ReportRequest]); text != "" && answer.Outcome != triageagent.Refused {
+		answer.Message += " " + text
+	}
 	// An MMX run outlasts a triage run that ended meanwhile, and so does the
 	// record of what MMHotline answered.
 	ctx := context.WithoutCancel(run.ctx)
+	// A playbook run request takes held warns over only where MMHotline
+	// asks a person, in the decision's own transaction
+	// (judgeAndRunPlaybook); a report in the transaction that sends it.
 	if err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE triage_agent_requests SET outcome=?,message=?,answered_at=? WHERE run_id=? AND request_id=?`, answer.Outcome, answer.Message, a.Now().Unix(), run.id, event.RequestID); err != nil {
-			return err
-		}
-		// A playbook run MMHotline accepted, whether it ran, waits, or is
-		// covered, takes over the warn that started the session; a refused
-		// one does not.
-		if request.Kind != triageagent.PlaybookRunRequest || answer.Outcome == triageagent.Refused || answer.Outcome == "" {
-			return nil
-		}
-		var sessionID string
-		if err := tx.QueryRowContext(ctx, `SELECT triage_session_id FROM triage_agent_runs WHERE id=?`, run.id).Scan(&sessionID); err != nil {
-			return err
-		}
-		return heldWarnTakenOver(ctx, tx, sessionID, run.id, "playbook_run_request", "/triage-sessions/"+sessionID, a.Now().UTC())
+		_, err := tx.ExecContext(ctx, `UPDATE triage_agent_requests SET outcome=?,message=?,answered_at=? WHERE run_id=? AND request_id=?`, answer.Outcome, answer.Message, a.Now().Unix(), run.id, event.RequestID)
+		return err
 	}); err != nil {
 		return errors.New("The answer to the run's request could not be saved.")
 	}
@@ -149,7 +154,7 @@ func (a *App) decideTriageAgentRequest(run *triageAgentActiveRun, requestID stri
 	if request.Kind == triageagent.ReportRequest {
 		// A report reaches people even when the run ends meanwhile.
 		if inSystemsRepository(run.purpose) {
-			if err := a.deliverTriageAgentReport(context.WithoutCancel(run.ctx), run.id, request.AlertSeverity, request.ReportText); err != nil {
+			if err := a.deliverTriageAgentReport(context.WithoutCancel(run.ctx), run.id, requestID, len(request.AboutAlertIDs) > 0, request.AlertSeverity, request.ReportText); err != nil {
 				return refused("MMHotline could not send your report to the team. Send the report again.")
 			}
 		}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -159,7 +160,7 @@ func TestANoteOnTheSessionsIncidentReachesItsNextRunWhateverItCarries(t *testing
 	r.end(t, first, triageagent.Event{Event: "finished", Answer: "Reported."})
 	r.drive(t)
 	second := r.nextRun(t)
-	if second.request.Action != "resume" || !strings.Contains(second.request.Prompt, "\n\nAlert 1 of 1: warn from Backup\nTitle: chrony on app003 stopped\n") {
+	if second.request.Action != "resume" || !regexp.MustCompile(`\n\nAlert 1 of 1: warn from Backup\nAlert ID: [0-9a-f]{32}\nTitle: chrony on app003 stopped\n`).MatchString(second.request.Prompt) {
 		t.Fatalf("the second run must carry the chrony alert alone: action %q:\n%s", second.request.Action, second.request.Prompt)
 	}
 	if want := "\n- Ana Silva, on claiming “Writes to db001 fail” at 2026-09-29 12:01:00 UTC: “Looking at db001 myself.”\n"; !strings.Contains(second.request.Prompt, want) {
@@ -230,7 +231,7 @@ func TestManyNotesLeaveTheAlertsRoom(t *testing.T) {
 	if want := fmt.Sprintf("\nAnd %d older notes, which MMHotline left out to keep this prompt short.", 100-shown); !strings.HasSuffix(text, want) {
 		t.Fatalf("the notes end %q, want %q", text[len(text)-100:], want)
 	}
-	prompt := triageSessionStartPrompt("util01", newestNote, []string{"servers"}, nil, notes, alerts)
+	prompt := promptText(triageSessionStartPrompt("util01", newestNote, []string{"servers"}, nil, notes, alerts))
 	if size := jsonTextSize(prompt); size > maximumTriageSessionPromptBytes || !strings.Contains(prompt, "\n\nAlert 30 of 30: ") || strings.Contains(prompt, "more alerts, which MMHotline left out") {
 		t.Fatalf("the prompt is %d bytes in JSON; it must hold all 30 alerts", size)
 	}

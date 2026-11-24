@@ -100,7 +100,9 @@ templ alertBody(frame pageFrame, alert alertView) {
 				</p>
 				if held := alert.HeldWarn; held != nil {
 					<p id="held-warning" data-live>
-						if held.Held {
+						if held.Released {
+							{ held.ReleasedSentence() }
+						} else if held.Held {
 							if held.SOSTitle != "" {
 								{ held.JoinedSentence(frame.Clock(held.HeldUntil)) }
 							} else {
@@ -325,7 +327,9 @@ templ dashboardBody(frame pageFrame, view dashboardView) {
 								<div class="row"><span class="tag warn">Warning</span><span class="faint small">Received { frame.Clock(held.Received) }. Held until { frame.Clock(held.HeldUntil) }.</span></div>
 								<a href={ "/alerts/" + held.AlertID } class="title">@withBreaksAfterSeparators(held.Title)</a>
 								<p class="small muted">
-									if held.SOSTitle != "" {
+									if held.Released {
+										{ held.ReleasedSentence() }
+									} else if held.SOSTitle != "" {
 										{ held.JoinedSentence(frame.Clock(held.HeldUntil)) }
 									} else {
 										{ held.Sentence() }

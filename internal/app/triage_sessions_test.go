@@ -211,6 +211,10 @@ func countRows(t *testing.T, a *App, query string, args ...any) int {
 	return count
 }
 
+// promptText is the prompt of triageSessionStartPrompt or
+// triageSessionResumePrompt, without the alerts the run carries.
+func promptText(prompt string, _ []string) string { return prompt }
+
 // report sends the agent's report and returns MMHotline's answer.
 func report(t *testing.T, run fakeTriageRun, answers *json.Decoder, requestID, severity, text string) triageagent.Answer {
 	t.Helper()
@@ -1315,12 +1319,31 @@ func TestSOSWaitForTheTriageAgentSurvivesARestart(t *testing.T) {
 	}
 }
 
-// When the triage agent starts on a session, the person on call, and only
-// they, get one quiet message about it; a resume sends none, and the message
-// starts no session and opens no incident.
+// With triage_agent.send_a_message_when_the_agent_starts_looking on, when
+// the triage agent starts on a session, the person on call, and only they,
+// get one quiet message about it; a resume sends none, and the message
+// starts no session and opens no incident. By default nobody gets it.
 func TestTriageSessionStartMessageIsQuietAndGoesToThePersonOnCall(t *testing.T) {
 	parallelStartingProcesses(t)
+	t.Run("off by default", func(t *testing.T) {
+		r := newTriageHoldRig(t)
+		r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
+		r.runStarted(t)
+		r.at(t, time.Minute)
+		if n := countRows(t, r.a, `SELECT count(*) FROM alerts WHERE title LIKE 'The AI triage agent is looking into: %'`); n != 0 {
+			t.Fatalf("%d start messages without the setting", n)
+		}
+		for _, m := range r.fake.PushoverMessages() {
+			if strings.Contains(m.Title, "The AI triage agent is looking into") {
+				t.Fatalf("a start message reached a phone: %q", m.Title)
+			}
+		}
+	})
 	r := newTriageHoldRig(t)
+	outcomes, err := r.a.applySettingsParts(context.Background(), Settings{TriageAgent: &SettingsTriageAgent{SendAMessageWhenTheAgentStartsLooking: true}}, nil, []settingsFilePart{settingsSendAMessageWhenTheAgentStartsLookingPart})
+	if err != nil || outcomes[0].State != "applied" {
+		t.Fatalf("applying the setting: %+v %v", outcomes, err)
+	}
 	sos := r.sosArrives(t, "Disk of db001 is 99% full", "db001-disk")
 	run := r.runStarted(t)
 	title := "The AI triage agent is looking into: Disk of db001 is 99% full (started " + r.start.UTC().Format("15:04") + " UTC)"
@@ -1688,13 +1711,13 @@ func TestTriageSessionPromptNotesAndSSH(t *testing.T) {
 		"Keep that one note for this session: before each run ends, write what happened so far in it and commit it.",
 		"Reach a server with ssh and its name in the inventory only, such as ssh db07. MMHotline's SSH settings carry every connection through its proxy, so an address is refused and -F is ignored.",
 	}
-	contains("start of a session after another", triageSessionStartPrompt("util01", newestNote, []string{"servers"}, nil, nil, nil),
+	contains("start of a session after another", promptText(triageSessionStartPrompt("util01", newestNote, []string{"servers"}, nil, nil, nil)),
 		append([]string{"The last triage session left its note in " + newestNote + ": read the note for what happened before. Do not change the note from the last triage session."}, newNote...),
 		[]string{"Start from the note", "Keep one note for the session"})
-	contains("start of the first session", triageSessionStartPrompt("util01", "", []string{"servers"}, nil, nil, nil),
+	contains("start of the first session", promptText(triageSessionStartPrompt("util01", "", []string{"servers"}, nil, nil, nil)),
 		append([]string{"No earlier triage session left a note in triage_agent_notes/."}, newNote...),
 		[]string{"Do not change the note from the last triage session."})
-	contains("resume", triageSessionResumePrompt("", "", nil, nil, nil),
+	contains("resume", promptText(triageSessionResumePrompt("", "", nil, nil, nil)),
 		[]string{"before the run ends, update your note in triage_agent_notes/ and commit it."},
 		[]string{"new file", "last triage session"})
 }
@@ -1709,8 +1732,8 @@ func TestTriageSessionPromptStaysWithinItsLimit(t *testing.T) {
 		alerts = append(alerts, triageSessionPromptAlert{SourceName: "Monitoring", Severity: "warn", Title: fmt.Sprintf("Alert number %d", n+1), Message: strings.Repeat("<", 16<<10) + "END", AlertURL: "https://mmhotline.example.com/alerts/x", ReceivedAt: time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)})
 	}
 	for name, prompt := range map[string]string{
-		"start":  triageSessionStartPrompt("util01", newestNote, []string{"production", "staging"}, nil, nil, alerts),
-		"resume": triageSessionResumePrompt("", "", nil, nil, alerts),
+		"start":  promptText(triageSessionStartPrompt("util01", newestNote, []string{"production", "staging"}, nil, nil, alerts)),
+		"resume": promptText(triageSessionResumePrompt("", "", nil, nil, alerts)),
 	} {
 		encoded, err := json.Marshal(prompt)
 		if err != nil {
@@ -1727,7 +1750,7 @@ func TestTriageSessionPromptStaysWithinItsLimit(t *testing.T) {
 			t.Fatalf("%s prompt ends %q, want %q", name, prompt[len(prompt)-100:], want)
 		}
 	}
-	if prompt := triageSessionResumePrompt("", "", nil, nil, alerts[:3]); !strings.Contains(prompt, "Alert 3 of 3: ") || strings.Contains(prompt, "left out") {
+	if prompt := promptText(triageSessionResumePrompt("", "", nil, nil, alerts[:3])); !strings.Contains(prompt, "Alert 3 of 3: ") || strings.Contains(prompt, "left out") {
 		t.Fatalf("three alerts fit:\n%.300s", prompt)
 	}
 }

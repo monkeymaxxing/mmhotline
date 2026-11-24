@@ -88,6 +88,11 @@ func (a *App) teamBackgroundWork(ctx context.Context, report func(error)) bool {
 	if err := a.DriveTriageSession(ctx); err != nil {
 		fail(fmt.Errorf("drive the triage session: %w", err))
 	}
+	// After the incidents' and the session's turns, which decide what the
+	// triage agent's holds release, and outside their transactions.
+	if err := a.DeliverReleasedHeldAlerts(ctx); err != nil {
+		fail(fmt.Errorf("deliver what the triage agent's holds released: %w", err))
+	}
 	// After the session's turn, so an alert's session takes the one run
 	// first; before the software review, as a waiting commit holds every
 	// MMX run.

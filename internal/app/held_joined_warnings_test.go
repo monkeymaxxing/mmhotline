@@ -11,9 +11,10 @@ import (
 )
 
 // A warn that joins a triage session while one of the session's SOS incidents
-// waits for the agent is held too, for the settings file's
-// triage_agent.warn_waits_for_the_agent_minutes, here 3. These tests walk it
-// through MMHotline's own paths, as the held warn tests do.
+// waits for the agent waits at least as long as that SOS, and at least the
+// settings file's triage_agent.warn_waits_for_the_agent_minutes, here 3.
+// These tests walk it through MMHotline's own paths, as the held warn tests
+// do.
 
 const (
 	hubWarningApp021 = "app021 stopped reporting to the fleet hub"
@@ -56,7 +57,7 @@ func (r *heldWarnRig) resolves(t *testing.T, d time.Duration, title, key string)
 // warn's wait, in minutes.
 func (r *heldWarnRig) setWaits(t *testing.T, sos, replacement, warn int) {
 	t.Helper()
-	outcomes, err := r.a.applySettingsParts(context.Background(), Settings{TriageAgent: &SettingsTriageAgent{SOSWaitsForTheAgentMinutes: sos, SOSWaitsForAServerReplacementMinutes: replacement, WarnWaitsForTheAgentMinutes: warn}}, nil, []settingsFilePart{settingsSOSWaitsForTheAgentPart, settingsSOSWaitsForAServerReplacementPart, settingsWarnWaitsForTheAgentPart})
+	outcomes, err := r.a.applySettingsParts(context.Background(), Settings{TriageAgent: &SettingsTriageAgent{SOSWaitsForTheAgentMinutes: sos, SOSWaitsForAServerReplacementMinutes: replacement, WarnWaitsForTheAgentMinutes: &warn}}, nil, []settingsFilePart{settingsSOSWaitsForTheAgentPart, settingsSOSWaitsForAServerReplacementPart, settingsWarnWaitsForTheAgentPart})
 	if err != nil || outcomes[0].State != "applied" || outcomes[1].State != "applied" || outcomes[2].State != "applied" {
 		t.Fatalf("applying the waits: %+v %v", outcomes, err)
 	}
@@ -93,7 +94,7 @@ func TestJoinedWarnsOfAnOutageTheAgentFixesAreNeverSent(t *testing.T) {
 			t.Fatalf("the warning %q reached people at once: %d messages", title, got)
 		}
 	}
-	heldText := "MMHotline holds this warning with the SOS the triage agent is handling (The server db02 stopped answering); it reaches people if the person on call is woken, or at " + r.start.Add(8*time.Minute).UTC().Format("15:04") + ", unless the agent's report covers it or it resolves first."
+	heldText := "MMHotline holds this warning with the SOS the triage agent is handling (The server db02 stopped answering); it reaches people if the person on call is woken, or at " + r.start.Add(8*time.Minute).UTC().Format("15:04") + ", unless the agent's report names it or it resolves first."
 	if page := r.get(t, "/alerts/"+first.ID); !strings.Contains(page, heldText) {
 		t.Errorf("the alert page while held:\n%s", page)
 	}
@@ -110,7 +111,8 @@ func TestJoinedWarnsOfAnOutageTheAgentFixesAreNeverSent(t *testing.T) {
 		t.Error("the end message waited for the grouping")
 	}
 	r.at(t, 6*time.Minute)
-	report(t, run2, json.NewDecoder(run2.connection), "0000000000000001", "info", "# app021, app022, lb02 and lb03 are back\n")
+	// The run carried four warnings, so its report names the two it covers.
+	agentRequest(t, run2, json.NewDecoder(run2.connection), reportEvent("0000000000000001", "info", "# app021, app022, lb02 and lb03 are back\n", third.ID, fourth.ID))
 	_ = answers
 	// The caddy warns the report covered resolve later.
 	r.resolves(t, 7*time.Minute, caddyWarningLB02, "lb02-caddy")
@@ -147,7 +149,7 @@ func TestJoinedWarnsOfAnOutageTheAgentFixesAreNeverSent(t *testing.T) {
 			t.Errorf("hold of a warn the report covers: %q %q %v", outcome, link, ended)
 		}
 	}
-	if page := r.get(t, "/alerts/"+first.ID); !strings.Contains(page, "MMHotline sent nothing for this warning. The warning's alert resolved while the triage agent handled the outage.") {
+	if page := r.get(t, "/alerts/"+first.ID); !strings.Contains(page, "MMHotline sent nothing for this warning. "+warnResolvedWhileHeldReason) {
 		t.Errorf("the alert page after the alert resolved:\n%s", page)
 	}
 }
@@ -265,21 +267,9 @@ func TestJoinedWarnIsDeliveredOnceAtItsDeadline(t *testing.T) {
 	}
 }
 
-// A warn that joins while no SOS waits for the agent is delivered at once, and
-// with the setting at 0 nothing is held.
-func TestJoinedWarnWithNoSOSWaitingIsDeliveredAtOnce(t *testing.T) {
+// With the setting at 0, a warn that joins a session is not held.
+func TestJoinedWarnWithTheSettingAt0IsNotHeld(t *testing.T) {
 	parallelStartingProcesses(t)
-	t.Run("the SOS resolved already", func(t *testing.T) {
-		r := newHeldWarnRig(t, 3)
-		r.sosArrives(t, "The server db02 stopped answering", "db02")
-		r.runStarted(t)
-		admitSignedAlert(t, r.a, r.source, "resolved-sos", "The server db02 answers again", "db02")
-		joined := r.joins(t, time.Minute, loadWarning, "app002-load")
-		r.sentOnce(t, loadWarning, 0)
-		if outcome, _, _ := r.hold(t, joined.ID); outcome != "delivered" {
-			t.Fatalf("hold: %q", outcome)
-		}
-	})
 	t.Run("the setting is 0", func(t *testing.T) {
 		r := newHeldWarnRig(t, 0)
 		r.sosArrives(t, "The server db02 stopped answering", "db02")

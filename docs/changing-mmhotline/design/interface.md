@@ -312,7 +312,8 @@ click away on the session's page, where a person sees what led to the step
 before stopping the agent.
 
 The triage agent's panel names the session by the session's first alert,
-as does the quiet start message to the person on call.
+as does the quiet start message to the person on call, when the team turned
+it on ([the start message](triage-agent.md#the-start-message)).
 
 The definitions that used to open the dashboard's parts are gone. The
 dashboard explains an action in one line where the person acts, such as

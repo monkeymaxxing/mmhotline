@@ -346,7 +346,7 @@ func (a *App) decideCommitReview(run *triageAgentActiveRun, request triageagent.
 		}
 		link := strings.TrimRight(a.WebURL, "/") + review.URL()
 		if !approve {
-			if err := deliverTriageAgentReportTx(ctx, tx, run.id, request.AlertSeverity, request.ReportText+"\n\nReview commit "+short+" at "+link, a.Now().UTC()); err != nil {
+			if err := deliverTriageAgentReportTx(ctx, tx, run.id, "", false, request.AlertSeverity, request.ReportText+"\n\nReview commit "+short+" at "+link, a.Now().UTC()); err != nil {
 				return err
 			}
 			_, err := tx.ExecContext(ctx, `UPDATE triage_agent_refused_commits SET alert_sent='triage_agent_report' WHERE commit_id=?`, review.ID)

@@ -240,8 +240,9 @@ func TestAServerReplacementKeepsTheSOSWaitingUntilItsAlertResolves(t *testing.T)
 }
 
 // A held SOS the agent fixed without a replacement: nothing reached
-// Pushover, so Pushover gets no resolved message either. Email, which got
-// the SOS at once, gets its resolved message.
+// Pushover, so Pushover gets no resolved message either. Email waits with
+// the first waking step, so it got nothing, and its resolved message is not
+// sent either.
 func TestAHeldSOSTheAgentFixedSendsNoResolvedMessageToPushover(t *testing.T) {
 	parallelStartingProcesses(t)
 	r := replacementRig(t, false)
@@ -255,7 +256,7 @@ func TestAHeldSOSTheAgentFixedSendsNoResolvedMessageToPushover(t *testing.T) {
 			t.Fatalf("Pushover for %s got %q about a held SOS that nobody woke anyone for", key, got)
 		}
 	}
-	if got, want := r.emailStates(t, sos.IncidentID), []string{"sos not suppressed", "resolved-sos not suppressed"}; !reflect.DeepEqual(got, want) {
+	if got, want := r.emailStates(t, sos.IncidentID), []string{"resolved-sos suppressed"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("email deliveries %q, want %q", got, want)
 	}
 	if warnings := startWarnings(t, r.a); len(warnings) != 0 {

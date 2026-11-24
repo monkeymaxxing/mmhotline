@@ -83,8 +83,8 @@ func checkSettings(s Settings, problems *settingsProblems) {
 		if minutes := agent.SOSWaitsForTheAgentMinutes; minutes < 0 || minutes > sosWaitsForTheAgentMaximumMinutes {
 			problems.add("triage_agent.sos_waits_for_the_agent_minutes", fmt.Sprintf("must be a whole number of minutes from 0 to %d: 0 wakes the person on call at once, and a stuck or wrong agent must not hold an SOS longer than %d minutes", sosWaitsForTheAgentMaximumMinutes, sosWaitsForTheAgentMaximumMinutes))
 		}
-		if minutes := agent.WarnWaitsForTheAgentMinutes; minutes < 0 || minutes > warnWaitsForTheAgentMaximumMinutes {
-			problems.add("triage_agent.warn_waits_for_the_agent_minutes", fmt.Sprintf("must be a whole number of minutes from 0 to %d: 0 holds no warning, and a stuck or wrong agent must not hold a warning longer than %d minutes", warnWaitsForTheAgentMaximumMinutes, warnWaitsForTheAgentMaximumMinutes))
+		if minutes := agent.WarnWaitsForTheAgentMinutes; minutes != nil && (*minutes < 0 || *minutes > warnWaitsForTheAgentMaximumMinutes) {
+			problems.add("triage_agent.warn_waits_for_the_agent_minutes", fmt.Sprintf("must be a whole number of minutes from 0 to %d: 0 holds no warning, and a warning held longer than half an hour no longer gives a person the news in time to plan the day's work", warnWaitsForTheAgentMaximumMinutes))
 		}
 		if minutes := agent.SOSWaitsForAServerReplacementMinutes; minutes < 0 || minutes > sosWaitsForAServerReplacementMaximumMinutes {
 			problems.add("triage_agent.sos_waits_for_a_server_replacement_minutes", fmt.Sprintf("must be a whole number of minutes from 0 to %d: 0 turns the longer wait off, and an MMX run longer than its one-hour limit cannot finish a replacement", sosWaitsForAServerReplacementMaximumMinutes))

@@ -26,7 +26,7 @@ CREATE INDEX alerts_incident ON alerts(incident_id,sequence);
 CREATE INDEX alerts_received ON alerts(received_at,sequence);
 CREATE TABLE incident_settings(id INTEGER PRIMARY KEY CHECK(id=1),response_seconds INTEGER NOT NULL);
 INSERT INTO incident_settings VALUES(1,300);
-CREATE TABLE incidents(id TEXT PRIMARY KEY,opening_alert_id TEXT NOT NULL REFERENCES alerts(id),source_id TEXT NOT NULL,sender_incident_key TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('open','claimed','resolved')),owner_member_id TEXT NOT NULL,step TEXT NOT NULL CHECK(step IN ('triage_agent','primary','chosen_person','backup','only_member','everyone_available')),revision INTEGER NOT NULL,targets TEXT NOT NULL,ignore_personal INTEGER NOT NULL,created_at INTEGER NOT NULL,claimed_at INTEGER NOT NULL,resolved_at INTEGER NOT NULL,deadline INTEGER NOT NULL,repeat_at INTEGER NOT NULL,repeat_generation INTEGER NOT NULL,team_mute_revision INTEGER NOT NULL,primary_at INTEGER NOT NULL,backup_at INTEGER NOT NULL,everyone_available_at INTEGER NOT NULL);
+CREATE TABLE incidents(id TEXT PRIMARY KEY,opening_alert_id TEXT NOT NULL REFERENCES alerts(id),source_id TEXT NOT NULL,sender_incident_key TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('open','claimed','resolved')),owner_member_id TEXT NOT NULL,step TEXT NOT NULL CHECK(step IN ('triage_agent','primary','chosen_person','backup','only_member','everyone_available')),revision INTEGER NOT NULL,targets TEXT NOT NULL,ignore_personal INTEGER NOT NULL,created_at INTEGER NOT NULL,claimed_at INTEGER NOT NULL,resolved_at INTEGER NOT NULL,deadline INTEGER NOT NULL,repeat_at INTEGER NOT NULL,repeat_generation INTEGER NOT NULL,team_mute_revision INTEGER NOT NULL,primary_at INTEGER NOT NULL,backup_at INTEGER NOT NULL,everyone_available_at INTEGER NOT NULL,` + incidentSubscribedAlertNotificationWaitsColumn + `);
 CREATE UNIQUE INDEX incidents_active_key ON incidents(source_id,sender_incident_key) WHERE status!='resolved' AND sender_incident_key!='';
 CREATE INDEX incidents_pending ON incidents(status,deadline,repeat_at);
 CREATE TABLE incident_actions(id INTEGER PRIMARY KEY AUTOINCREMENT,incident_id TEXT NOT NULL REFERENCES incidents(id),revision INTEGER NOT NULL,actor TEXT NOT NULL,kind TEXT NOT NULL,message TEXT NOT NULL,actor_name TEXT NOT NULL,target_member_ids TEXT NOT NULL,previous_owner_member_id TEXT NOT NULL,related_alert_id TEXT NOT NULL,occurred_at INTEGER NOT NULL,note TEXT NOT NULL DEFAULT '',note_given_in_triage_run_id TEXT NOT NULL DEFAULT '');
@@ -272,6 +272,10 @@ func createIncident(ctx context.Context, tx *sql.Tx, e Alert, actor string, at t
 	}
 	if waits {
 		if err = recordIncidentAction(ctx, tx, i, "system", "held_for_triage_agent", "Held for the triage agent until "+i.Deadline.UTC().Format("15:04")+" UTC", "", "", at); err != nil {
+			return i, err
+		}
+		// The SOS's email and chat wait with the first waking step.
+		if _, err = tx.ExecContext(ctx, `UPDATE incidents SET subscribed_alert_notification_waits_for_the_wake=1 WHERE id=?`, i.ID); err != nil {
 			return i, err
 		}
 		// An SOS that joins while the session's server replacement goes on

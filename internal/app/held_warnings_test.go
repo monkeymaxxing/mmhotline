@@ -17,10 +17,10 @@ import (
 	"mmhotline/internal/triageagent"
 )
 
-// A warn that starts a triage session is held for the triage agent for the
-// settings file's triage_agent.warn_waits_for_the_agent_minutes, here 3. These
-// tests walk it through MMHotline's own paths: the alert intake, the
-// background loop, a fake sandbox, a stand-in MMX, and a fake Pushover.
+// A warn from an alert source is held for the triage agent for the settings
+// file's triage_agent.warn_waits_for_the_agent_minutes, here 3. These tests
+// walk it through MMHotline's own paths: the alert intake, the background
+// loop, a fake sandbox, a stand-in MMX, and a fake Pushover.
 
 type heldWarnRig struct{ *triageHoldRig }
 
@@ -33,7 +33,7 @@ func newHeldWarnRig(t *testing.T, minutes int) *heldWarnRig {
 
 func (r *heldWarnRig) setWait(t *testing.T, minutes int) {
 	t.Helper()
-	outcomes, err := r.a.applySettingsParts(context.Background(), Settings{TriageAgent: &SettingsTriageAgent{WarnWaitsForTheAgentMinutes: minutes}}, nil, []settingsFilePart{settingsWarnWaitsForTheAgentPart})
+	outcomes, err := r.a.applySettingsParts(context.Background(), Settings{TriageAgent: &SettingsTriageAgent{WarnWaitsForTheAgentMinutes: &minutes}}, nil, []settingsFilePart{settingsWarnWaitsForTheAgentPart})
 	if err != nil || outcomes[0].State != "applied" {
 		t.Fatalf("applying the wait: %+v %v", outcomes, err)
 	}
@@ -129,7 +129,7 @@ func TestHeldWarnTakenOverByAPlaybookRunRequest(t *testing.T) {
 	if got := r.pushovers(loadWarning); len(got) != 0 {
 		t.Fatalf("the held warn reached people: %+v", got)
 	}
-	heldText := "MMHotline holds this warning for up to 3 minutes while the triage agent looks into it; it reaches people then, unless the agent takes it over."
+	heldText := "MMHotline holds this warning for up to 3 minutes while the triage agent looks into it; it reaches people then, unless the agent's report or playbook run request names it."
 	if page := r.get(t, "/alerts/"+alert.ID); !strings.Contains(page, heldText) {
 		t.Errorf("the alert page while held:\n%s", page)
 	}
@@ -292,33 +292,9 @@ func TestHeldWarnTheAgentCannotHandle(t *testing.T) {
 	})
 }
 
-// A warn that joins a session already running is delivered at once, and the
-// warn that started the session stays held.
-func TestHeldWarnJoiningARunningSessionIsDeliveredAtOnce(t *testing.T) {
-	parallelStartingProcesses(t)
-	r := newHeldWarnRig(t, 3)
-	first := r.warnArrives(t, loadWarning, "app002-load")
-	r.runStarted(t)
-	r.at(t, time.Minute)
-	second := admitSignedAlert(t, r.a, r.source, "warn", "Disk of db001 is filling", "db001-disk")
-	backgroundRounds(t, r.a)
-	r.reachedSomeone(t, "Disk of db001 is filling")
-	if got := r.pushovers(loadWarning); len(got) != 0 {
-		t.Fatalf("the warn that started the session was delivered early: %+v", got)
-	}
-	if outcome, _, _ := r.hold(t, second.ID); outcome != "delivered" {
-		t.Fatalf("the joining warn's hold: %q", outcome)
-	}
-	r.at(t, 3*time.Minute)
-	r.reachedSomeone(t, loadWarning)
-	r.sentOnce(t, loadWarning, 0)
-	if outcome, _, _ := r.hold(t, first.ID); outcome != "delivered" {
-		t.Fatalf("the first warn's hold: %q", outcome)
-	}
-}
-
 // Only a warn is held: an info alert goes at once, and with the setting at 0
-// a warn goes at once as before.
+// a warn goes at once as before. Without the setting, a warn waits the
+// default 15 minutes.
 func TestHeldWarnOnlyAWarnWithTheSettingAbove0IsHeld(t *testing.T) {
 	parallelStartingProcesses(t)
 	t.Run("the setting is 0", func(t *testing.T) {
@@ -331,12 +307,27 @@ func TestHeldWarnOnlyAWarnWithTheSettingAbove0IsHeld(t *testing.T) {
 		}
 	})
 	t.Run("the setting was never applied", func(t *testing.T) {
-		r := newTriageHoldRig(t)
-		r.start = r.a.Now()
-		admitSignedAlert(t, r.a, r.source, "warn", loadWarning, "app002-load")
-		backgroundRounds(t, r.a)
-		if n := len((&heldWarnRig{r}).pushovers(loadWarning)); n != 2 {
-			t.Fatalf("%d messages without the setting, want one to each of 2 people", n)
+		r := &heldWarnRig{newTriageHoldRig(t)}
+		r.warnArrives(t, loadWarning, "app002-load")
+		r.runStarted(t)
+		r.at(t, 15*time.Minute-time.Second)
+		if n := len(r.pushovers(loadWarning)); n != 0 {
+			t.Fatalf("%d messages before the default wait ended", n)
+		}
+		r.at(t, 15*time.Minute)
+		r.reachedSomeone(t, loadWarning)
+		r.sentOnce(t, loadWarning, 0)
+	})
+	t.Run("the settings file leaves the setting out", func(t *testing.T) {
+		r := &heldWarnRig{newTriageHoldRig(t)}
+		outcomes, err := r.a.applySettingsParts(context.Background(), Settings{TriageAgent: &SettingsTriageAgent{}}, nil, []settingsFilePart{settingsWarnWaitsForTheAgentPart})
+		if err != nil || outcomes[0].State != "applied" {
+			t.Fatalf("applying: %+v %v", outcomes, err)
+		}
+		alert := r.warnArrives(t, loadWarning, "app002-load")
+		var heldUntil int64
+		if err := r.a.Store.db.QueryRow(`SELECT held_until FROM held_warn_alerts WHERE alert_id=?`, alert.ID).Scan(&heldUntil); err != nil || heldUntil != r.start.Add(15*time.Minute).Unix() {
+			t.Fatalf("held until %d, want 15 minutes after arrival: %v", heldUntil, err)
 		}
 	})
 	t.Run("an info alert", func(t *testing.T) {

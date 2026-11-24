@@ -104,9 +104,10 @@ const (
 var errTriageSessionEnded = errors.New("the triage session ended before its run started")
 
 // triageSessionRunPlan is the run a session needs next: a start with all of
-// its alerts, or a resume of the agent's session with the alerts that wait.
-// The run carries the alerts up to throughAlertSequence, and the results of
-// approved or refused playbook runs that wait, by their approval request IDs.
+// its alerts, or a resume of the agent's session with the alerts that wait,
+// those up to throughAlertSequence. The run carries the waiting alerts its
+// prompt shows (withTriageSessionAlerts), and the results of approved or
+// refused playbook runs that wait, by their approval request IDs.
 type triageSessionRunPlan struct {
 	sessionID, action, codingAgentSessionID, lastRunEndedBecause string
 	// interruptedPlaybookRun is MMHotline's record of the playbook run the
@@ -179,8 +180,9 @@ func (a *App) DriveTriageSession(ctx context.Context) error {
 				return err
 			}
 		}
-		// Held warns are settled once the alerts are read: a warn that
-		// started the session waits for the agent, any other is delivered.
+		// Held warns are settled once the alerts are read. Settling only
+		// marks a warn for delivery; DeliverReleasedHeldAlerts queues it
+		// outside this transaction.
 		if err = settleHeldWarns(ctx, tx, cannotRun, now); err != nil {
 			return err
 		}
@@ -355,8 +357,7 @@ func joinNewAlertsToTriageSession(ctx context.Context, tx *sql.Tx, sessionID str
 					sessionID = ""
 				}
 			}
-			startedTheSession := sessionID == ""
-			if startedTheSession {
+			if sessionID == "" {
 				sessionID = NewID()
 				if _, err = tx.ExecContext(ctx, `INSERT INTO triage_sessions(id,started_at) VALUES(?,?)`, sessionID, now.Unix()); err != nil {
 					return "", err
@@ -368,7 +369,7 @@ func joinNewAlertsToTriageSession(ctx context.Context, tx *sql.Tx, sessionID str
 			if _, err = tx.ExecContext(ctx, `INSERT INTO triage_session_alerts(triage_session_id,alert_id,joined_at) VALUES(?,?,?)`, sessionID, id, now.Unix()); err != nil {
 				return "", err
 			}
-			if err = sessionHoldsItsWarn(ctx, tx, id, sessionID, startedTheSession, now); err != nil {
+			if err = heldWarnJoinsSession(ctx, tx, id, sessionID, now); err != nil {
 				return "", err
 			}
 		}
@@ -397,15 +398,29 @@ func alertStartsANewTriageSession(ctx context.Context, tx *sql.Tx, sessionID, al
 	return starts, err
 }
 
+// The settings file's triage_agent.send_a_message_when_the_agent_starts_looking:
+// whether a new triage session tells the person on call that the agent
+// started on it. The default is off: the message is an ordinary info alert,
+// which Pushover delivers to the phone, so it reached people before the
+// agent had looked, and the dashboard and the session's page already show
+// the agent at work. A team that wants to hear when the agent starts turns
+// it on.
+const sendAMessageWhenTheAgentStartsLookingDefault = false
+
 // sendTriageSessionStartMessage tells the person on call quietly, once per
-// session, that the triage agent started on it: an info alert from MMHotline
-// to them alone, so Pushover sends it at low priority without sound, and
-// other contact methods send it as any info alert. Info from MMHotline never
-// starts a session or opens an incident. The person on call is whom an SOS
-// would contact first now: the scheduled person, or with nobody scheduled,
-// everyone available. When nobody is available, nobody gets it: a quiet
-// message is no reason to reach an unavailable person.
+// session, that the triage agent started on it, when the setting asks for
+// it: an info alert from MMHotline to them alone, so Pushover sends it at
+// low priority without sound, and other contact methods send it as any info
+// alert. Info from MMHotline never starts a session or opens an incident.
+// The person on call is whom an SOS would contact first now: the scheduled
+// person, or with nobody scheduled, everyone available. When nobody is
+// available, nobody gets it: a quiet message is no reason to reach an
+// unavailable person.
 func sendTriageSessionStartMessage(ctx context.Context, tx *sql.Tx, firstAlertID string, startedAt time.Time) error {
+	send := sendAMessageWhenTheAgentStartsLookingDefault
+	if _, err := appliedSettingsValue(ctx, tx, settingsSendAMessageWhenTheAgentStartsLookingPart.name, &send); err != nil || !send {
+		return err
+	}
 	c, err := CoverageAt(ctx, tx, startedAt)
 	if err != nil || len(c.PrimaryIDs) == 0 {
 		return err
@@ -440,6 +455,54 @@ func sosWaitsForTriageAgent(ctx context.Context, tx *sql.Tx, alertID string) (bo
 	var waits bool
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM triage_agent_setup) AND EXISTS(SELECT 1 FROM alerts WHERE id=? AND source_id!='manual' AND `+triageSessionAlertCondition+`) AND NOT EXISTS(SELECT 1 FROM triage_sessions WHERE ended_at=0 AND taken_over_by_member_id!='')`, alertID).Scan(&waits)
 	return waits, err
+}
+
+// incidentSubscribedAlertNotificationWaitsColumn is
+// incidents.subscribed_alert_notification_waits_for_the_wake, in the table
+// and in the upgrade step that adds it (addHoldRules): 1 while the SOS's
+// subscribed notification, its email and chat, waits with the first waking
+// step for the triage agent. Email and chat wake nobody, but they reach a
+// person, so they wait with the step instead of going out before the agent
+// has looked. queueSOSNotificationAfterItsWait queues it once the wait is
+// over, in DeliverReleasedHeldAlerts, outside the transaction that wakes
+// the person on call: the alert source's share of SOS deliveries can then
+// never roll back a wake.
+const incidentSubscribedAlertNotificationWaitsColumn = `subscribed_alert_notification_waits_for_the_wake INTEGER NOT NULL DEFAULT 0`
+
+// sosNotificationWaitIsOver picks the incidents whose subscribed
+// notification waited with the first waking step, once that step no longer
+// waits for the triage agent: the person on call was woken, a person
+// claimed or escalated it, or it resolved.
+const sosNotificationWaitIsOver = `subscribed_alert_notification_waits_for_the_wake=1 AND NOT (status='open' AND step='` + triageAgentStep + `')`
+
+// queueSOSNotificationAfterItsWait queues the subscribed notification of the
+// SOS that opened the incident, as intake queues it for an SOS that does not
+// wait, once its wait for the triage agent is over. An SOS that resolved
+// during the wait, with nobody claiming it, is sent to nobody: the agent's
+// work, or the alert source, ended it before a person was needed, as nobody
+// is woken for it either.
+func queueSOSNotificationAfterItsWait(ctx context.Context, tx *sql.Tx, incidentID string, now time.Time) error {
+	var status, step, alertID string
+	var claimedAt int64
+	err := tx.QueryRowContext(ctx, `SELECT status,step,claimed_at,opening_alert_id FROM incidents WHERE id=? AND `+sosNotificationWaitIsOver, incidentID).Scan(&status, &step, &claimedAt, &alertID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE incidents SET subscribed_alert_notification_waits_for_the_wake=0 WHERE id=?`, incidentID); err != nil {
+		return err
+	}
+	if status == "resolved" && step == triageAgentStep && claimedAt == 0 {
+		return nil
+	}
+	var sourceID, title, message, notes string
+	var happened int64
+	if err = tx.QueryRowContext(ctx, `SELECT source_id,title,message,notes,happened_at FROM alerts WHERE id=?`, alertID).Scan(&sourceID, &title, &message, &notes, &happened); err != nil {
+		return err
+	}
+	return QueueNotification(ctx, tx, Notification{Key: alertID, AlertID: alertID, IncidentID: incidentID, Severity: "sos", Title: title, Message: message, Notes: notes, Purpose: notificationPurpose(sourceID), HappenedAt: deadlineTime(happened), At: now})
 }
 
 // triageSessionAlreadyWoke returns an unresolved incident of the open triage
@@ -490,8 +553,9 @@ func triageSessionAlreadyWoke(ctx context.Context, tx *sql.Tx, targets []string)
 // SOS that does not wait, so the repeats and later steps count from now. why
 // goes in the incident's history.
 func wakeIncidentHeldForTriageAgent(ctx context.Context, tx *sql.Tx, i Incident, why string, at time.Time) error {
-	// The person is told everything now, the warnings held with the SOS too.
-	if err := deliverJoinedHeldWarns(ctx, tx, why, at); err != nil {
+	// The person is told everything now, the held warnings too. They are
+	// only marked here, so a full delivery queue cannot undo the wake.
+	if err := releaseEveryHeldWarn(ctx, tx, "An SOS woke the person on call: "+strings.TrimSuffix(strings.TrimSuffix(why, "; waking the person on call"), ". Waking the person on call")+".", at); err != nil {
 		return err
 	}
 	c, err := CoverageAt(ctx, tx, at)
@@ -631,7 +695,7 @@ func (a *App) planTriageSessionRun(ctx context.Context, tx *sql.Tx, sessionID, c
 	}
 	// A start shows every alert of the session: an earlier run that failed
 	// before the agent began may have carried some.
-	rows, err := tx.QueryContext(ctx, `SELECT e.id,e.source_id,e.actor,e.incident_id,e.severity,e.title,e.message,e.received_at,coalesce(src.name,'') FROM triage_session_alerts s JOIN alerts e ON e.id=s.alert_id LEFT JOIN sources src ON src.id=e.source_id WHERE s.triage_session_id=? AND e.sequence<=?`+waitingOnly+` ORDER BY e.sequence`, sessionID, plan.throughAlertSequence)
+	rows, err := tx.QueryContext(ctx, `SELECT e.id,e.source_id,e.actor,e.incident_id,e.severity,e.title,e.message,e.received_at,coalesce(src.name,''),s.sent_in_run_id='' FROM triage_session_alerts s JOIN alerts e ON e.id=s.alert_id LEFT JOIN sources src ON src.id=e.source_id WHERE s.triage_session_id=? AND e.sequence<=?`+waitingOnly+` ORDER BY e.sequence`, sessionID, plan.throughAlertSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -643,7 +707,7 @@ func (a *App) planTriageSessionRun(ctx context.Context, tx *sql.Tx, sessionID, c
 	for rows.Next() {
 		var r row
 		var received int64
-		if err = rows.Scan(&r.id, &r.sourceID, &r.actor, &r.incidentID, &r.alert.Severity, &r.alert.Title, &r.alert.Message, &received, &r.alert.SourceName); err != nil {
+		if err = rows.Scan(&r.id, &r.sourceID, &r.actor, &r.incidentID, &r.alert.Severity, &r.alert.Title, &r.alert.Message, &received, &r.alert.SourceName, &r.alert.Waiting); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -667,7 +731,7 @@ func (a *App) planTriageSessionRun(ctx context.Context, tx *sql.Tx, sessionID, c
 			}
 			r.alert.SourceName = name + ", who created it by hand"
 		}
-		r.alert.AlertURL = webURL + "/alerts/" + r.id
+		r.alert.ID, r.alert.AlertURL = r.id, webURL+"/alerts/"+r.id
 		if r.incidentID != "" {
 			r.alert.IncidentURL = webURL + "/incidents/" + r.incidentID
 		}
@@ -776,7 +840,8 @@ func (a *App) planTriageSessionHandOver(ctx context.Context, tx *sql.Tx, session
 // takes the alerts it carries in the transaction that records it, and only
 // while the session is still open.
 func (a *App) startTriageSessionRun(ctx context.Context, plan triageSessionRunPlan) {
-	prompt := triageSessionResumePrompt(plan.lastRunEndedBecause, plan.interruptedPlaybookRun, plan.approvalResults, plan.incidentNotes, plan.alerts)
+	var prompt string
+	var carried []string
 	switch {
 	case plan.takenOver != "":
 		prompt = triageSessionHandOverPrompt(plan.takenOver, plan.lastRunEndedBecause, plan.interruptedPlaybookRun, plan.approvalResults, plan.incidentNotes)
@@ -784,7 +849,9 @@ func (a *App) startTriageSessionRun(ctx context.Context, plan triageSessionRunPl
 		serverName, _ := os.Hostname()
 		// A copy Git cannot read fails the run's own fetch too, with the reason.
 		lastNote, _ := systemsrepository.NewestTriageAgentNote(ctx, filepath.Join(a.Store.Dir, systemsrepository.DirectoryName))
-		prompt = triageSessionStartPrompt(serverName, lastNote, a.inventoryNames(), plan.approvalResults, plan.incidentNotes, plan.alerts)
+		prompt, carried = triageSessionStartPrompt(serverName, lastNote, a.inventoryNames(), plan.approvalResults, plan.incidentNotes, plan.alerts)
+	default:
+		prompt, carried = triageSessionResumePrompt(plan.lastRunEndedBecause, plan.interruptedPlaybookRun, plan.approvalResults, plan.incidentNotes, plan.alerts)
 	}
 	prompt += triageSessionTimesText(a.Now(), plan.earlierRuns)
 	request := triageagent.Request{Action: plan.action, SessionID: plan.codingAgentSessionID, Prompt: prompt}
@@ -806,8 +873,12 @@ func (a *App) startTriageSessionRun(ctx context.Context, plan triageSessionRunPl
 				return err
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE triage_session_alerts SET sent_in_run_id=? WHERE triage_session_id=? AND sent_in_run_id='' AND alert_id IN (SELECT id FROM alerts WHERE sequence<=?)`, runID, plan.sessionID, plan.throughAlertSequence); err != nil {
-			return err
+		// Only the alerts the prompt shows are carried; the rest wait for
+		// the next run.
+		for _, id := range carried {
+			if _, err := tx.ExecContext(ctx, `UPDATE triage_session_alerts SET sent_in_run_id=? WHERE triage_session_id=? AND sent_in_run_id='' AND alert_id=?`, runID, plan.sessionID, id); err != nil {
+				return err
+			}
 		}
 		for _, id := range plan.approvalRequestIDs {
 			if _, err := tx.ExecContext(ctx, `UPDATE triage_agent_playbook_runs_waiting_for_a_person SET result_for_the_agent=?,result_sent_in_run_id=? WHERE id=? AND result_for_the_agent=?`, resultForTheAgentSent, runID, id, resultForTheAgentWaits); err != nil {
@@ -930,41 +1001,58 @@ func triageSessionRunFailed(ctx context.Context, tx *sql.Tx, runID, reason strin
 }
 
 // deliverTriageAgentReport records a report of a session's run with each
-// incident the run's work is about (triageRunIncidents) and sends it to
-// people at its alert severity, as an alert from MMHotline about one of
-// them. At sos, an open one wakes the person on call through its own SOS
+// incident it is about and sends it to people at its alert severity, as an
+// alert from MMHotline about one of them. A report that named alerts with
+// --about-alert-id (named) is about the incidents of the named alerts'
+// problems (incidentsOfNamedProblems); otherwise, or when the run carried
+// none of the named alerts, it is about the run's work (triageRunIncidents).
+// At sos, an open one wakes the person on call through its own SOS
 // escalation, and a claimed one's owner has it; when every one is resolved,
-// or the run's alerts have none, as for a warn alert, the report opens an SOS
-// incident, whose escalation wakes them, and that incident joins the
-// session. Every incident of the session that waits for the agent stops
-// waiting at an sos report.
+// or they have none, as for a warn alert, the report opens an SOS incident,
+// whose escalation wakes them, and that incident joins the session. Every
+// incident of the session that waits for the agent stops waiting at an sos
+// report. The report takes over the held warns it covers
+// (triage_agent_covered_alerts), requestID naming it within the run.
 //
 // A software review's run has no session, so each of its reports is an
 // alert of its own: at sos it opens an SOS incident, which records the
 // report, and whose escalation wakes the person on call at once. The agent's
 // own alert never waits for the agent, and it wakes no incident of a session
 // the review knows nothing about.
-func (a *App) deliverTriageAgentReport(ctx context.Context, runID, severity, report string) error {
+func (a *App) deliverTriageAgentReport(ctx context.Context, runID, requestID string, named bool, severity, report string) error {
 	return a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
-		return deliverTriageAgentReportTx(ctx, tx, runID, severity, report, a.Now().UTC())
+		return deliverTriageAgentReportTx(ctx, tx, runID, requestID, named, severity, report, a.Now().UTC())
 	})
 }
 
 // deliverTriageAgentReportTx is deliverTriageAgentReport in the caller's
 // transaction, so a commit review's report and the commit's record of it
 // commit together.
-func deliverTriageAgentReportTx(ctx context.Context, tx *sql.Tx, runID, severity, report string, now time.Time) error {
+func deliverTriageAgentReportTx(ctx context.Context, tx *sql.Tx, runID, requestID string, named bool, severity, report string, now time.Time) error {
 	var sessionID string
 	if err := tx.QueryRowContext(ctx, `SELECT triage_session_id FROM triage_agent_runs WHERE id=?`, runID).Scan(&sessionID); err != nil {
 		return err
 	}
+	var incidents []Incident
+	var err error
+	if named && sessionID != "" {
+		if incidents, named, err = incidentsOfNamedProblems(ctx, tx, sessionID, runID, requestID); err != nil {
+			return err
+		}
+	}
+	if !named {
+		if incidents, err = triageRunIncidents(ctx, tx, sessionID, runID); err != nil {
+			return err
+		}
+	}
 	in := GenericAlert{Severity: severity, Title: triageAgentReportTitle(report), Message: triageAgentReportMessage(report)}
-	alert, incidents, err := admitAlertAboutTriageRun(ctx, tx, sessionID, runID, "triage_agent", in, now)
+	alert, incidents, err := admitAlertAboutIncidents(ctx, tx, sessionID, runID, "triage_agent", incidents, in, now)
 	if err != nil {
 		return err
 	}
-	// The agent's report takes over the warn that started the session.
-	if err = heldWarnTakenOver(ctx, tx, sessionID, runID, "report", "/alerts/"+alert.ID, now); err != nil {
+	// The report takes over the held warns it covers, before an sos report
+	// wakes the person on call and releases the others.
+	if err = heldWarnTakenOver(ctx, tx, runID, coveredByReport, requestID, "report", "/alerts/"+alert.ID, now); err != nil {
 		return err
 	}
 	for _, i := range incidents {
@@ -992,6 +1080,12 @@ func admitAlertAboutTriageRun(ctx context.Context, tx *sql.Tx, sessionID, runID,
 	if err != nil {
 		return Alert{}, nil, err
 	}
+	return admitAlertAboutIncidents(ctx, tx, sessionID, runID, actor, incidents, in, now)
+}
+
+// admitAlertAboutIncidents is admitAlertAboutTriageRun with the incidents
+// the alert is about, the one whose alert joined last first, given.
+func admitAlertAboutIncidents(ctx context.Context, tx *sql.Tx, sessionID, runID, actor string, incidents []Incident, in GenericAlert, now time.Time) (Alert, []Incident, error) {
 	pick := func(statuses ...string) string {
 		for _, status := range statuses {
 			for _, i := range incidents {

@@ -65,18 +65,34 @@ type AgentRequest struct {
 	// needs_a_person sends the report at its alert severity.
 	CommitID             string `json:"commit_id,omitempty"`
 	CommitReviewDecision string `json:"commit_review_decision,omitempty"`
+	// AboutAlertIDs, on a report or a playbook run request, are the alerts
+	// it is about, as the prompt lists them (--about-alert-id).
+	AboutAlertIDs []string `json:"about_alert_ids,omitempty"`
 }
+
+// MaximumAboutAlertIDs bounds the alerts one report or playbook run request
+// names: one run socket line carries them, and a prompt of 64 KiB shows far
+// fewer alerts.
+const MaximumAboutAlertIDs = 1000
 
 var (
 	inventoryNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 	requestIDPattern     = regexp.MustCompile(`^[0-9a-f]{16}$`)
 	// A full Git commit ID: SHA-1, or SHA-256 in a repository that uses it.
 	commitIDPattern = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+	// An MMHotline alert ID, as the prompt lists it.
+	alertIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 )
 
 // CheckAgentRequest refuses a request MMHotline cannot act on. The command,
 // the run's relay, and MMHotline each check it: MMHotline never trusts the run.
 func CheckAgentRequest(request AgentRequest) error {
+	if request.Kind == CommitReviewRequest && len(request.AboutAlertIDs) > 0 {
+		return errors.New("a commit review names no alerts: leave out --about-alert-id")
+	}
+	if err := checkAboutAlertIDs(request.AboutAlertIDs); err != nil {
+		return err
+	}
 	switch request.Kind {
 	case PlaybookRunRequest:
 		if err := CheckPlaybookPath(request.Playbook); err != nil {
@@ -110,6 +126,20 @@ func CheckAgentRequest(request AgentRequest) error {
 		return checkMarkdownText("report", request.ReportText)
 	}
 	return fmt.Errorf("unknown request kind %s; valid kinds: playbook_run, report, commit_review", shortQuote(request.Kind))
+}
+
+// checkAboutAlertIDs refuses alert IDs that are not in the form the prompt
+// gives them, or too many.
+func checkAboutAlertIDs(ids []string) error {
+	if len(ids) > MaximumAboutAlertIDs {
+		return fmt.Errorf("%d alerts are named with --about-alert-id; at most %d are allowed", len(ids), MaximumAboutAlertIDs)
+	}
+	for _, id := range ids {
+		if !alertIDPattern.MatchString(id) {
+			return fmt.Errorf("--about-alert-id %s must be an alert ID as the prompt lists it, 32 lowercase hexadecimal characters", shortQuote(id))
+		}
+	}
+	return nil
 }
 
 func checkAlertSeverity(severity string) error {
@@ -190,7 +220,7 @@ func shortQuote(value string) string {
 }
 
 var agentRequestCommandHelp = map[string]string{
-	"request-playbook-run": `usage: mmhotline triage-agent request-playbook-run --playbook PATH --inventory NAME --diagnosis-file FILE [--json]
+	"request-playbook-run": `usage: mmhotline triage-agent request-playbook-run --playbook PATH --inventory NAME --diagnosis-file FILE [--about-alert-id ALERT_ID ...] [--json]
 
 Asks MMHotline to run an MMX playbook from the systems repository on one
 inventory, and waits for MMHotline's answer. The request-playbook-run command
@@ -207,6 +237,8 @@ cause, the evidence, and why the playbook fixes the problem. If the team has
 a review agent, the review agent reads the diagnosis. People who approve
 the playbook run also read the diagnosis.
 
+` + aboutAlertIDHelp + `
+
 Exit codes:
   0  the playbook ran and succeeded
   1  the playbook ran and failed; read the playbook run output
@@ -215,11 +247,13 @@ Exit codes:
      review agent refused the playbook, read the refusal reason in the answer,
      revise the playbook, commit the new version, and ask again
 `,
-	"report": `usage: mmhotline triage-agent report --alert-severity info|warn|sos --report-file FILE [--json]
+	"report": `usage: mmhotline triage-agent report --alert-severity info|warn|sos --report-file FILE [--about-alert-id ALERT_ID ...] [--json]
 
 Sends your report to MMHotline, which records the report with the run. The
 report command works only inside a triage agent run. FILE holds the report
 in Markdown, at most 64 KiB.
+
+` + aboutAlertIDHelp + `
 
 Exit codes:
   0  MMHotline recorded the report
@@ -248,6 +282,25 @@ Exit codes:
 `,
 }
 
+// aboutAlertIDHelp explains --about-alert-id in the help of report and
+// request-playbook-run.
+const aboutAlertIDHelp = `--about-alert-id names an alert the report or request is about, by the ID
+the prompt lists; repeat it once per alert. MMHotline holds a warning while
+you look into it. A warning that your report, or a playbook run request for
+which MMHotline asks a person, names reaches people through that message
+instead. A warning that nothing of your run names reaches people when the
+run ends. When the run carries one alert, you may leave the option out.`
+
+// aboutAlertIDs is the repeatable --about-alert-id.
+type aboutAlertIDs []string
+
+func (ids *aboutAlertIDs) String() string { return strings.Join(*ids, ",") }
+
+func (ids *aboutAlertIDs) Set(id string) error {
+	*ids = append(*ids, id)
+	return nil
+}
+
 // IsAgentRequestCommand says whether mmhotline triage-agent ACTION is one of
 // the commands the agent runs inside a run.
 func IsAgentRequestCommand(action string) bool {
@@ -271,11 +324,14 @@ func RunAgentRequestCommand(action string, args []string, stdout, stderr io.Writ
 	}
 	request := AgentRequest{Kind: PlaybookRunRequest}
 	var reportFile, diagnosisFile string
+	var about aboutAlertIDs
+	const aboutUsage = "ID of an alert this is about, as the prompt lists it; repeat once per alert"
 	switch action {
 	case "report":
 		request.Kind = ReportRequest
 		flags.StringVar(&request.AlertSeverity, "alert-severity", "", "the report's alert severity: info, warn, or sos")
 		flags.StringVar(&reportFile, "report-file", "", "file that holds the report in Markdown, at most 64 KiB")
+		flags.Var(&about, "about-alert-id", aboutUsage)
 	case "review-commit":
 		request.Kind = CommitReviewRequest
 		flags.StringVar(&request.CommitID, "commit-id", "", "full ID of the commit you reviewed, as the prompt gives it")
@@ -286,6 +342,7 @@ func RunAgentRequestCommand(action string, args []string, stdout, stderr io.Writ
 		flags.StringVar(&request.Playbook, "playbook", "", "playbook path relative to the systems repository, such as one_time_playbooks/2026-11-03_free_disk_space_on_app002.yml or playbooks/deploy.yml")
 		flags.StringVar(&request.Inventory, "inventory", "", "inventory name: NAME of an inventory file inventories/NAME.yml in the systems repository")
 		flags.StringVar(&diagnosisFile, "diagnosis-file", "", "file that holds your diagnosis in Markdown, at most 64 KiB: what you found, the cause, the evidence, and why the playbook fixes the problem")
+		flags.Var(&about, "about-alert-id", aboutUsage)
 	}
 	asJSON := flags.Bool("json", false, "print the answer as one JSON object")
 	if err := flags.Parse(args); err != nil {
@@ -299,6 +356,7 @@ func RunAgentRequestCommand(action string, args []string, stdout, stderr io.Writ
 	if flags.NArg() != 0 {
 		return refuse(errors.New("unexpected positional arguments; use named flags for the triage agent request"))
 	}
+	request.AboutAlertIDs = about
 	socketPath := os.Getenv(RequestSocketEnvironmentVariable)
 	if socketPath == "" {
 		return refuse(fmt.Errorf("mmhotline triage-agent %s works only inside a triage agent run; %s is not set", action, RequestSocketEnvironmentVariable))

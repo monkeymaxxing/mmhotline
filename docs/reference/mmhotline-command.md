@@ -416,17 +416,18 @@ before the schedule that names them:
 14. `triage_agent.listed_hosts`
 15. `triage_agent.sos_waits_for_the_agent_minutes`
 16. `triage_agent.warn_waits_for_the_agent_minutes`
-17. `triage_agent.sos_waits_for_a_server_replacement_minutes`
-18. `triage_agent.software_review_interval_hours`
-19. `mmhotline_down_alarm.wake_the_person_on_call_after_minutes_without_a_check_in, mmhotline_down_alarm.wake_the_backup_after_minutes_without_a_check_in`
-20. `review_agent`
-21. `sending_services.pushover`
-22. `sending_services.twilio`
-23. `sending_services.telegram`
-24. `sending_services.slack`
-25. `sending_services.mail_server`
-26. `mmhotline_down_alarm`
-27. `status_page`
+17. `triage_agent.send_a_message_when_the_agent_starts_looking`
+18. `triage_agent.sos_waits_for_a_server_replacement_minutes`
+19. `triage_agent.software_review_interval_hours`
+20. `mmhotline_down_alarm.wake_the_person_on_call_after_minutes_without_a_check_in, mmhotline_down_alarm.wake_the_backup_after_minutes_without_a_check_in`
+21. `review_agent`
+22. `sending_services.pushover`
+23. `sending_services.twilio`
+24. `sending_services.telegram`
+25. `sending_services.slack`
+26. `sending_services.mail_server`
+27. `mmhotline_down_alarm`
+28. `status_page`
 
 Each line ends in one of these. Text output counts the parts that did
 not change on one last line, such as `12 parts unchanged.`, and prints a
@@ -1214,11 +1215,16 @@ MMX playbook; people do not run it
 ([requests from the agent](../changing-mmhotline/design/triage-agent.md#requests-from-the-agent)).
 
 ```text
-mmhotline triage-agent request-playbook-run --playbook PATH --inventory NAME --diagnosis-file FILE [--json]
+mmhotline triage-agent request-playbook-run --playbook PATH --inventory NAME --diagnosis-file FILE [--about-alert-id ALERT_ID ...] [--json]
 ```
 
 - `FILE` holds the agent's diagnosis in Markdown, at most 64 KiB. The
   review agent and the people who approve read it.
+- `--about-alert-id` names an alert the request is about, by the ID the
+  prompt lists, once per alert. A held warning the request names ends,
+  sent to nobody, when MMHotline asks a person about the run: a new
+  approval request or a warning before the run
+  ([reports and requests name their alerts](../changing-mmhotline/design/triage-agent.md#reports-and-requests-name-their-alerts)).
 - The request carries the agent's commits, which MMHotline pushes when
   they change nothing outside `one_time_playbooks/` and
   `triage_agent_notes/`, and change, delete, or rename only the one-time
@@ -1239,10 +1245,18 @@ MMHotline records with the run and sends as an alert; people do not run
 it.
 
 ```text
-mmhotline triage-agent report --alert-severity info|warn|sos --report-file FILE [--json]
+mmhotline triage-agent report --alert-severity info|warn|sos --report-file FILE [--about-alert-id ALERT_ID ...] [--json]
 ```
 
 - `FILE` holds the report in Markdown, at most 64 KiB.
+- `--about-alert-id` names an alert the report is about, by the ID the
+  prompt lists, once per alert. A held warning the report names ends, sent
+  to nobody: the report tells people instead. The report goes with the
+  incidents of the named alerts' problems. A run that carried exactly one
+  alert may leave the option out; the report then covers that alert. In a
+  run that carried several alerts, a report without the option covers no
+  warning, and the answer asks the agent to name them
+  ([reports and requests name their alerts](../changing-mmhotline/design/triage-agent.md#reports-and-requests-name-their-alerts)).
 - Exit codes: `0` recorded; `4` refused or invalid, or the run is ending,
   or outside a run.
 

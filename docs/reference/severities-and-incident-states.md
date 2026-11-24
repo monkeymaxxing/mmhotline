@@ -47,9 +47,9 @@ Something needs attention, but not by waking someone, such as a disk at
 - An alert sent without a severity is saved as `warn`, with the note
   `Received without severity, defaulting to 'warn'`.
 - When the triage agent is set up and the settings file's
-  `triage_agent.warn_waits_for_the_agent_minutes` is above 0, a Warning
-  that starts a triage session waits that long before it is sent, so the
-  agent can deal with it first
+  `triage_agent.warn_waits_for_the_agent_minutes` is above 0 (15 when left
+  out), a Warning from an alert source waits up to that long before it is
+  sent, so the agent can deal with it first
   ([a warn waits for the agent](../changing-mmhotline/design/triage-agent.md#a-warn-waits-for-the-agent)).
 - Forty Warnings stay forty alerts; MMHotline combines their messages
   rather than opening anything.
@@ -295,14 +295,16 @@ Triage session d0c87b6008262060142800e45f592aab: Waiting: the triage agent is no
 
 ### Warnings held for the triage agent
 
-With `triage_agent.warn_waits_for_the_agent_minutes` above 0, MMHotline
-holds a Warning that starts a triage session, and a Warning that joins a
-session while an SOS of it waits for the agent. The dashboard's panel
-**Warnings held for the triage agent** and the warning's page say:
+With `triage_agent.warn_waits_for_the_agent_minutes` above 0 (15 when left
+out), MMHotline holds every Warning from an alert source that starts or
+joins a triage session. The dashboard's panel **Warnings held for the
+triage agent** and the warning's page say:
 
-- `MMHotline holds this warning for up to 3 minutes while the triage agent looks into it; it reaches people then, unless the agent takes it over.`
-- For a Warning that joined a session, `MMHotline holds this warning with the SOS the triage agent is handling (TITLE); it reaches people if the person on call is woken, or at TIME, unless the agent's report covers it or it resolves first.`
+- `MMHotline holds this warning for up to 15 minutes while the triage agent looks into it; it reaches people then, unless the agent's report or playbook run request names it.`
+- For a Warning that joined a session while an SOS of it waited for the agent, `MMHotline holds this warning with the SOS the triage agent is handling (TITLE); it reaches people if the person on call is woken, or at TIME, unless the agent's report names it or it resolves first.`
   MMHotline holds that Warning with the SOS.
+- `MMHotline is sending this warning now.` with the reason, while a
+  released Warning waits for room in the delivery queue.
 
 After the hold, the page says one of these:
 

@@ -27,10 +27,13 @@ const maximumTriageSessionPromptBytes = 64 << 10
 const maximumTriageSessionPromptMessageCharacters = 2000
 
 // triageSessionPromptAlert is one alert as the prompt shows it. A warn alert
-// has no incident, so the prompt links its own page.
+// has no incident, so the prompt links its own page. ID is the alert's ID,
+// which the agent names with --about-alert-id; Waiting is true for an alert
+// no run has carried yet, which the run carries when its prompt shows it.
 type triageSessionPromptAlert struct {
-	SourceName, Severity, Title, Message, IncidentURL, AlertURL string
-	ReceivedAt                                                  time.Time
+	ID, SourceName, Severity, Title, Message, IncidentURL, AlertURL string
+	ReceivedAt                                                      time.Time
+	Waiting                                                         bool
 }
 
 // triageSessionCommandsText tells the agent how to ask for a playbook run and
@@ -74,12 +77,20 @@ Whether MMHotline runs a playbook without a person depends on the kinds of actio
 ` + actionkinds.AcceptedTasksText()
 }
 
+// triageSessionAboutAlertsText tells a triage session's agent to name the
+// alerts each report or playbook run request is about. A software review
+// carries no alerts, so its task leaves it out.
+const triageSessionAboutAlertsText = `Name each alert a report or a playbook run request is about: add --about-alert-id and the alert's ID from the list of alerts to the report or request-playbook-run command, once per alert. MMHotline holds a warning while you look into it. A warning your report names reaches people as your report; a warning that nothing of your run names reaches people when your run ends. When your run carries only one alert, you may leave --about-alert-id out.`
+
 // triageSessionStartPrompt is the task of a triage session's first run, on
 // the server serverName, with lastNote the last session's note in
 // triage_agent_notes/ or "", inventories those of MMHotline's copy,
 // approvalResults what MMHotline did with playbook runs a person decided, and
 // incidentNotes the notes from the team it gets.
-func triageSessionStartPrompt(serverName, lastNote string, inventories, approvalResults []string, incidentNotes []triageSessionPromptIncidentNote, alerts []triageSessionPromptAlert) string {
+//
+// It returns the prompt and the IDs of the waiting alerts it shows, which
+// the run carries (withTriageSessionAlerts).
+func triageSessionStartPrompt(serverName, lastNote string, inventories, approvalResults []string, incidentNotes []triageSessionPromptIncidentNote, alerts []triageSessionPromptAlert) (string, []string) {
 	note := "No earlier triage session left a note in triage_agent_notes/."
 	// "Start from the note of the last triage session" made a new session
 	// write into that note, so the prompt says whose note it is.
@@ -96,7 +107,9 @@ Reach a server with ssh and its name in the inventory only, such as ssh db07. MM
 
 %s
 
-This triage session can take several runs: when more alerts arrive, or a playbook run you asked for that waited for a person has its result, MMHotline resumes you with them. Write this triage session's note in a new file, triage_agent_notes/YYYY-MM-DD_what_happened.md, with today's date and a few words for the session's first cause, such as triage_agent_notes/2026-11-03_disk_full_on_app002.md. Keep that one note for this session: before each run ends, write what happened so far in it and commit it. MMHotline ends the session without asking you once every incident is resolved and no alert has arrived for %d minutes, and the next session reads your note.`, serverName, note, triageSessionCommandsText(inventories), int(triageSessionQuietTime.Minutes()))
+%s
+
+This triage session can take several runs: when more alerts arrive, or a playbook run you asked for that waited for a person has its result, MMHotline resumes you with them. Write this triage session's note in a new file, triage_agent_notes/YYYY-MM-DD_what_happened.md, with today's date and a few words for the session's first cause, such as triage_agent_notes/2026-11-03_disk_full_on_app002.md. Keep that one note for this session: before each run ends, write what happened so far in it and commit it. MMHotline ends the session without asking you once every incident is resolved and no alert has arrived for %d minutes, and the next session reads your note.`, serverName, note, triageSessionCommandsText(inventories), triageSessionAboutAlertsText, int(triageSessionQuietTime.Minutes()))
 	return withTriageSessionAlerts(prompt+approvalResultsText(approvalResults)+incidentNotesText(incidentNotes), "The alerts of this triage session, oldest first:", alerts)
 }
 
@@ -104,8 +117,9 @@ This triage session can take several runs: when more alerts arrive, or a playboo
 // with what MMHotline did with playbook runs a person decided, the notes from
 // the team it gets, and the alerts that arrived since the last one.
 // lastRunEndedBecause is why the session's last run failed, or "";
-// interruptedPlaybookRun is interruptedPlaybookRunText.
-func triageSessionResumePrompt(lastRunEndedBecause, interruptedPlaybookRun string, approvalResults []string, incidentNotes []triageSessionPromptIncidentNote, alerts []triageSessionPromptAlert) string {
+// interruptedPlaybookRun is interruptedPlaybookRunText. It returns the
+// prompt and the IDs of the waiting alerts it shows, as the start does.
+func triageSessionResumePrompt(lastRunEndedBecause, interruptedPlaybookRun string, approvalResults []string, incidentNotes []triageSessionPromptIncidentNote, alerts []triageSessionPromptAlert) (string, []string) {
 	prompt := "MMHotline resumes your triage session because more alerts arrived."
 	switch {
 	case len(approvalResults) > 0 && len(alerts) > 0:
@@ -118,7 +132,7 @@ func triageSessionResumePrompt(lastRunEndedBecause, interruptedPlaybookRun strin
 	}
 	prompt += `
 
-The same rules apply: follow triage_agent_rules.md; apply fixes only through mmhotline triage-agent request-playbook-run; end this run with mmhotline triage-agent report; and before the run ends, update your note in triage_agent_notes/ and commit it.`
+The same rules apply: follow triage_agent_rules.md; apply fixes only through mmhotline triage-agent request-playbook-run; end this run with mmhotline triage-agent report; name the alerts each report or request is about with --about-alert-id; and before the run ends, update your note in triage_agent_notes/ and commit it.`
 	return withTriageSessionAlerts(prompt+interruptedPlaybookRun+approvalResultsText(approvalResults)+incidentNotesText(incidentNotes), "The new alerts, oldest first:", alerts)
 }
 
@@ -168,10 +182,18 @@ func approvalResultsText(results []string) string {
 
 // withTriageSessionAlerts adds the heading and the alerts that fit the
 // prompt's limit, then a line that says how many more there are; with no
-// alerts, it adds nothing.
-func withTriageSessionAlerts(prompt, heading string, alerts []triageSessionPromptAlert) string {
+// alerts, it adds nothing. It returns the prompt and the IDs of the waiting
+// alerts it shows: the run carries those, and the alerts left out wait for
+// the next run, as the agent never saw them.
+//
+// Every prompt shows at least one waiting alert. When the results of
+// playbook runs and the notes leave no room for a whole one, the first
+// waiting alert left out goes in with its message cut to fit, marked
+// "(cut)": otherwise the run would carry nothing, and the next run would
+// start with the same prompt.
+func withTriageSessionAlerts(prompt, heading string, alerts []triageSessionPromptAlert) (string, []string) {
 	if len(alerts) == 0 {
-		return prompt
+		return prompt, nil
 	}
 	prompt += "\n\n" + heading
 	// The "and N more" line always fits: room for its longest form is kept.
@@ -179,17 +201,61 @@ func withTriageSessionAlerts(prompt, heading string, alerts []triageSessionPromp
 	size := jsonTextSize(prompt)
 	var b strings.Builder
 	b.WriteString(prompt)
+	var carried []string
 	for index, alert := range alerts {
 		block := "\n\n" + triageSessionAlertText(index+1, len(alerts), alert)
 		blockSize := jsonTextSize(block)
-		if size+blockSize+reserve > maximumTriageSessionPromptBytes {
-			b.WriteString(triageSessionMoreAlertsLine(len(alerts) - index))
-			break
+		if size+blockSize+reserve <= maximumTriageSessionPromptBytes {
+			b.WriteString(block)
+			size += blockSize
+			if alert.Waiting {
+				carried = append(carried, alert.ID)
+			}
+			continue
 		}
-		b.WriteString(block)
-		size += blockSize
+		left := len(alerts) - index
+		if len(carried) == 0 {
+			for later := index; later < len(alerts); later++ {
+				if alerts[later].Waiting {
+					b.WriteString(cutTriageSessionAlertText(later+1, len(alerts), alerts[later], maximumTriageSessionPromptBytes-size-reserve))
+					carried = append(carried, alerts[later].ID)
+					left--
+					break
+				}
+			}
+		}
+		if left > 0 {
+			b.WriteString(triageSessionMoreAlertsLine(left))
+		}
+		break
 	}
-	return b.String()
+	return b.String(), carried
+}
+
+// cutTriageSessionAlertText is the alert's block, from its blank line, with
+// as much of its message as fits room bytes in JSON, then "(cut)". With no
+// room at all, the message is "(cut)" alone: the run must still carry the
+// alert.
+func cutTriageSessionAlertText(number, count int, alert triageSessionPromptAlert, room int) string {
+	const mark = " (cut)"
+	message := []rune(alert.Message)
+	block := func(keep int) string {
+		cut := alert
+		cut.Message = strings.TrimSpace(string(message[:keep]) + mark)
+		return "\n\n" + triageSessionAlertText(number, count, cut)
+	}
+	// The cut message stays below the 2,000 characters at which
+	// triageSessionAlertText cuts on its own.
+	low, high := 0, min(len(message), maximumTriageSessionPromptMessageCharacters-len([]rune(mark)))
+	for low < high {
+		keep := (low + high + 1) / 2
+		if jsonTextSize(block(keep)) <= room {
+			low = keep
+		} else {
+			high = keep - 1
+		}
+	}
+	return block(low)
 }
 
 func triageSessionMoreAlertsLine(more int) string {
@@ -211,8 +277,8 @@ func triageSessionAlertText(number, count int, alert triageSessionPromptAlert) s
 	if alert.IncidentURL != "" {
 		page = "Incident: " + alert.IncidentURL
 	}
-	return fmt.Sprintf("Alert %d of %d: %s from %s\nTitle: %s\nReceived: %s\n%s\nMessage:\n%s",
-		number, count, alert.Severity, alert.SourceName, strings.Join(strings.Fields(alert.Title), " "),
+	return fmt.Sprintf("Alert %d of %d: %s from %s\nAlert ID: %s\nTitle: %s\nReceived: %s\n%s\nMessage:\n%s",
+		number, count, alert.Severity, alert.SourceName, alert.ID, strings.Join(strings.Fields(alert.Title), " "),
 		alert.ReceivedAt.UTC().Format("2006-01-02 15:04:05 UTC"), page, quoted)
 }
 

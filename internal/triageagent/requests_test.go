@@ -95,6 +95,9 @@ func TestAgentRequestCommandArgumentChecks(t *testing.T) {
 		{[]string{"report", "--alert-severity", "warn", "--report-file", empty}, "the report is empty"},
 		{[]string{"report", "--report-file", report}, "--alert-severity is required"},
 		{[]string{"report", "--alert-severity", "warn"}, "--report-file is required"},
+		{[]string{"report", "--alert-severity", "warn", "--report-file", report, "--about-alert-id", "Alert 1"}, `--about-alert-id "Alert 1" must be an alert ID as the prompt lists it, 32 lowercase hexadecimal characters`},
+		{append(playbook("playbooks/deploy.yml", "production"), "--about-alert-id", strings.Repeat("A", 32)), "must be an alert ID as the prompt lists it"},
+		{append(review(commit, "approve", ""), "--about-alert-id", strings.Repeat("a", 32)), "flag provided but not defined: -about-alert-id"},
 		{review("abc1234", "approve", ""), `commit ID "abc1234" must be a full Git commit ID`},
 		{review(commit, "approve", "info"), "approve takes no alert severity"},
 		{review(commit, "needs_a_person", ""), "--alert-severity is required with needs_a_person"},
@@ -110,6 +113,8 @@ func TestAgentRequestCommandArgumentChecks(t *testing.T) {
 		{withDiagnosis(reportFile("largest.md", MaximumMarkdownFileSize)), "cannot reach"},
 		{review(commit, "approve", ""), "cannot reach"},
 		{review(commit, "needs_a_person", "sos"), "cannot reach"},
+		{[]string{"report", "--alert-severity", "warn", "--report-file", report, "--about-alert-id", strings.Repeat("a", 32), "--about-alert-id", strings.Repeat("b", 32)}, "cannot reach"},
+		{append(playbook("playbooks/deploy.yml", "production"), "--about-alert-id", strings.Repeat("0", 32)), "cannot reach"},
 	} {
 		code, _, stderr := runRequestCommand(test.args...)
 		if code != 4 || !strings.Contains(stderr, test.want) {
@@ -196,13 +201,13 @@ func (run *fakeRun) nextEvents(t *testing.T, names ...string) map[string]Event {
 func TestSandboxRelaysAReportAndRefusesPlaybooksWithoutARepository(t *testing.T) {
 	script := codexSession + `
 printf '# Disk full on app002\n\nFreed 4 GB.\n' > "$HOME/report.md"
-` + requestScript(t, "report", `report --alert-severity warn --report-file "$HOME/report.md"`) + `
+` + requestScript(t, "report", `report --alert-severity warn --report-file "$HOME/report.md" --about-alert-id `+strings.Repeat("a", 32)+` --about-alert-id `+strings.Repeat("b", 32)) + `
 ` + requestScript(t, "playbook", `request-playbook-run --playbook playbooks/deploy.yml --inventory production --diagnosis-file "$HOME/report.md"`) + `
 printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}' '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'`
 	run := startFakeRun(t, "codex", script, testRequest("codex"))
 	_ = run.next(t)
 	report := run.next(t)
-	if report.Event != "report" || report.AlertSeverity != "warn" || report.ReportText != "# Disk full on app002\n\nFreed 4 GB.\n" || CheckRequestID(report.RequestID) != nil {
+	if report.Event != "report" || report.AlertSeverity != "warn" || report.ReportText != "# Disk full on app002\n\nFreed 4 GB.\n" || CheckRequestID(report.RequestID) != nil || strings.Join(report.AboutAlertIDs, ",") != strings.Repeat("a", 32)+","+strings.Repeat("b", 32) {
 		t.Fatalf("report: %+v", report)
 	}
 	answerRequest(t, run, Answer{RequestID: report.RequestID, Outcome: ReportRecorded, Message: "MMHotline recorded your report at alert severity warn."})

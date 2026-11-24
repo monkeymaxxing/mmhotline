@@ -506,7 +506,7 @@ has the inventory address `203.0.113.11` and the private address
      listed_hosts: []
      software_review_interval_hours: off
      sos_waits_for_the_agent_minutes: 3
-     warn_waits_for_the_agent_minutes: 3
+     warn_waits_for_the_agent_minutes: 15
      sos_waits_for_a_server_replacement_minutes: 10
 
    rules_for_running_agent_playbooks:
@@ -548,20 +548,25 @@ has the inventory address `203.0.113.11` and the private address
    - `sos_waits_for_the_agent_minutes`: 0 to 15 minutes an SOS waits for the
      agent before MMHotline wakes the person on call. 0 wakes the person at
      once while the agent still looks.
-   - `warn_waits_for_the_agent_minutes`: 0 to 15 minutes MMHotline holds a
-     warning that starts a triage session. With 3, a problem the agent fixes
-     reaches people as one message, the agent's report. Leave it out for 0,
-     which holds nothing.
+   - `warn_waits_for_the_agent_minutes`: 0 to 30 minutes MMHotline holds a
+     warning while the triage agent looks into it, so a problem the agent
+     fixes reaches people as one message, the agent's report. Left out, it
+     is 15. 0 holds nothing.
 
-     **ANY REPORT FROM THE AGENT CANCELS THE HELD WARNING, EVEN AN `info`
-     REPORT THAT SAYS "ALL FINE".**
+     **A REPORT THAT NAMES THE WARNING CANCELS IT, EVEN AN `info` REPORT
+     THAT SAYS "ALL FINE".**
 
      People then get only the agent's report. So text in a log that
      misleads the agent into reporting "all fine" also keeps the warning
-     from people. An SOS is not held this way: it reaches the person on
+     from people. A warning that no report names reaches people when the
+     agent's run ends, or at the end of the wait. An SOS is not held this way: it reaches the person on
      call when its own wait ends.
    - `sos_waits_for_a_server_replacement_minutes`: 0 to 60 minutes longer
      an SOS waits once the agent starts replacing a server.
+   - `send_a_message_when_the_agent_starts_looking`: optional, `false` when
+     left out. `true` sends the person on call a quiet message when the
+     agent starts on a new triage session. The dashboard shows the agent at
+     work either way.
    - `rules_for_running_agent_playbooks`: one entry for each inventory, as
      [Decide what the triage agent may do](decide-what-the-triage-agent-may-do.md)
      says.
