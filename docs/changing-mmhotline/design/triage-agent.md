@@ -2321,8 +2321,8 @@ Barbara Example for this triage session", and its page says the same. The
 time to claim runs as usual, and an SOS still unclaimed then escalates to
 the backup, or wakes again where there is no backup, so it is never left
 unseen. Before then, the events that end a wait wake its people at once, as
-for a waiting SOS: the agent reports at sos or cannot help, or a person
-takes the session over. When the earlier wake failed to send or has an unknown outcome, or
+for a waiting SOS: the agent reports at sos about it or covering no alert,
+or cannot help, or a person takes the session over. When the earlier wake failed to send or has an unknown outcome, or
 the earlier incident is resolved, the wake may have reached nobody, so the
 new SOS waits and wakes as any other: a rare second wake is better than a
 dropped SOS. An SOS that joins a session that has woken nobody yet waits as

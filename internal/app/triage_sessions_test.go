@@ -1178,7 +1178,9 @@ func TestSOSJoiningASessionThatAlreadyWokeSomeone(t *testing.T) {
 		if n := r.emergencies(second.IncidentID, fakesendingservices.PushoverUserKey); n != 0 {
 			t.Fatalf("the second SOS woke the person on call %d times on arrival", n)
 		}
-		report(t, run, json.NewDecoder(run.connection), "0000000000000001", "sos", "# db001 needs a person\n\nThe disk is failing.\n")
+		// The run that carries the second SOS reports about it.
+		next := (&heldWarnRig{r}).resumedRun(t, run)
+		report(t, next, json.NewDecoder(next.connection), "0000000000000001", "sos", "# app001 needs a person\n\nThe web service does not start.\n")
 		r.at(t, 5*time.Minute+30*time.Second)
 		if n := r.emergencies(second.IncidentID, fakesendingservices.PushoverUserKey); n != 1 {
 			t.Fatalf("the report at sos woke the person on call %d times about the second SOS; want once", n)
