@@ -1124,11 +1124,13 @@ The 10,000 pending deliveries have three limits:
   refuses them, because their incident is already accepted. A new SOS from
   an alert source at its share is refused with `429`. MMHotline then opens
   its SOS about the refusal ([intake](ingestion.md#alert-intake)).
-  The share counts the alert source's other alerts' deliveries, not the
-  new SOS's own: one SOS with more SOS subscriptions than the share is
-  accepted and reaches all of them. Refused, it would be refused again on
-  every retry and never delivered. One SOS stays bounded by the team's
-  contact methods and the 10,000 limit.
+  The share counts the new SOS's own deliveries too, but never refuses
+  while no other alert's SOS delivery from the alert source waits: one
+  SOS with more SOS subscriptions than the share is then accepted and
+  reaches all of them. Refused, it would be refused again on every retry
+  and never delivered. It stays bounded by the team's contact methods and
+  the 10,000 limit, and a retry of a refused SOS goes through once the
+  earlier alerts' deliveries have gone out.
 - MMHotline's own SOS is never refused by these limits. This SOS says that
   an alert source stopped checking in, or that MMHotline refuses an alert
   source's SOS alerts. A full queue is exactly when people need it.

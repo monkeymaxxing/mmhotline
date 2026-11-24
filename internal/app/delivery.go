@@ -118,19 +118,22 @@ func checkPendingDeliveryLimits(ctx context.Context, tx *sql.Tx, d Delivery) err
 	// is for an incident already accepted, so it counts but is never
 	// refused. MMHotline's other SOS alerts, such as the triage agent's,
 	// are not from an alert source and keep only the installation limit.
-	// The share counts the alert source's other alerts' deliveries, not this
-	// alert's own: it stops a flood of SOS alerts, and one SOS with more
+	// The share counts all the alert source's waiting SOS deliveries,
+	// with this alert's own. When the alert source has no other alert's
+	// SOS delivery waiting, the share never refuses: one SOS with more
 	// subscriptions than the share must still reach all of them, or it
-	// would be refused whole on every retry and never delivered. One SOS
-	// stays bounded by the team's contact methods and the installation
-	// limit.
+	// would be refused whole on every retry and never delivered. It stays
+	// bounded by the team's contact methods and the installation limit. A
+	// flood of SOS alerts still stops at the share, and a retry goes
+	// through once the earlier alerts' deliveries have gone out.
 	if !sos || d.Purpose != "subscribed_alert" || sourceID == "" || sourceID == "system" {
 		return nil
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM deliveries d JOIN alerts a ON a.id=d.alert_id WHERE a.source_id=? AND d.alert_id!=? AND (d.severity='sos' OR d.purpose='sos_escalation') AND (d.state='sending' OR `+pendingDelivery+`)`, sourceID, d.AlertID).Scan(&count); err != nil {
+	var others int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(d.alert_id!=?),0) FROM deliveries d JOIN alerts a ON a.id=d.alert_id WHERE a.source_id=? AND (d.severity='sos' OR d.purpose='sos_escalation') AND (d.state='sending' OR `+pendingDelivery+`)`, d.AlertID, sourceID).Scan(&count, &others); err != nil {
 		return err
 	}
-	if count >= maxPendingSOSDeliveriesPerAlertSource {
+	if others > 0 && count >= maxPendingSOSDeliveriesPerAlertSource {
 		return errAlertSourcePendingSOSFull
 	}
 	return nil

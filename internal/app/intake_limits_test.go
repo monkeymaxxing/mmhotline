@@ -446,3 +446,31 @@ func TestAnSOSWithMoreSubscriptionsThanTheAlertSourcesShareIsAccepted(t *testing
 		t.Fatalf("a second SOS over the share: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// An alert source just under its share cannot add a large SOS on top: the
+// share counts the new SOS's own deliveries when other alerts' deliveries
+// of the alert source still wait, so one alert source cannot take the SOS
+// reserve other alert sources need.
+func TestAnSOSCannotTakeAnAlertSourcePastItsShareOnTopOfEarlierOnes(t *testing.T) {
+	t.Parallel()
+	a, p, s := alertFixture(t)
+	deliveryTestClock(a)
+	member, err := a.CurrentMember(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := savedEmail(t, a, p, true)
+	fillPendingDeliveries(t, a, c, maxPendingSOSDeliveriesPerAlertSource-50, s.Source.ID)
+	for range 100 {
+		id := NewID()
+		if _, err := a.Store.db.Exec(`INSERT INTO contact_methods(id,member_id,contact_method_type,settings_json,sent_to,revision,send_while_unavailable_or_muted,deleted) VALUES(?,?,'email','{}','responder@example.test',1,1,0)`, id, member.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.Store.db.Exec(`INSERT INTO contact_method_subscriptions(contact_method_id,severity) VALUES(?,'sos')`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if w := intakeHTTP(a, p, s, `{"sender_alert_id":"on-top","sender_incident_key":"db04","severity":"sos","title":"db04 stopped answering","message":""}`, a.Now()); w.Code != 429 {
+		t.Fatalf("an SOS that would take the alert source past its share: %d %s", w.Code, w.Body.String())
+	}
+}
