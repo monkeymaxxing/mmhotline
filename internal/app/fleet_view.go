@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -32,6 +33,30 @@ const fleetViewSizeLimit = 64 << 20
 // other field.
 type fleetView struct {
 	Nodes []fleetViewNode `json:"nodes"`
+	// SetAsideFindingCount counts the findings below sos that the fleet
+	// hub sets aside after an investigation, on NodesWithSetAsideFindings
+	// servers (MMWatchdog 0.2.0 and later; older ones leave them out, which
+	// reads as none). Such a finding leaves its server's exit code and
+	// attention list, so the dashboard shows the count on a line of its
+	// own, as MMWatchdog's fleet view does, rather than not at all.
+	SetAsideFindingCount      int `json:"set_aside_finding_count"`
+	NodesWithSetAsideFindings int `json:"nodes_with_set_aside_findings"`
+}
+
+// setAsideLine is the servers part's line about set-aside findings, as
+// "Set aside after an investigation: 1 finding on 5000 servers", or "".
+func (view fleetView) setAsideLine() string {
+	if view.SetAsideFindingCount == 0 {
+		return ""
+	}
+	return "Set aside after an investigation: " + countedNoun(view.SetAsideFindingCount, "finding", "findings") + " on " + countedNoun(view.NodesWithSetAsideFindings, "server", "servers") + ". sudo mmwatchdog fleet set-aside-findings on the fleet hub lists them."
+}
+
+func countedNoun(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return strconv.Itoa(n) + " " + many
 }
 
 type fleetViewNode struct {

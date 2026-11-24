@@ -41,8 +41,11 @@ const systemPanelsReadEvery = 10 * time.Second
 type systemPanels struct {
 	ServersNeedingAttention, HealthyServers []fleetServer
 	ServersUnavailable                      unavailablePart
-	Changes                                 []changeView
-	ChangesUnavailable                      unavailablePart
+	// ServersSetAside is the line about the findings the fleet hub sets
+	// aside, or "" (fleetView.setAsideLine).
+	ServersSetAside    string
+	Changes            []changeView
+	ChangesUnavailable unavailablePart
 	// ChecklistItems are the setup items that need a person, of
 	// ChecklistTotal setup items. ChecklistLater is every item for later,
 	// when it happens, such as a drill or a new team member, which is never
@@ -178,28 +181,28 @@ func (a *App) readSystemPanels(ctx context.Context) systemPanels {
 	// Every viewer shares this read, so one viewer leaving must not cut it short.
 	ctx = context.WithoutCancel(ctx)
 	var panels systemPanels
-	panels.ServersNeedingAttention, panels.HealthyServers, panels.ServersUnavailable = a.readServers(ctx)
+	panels.ServersNeedingAttention, panels.HealthyServers, panels.ServersSetAside, panels.ServersUnavailable = a.readServers(ctx)
 	a.readSystemsRepositoryPanels(ctx, now, &panels)
 	cache.readAt, cache.panels = now, panels
 	return panels
 }
 
-func (a *App) readServers(ctx context.Context) (needAttention, healthy []fleetServer, unavailable unavailablePart) {
+func (a *App) readServers(ctx context.Context) (needAttention, healthy []fleetServer, setAside string, unavailable unavailablePart) {
 	if len(a.fleetViewCommand()) == 0 {
-		return nil, nil, unavailablePart{Reason: "The settings file has no fleet_view_command, so MMHotline shows no servers."}
+		return nil, nil, "", unavailablePart{Reason: "The settings file has no fleet_view_command, so MMHotline shows no servers."}
 	}
 	if a.FleetViewSocket == "" {
-		return nil, nil, unavailablePart{Reason: "MMHotline cannot show the servers: mmhotline serve was started without --fleet-view-socket."}
+		return nil, nil, "", unavailablePart{Reason: "MMHotline cannot show the servers: mmhotline serve was started without --fleet-view-socket."}
 	}
 	view, err := readFleetView(ctx, a.FleetViewSocket)
 	if err != nil {
-		return nil, nil, unavailablePart{Reason: "MMHotline cannot show the servers.", Detail: err.Error() + "."}
+		return nil, nil, "", unavailablePart{Reason: "MMHotline cannot show the servers.", Detail: err.Error() + "."}
 	}
 	if len(view.Nodes) == 0 {
-		return nil, nil, unavailablePart{Reason: "The fleet view lists no servers yet."}
+		return nil, nil, "", unavailablePart{Reason: "The fleet view lists no servers yet."}
 	}
 	needAttention, healthy = fleetServers(view)
-	return needAttention, healthy, unavailablePart{}
+	return needAttention, healthy, view.setAsideLine(), unavailablePart{}
 }
 
 // readSystemsRepositoryPanels reads what changed and the checklist from the

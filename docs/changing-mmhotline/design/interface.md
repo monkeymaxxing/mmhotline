@@ -353,6 +353,12 @@ The heading counts all servers and servers needing attention:
 "3 of 5 need attention", or "All 5 healthy" in green. Problems appear first
 as red tiles, while healthy servers use small chips below the tiles.
 
+When the fleet hub sets findings aside after an investigation, one faint
+line follows the chips: "Set aside after an investigation: 1 finding on 2
+servers. sudo mmwatchdog fleet set-aside-findings on the fleet hub lists
+them." Such a finding no longer makes its server need attention, so the
+line keeps it in sight, as MMWatchdog's own fleet view does.
+
 Groups are written in plain words: `app_servers` reads "App servers". The
 fleet view's JSON calls servers nodes and groups node groups; the page says
 server and group, the words the team's systems repository uses. MMHotline
@@ -458,6 +464,7 @@ unlisted JSON field.
 | `nodes[].this_node_is_in_node_groups` | The groups shown with the server, in plain words; empty or missing shows none |
 | `nodes[].last_report_received_at` | The time in a silent server's line |
 | `nodes[].report.summary.attention[]` | Each check that needs attention: `check`, `finding` (a failed unit, when present), `state`, `since`, and `message` |
+| `set_aside_finding_count`, `nodes_with_set_aside_findings` | The set-aside line, when the count is above 0; missing (MMWatchdog before 0.2.0) shows none |
 
 The command's exit status is ignored: a fleet view exits nonzero while a
 server fails, and still prints the whole view. Output that is empty, not

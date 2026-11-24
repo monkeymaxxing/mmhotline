@@ -233,6 +233,15 @@ func TestDashboardShowsServersChangesAndChecklist(t *testing.T) {
 	if servers := liveSectionText(page, "system-servers"); fleet.connections.Load() != 2 || servers != "Servers Healthy app001 App servers" {
 		t.Fatalf("a page 10 seconds later reads the fleet view again (%d reads): %q", fleet.connections.Load(), servers)
 	}
+	// MMWatchdog 0.2.0 takes a finding the fleet hub sets aside out of the
+	// server's exit code and attention list, and counts it apart: the
+	// dashboard shows the count on its own line rather than not at all.
+	now = now.Add(10 * time.Second)
+	fleet.answer.Store([]byte(`{"set_aside_finding_count": 1, "nodes_with_set_aside_findings": 2, "nodes": [{"name": "app001", "state": "reporting", "exit_code": 0, "this_node_is_in_node_groups": ["app_servers"]}]}`))
+	page = dashboardPage(t, a, person.Principal.SignInEmailAddress)
+	if servers := liveSectionText(page, "system-servers"); servers != "Servers Healthy app001 App servers Set aside after an investigation: 1 finding on 2 servers. sudo mmwatchdog fleet set-aside-findings on the fleet hub lists them." {
+		t.Fatalf("the set-aside findings line: %q", servers)
+	}
 }
 
 // The checklist's setup items count toward done and give the next step. The
