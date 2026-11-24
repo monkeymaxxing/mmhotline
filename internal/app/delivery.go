@@ -83,7 +83,7 @@ func insertDelivery(ctx context.Context, tx *sql.Tx, d Delivery) error {
 func checkPendingDeliveryLimits(ctx context.Context, tx *sql.Tx, d Delivery) error {
 	sos := d.Severity == "sos" || d.Purpose == "sos_escalation"
 	var sourceID, actor string
-	if sos && d.AlertID != "" {
+	if d.AlertID != "" {
 		err := tx.QueryRowContext(ctx, `SELECT source_id,actor FROM alerts WHERE id=?`, d.AlertID).Scan(&sourceID, &actor)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
@@ -94,7 +94,13 @@ func checkPendingDeliveryLimits(ctx context.Context, tx *sql.Tx, d Delivery) err
 	// when that matters most, so no limit refuses it. It stays bounded: at
 	// most one is unresolved per alert source, and while a message to the
 	// person who claimed it waits, a new one adds no other (admitAlert).
-	if sourceID == "system" && actor == "system" {
+	if sos && sourceID == "system" && actor == "system" {
+		return nil
+	}
+	// The triage agent's run limit's messages go in the transaction that
+	// wakes the SOS the limit sends straight to people, which a refusal
+	// would roll back. They stay few (runLimitActor).
+	if sourceID == "system" && (actor == runLimitActor || actor == runLimitPlaybookRunResultActor) {
 		return nil
 	}
 	var count int

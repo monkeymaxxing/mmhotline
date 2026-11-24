@@ -1887,6 +1887,12 @@ holds until no counted run is left. The agent stays off at 49.
 `heads_up_sent`, or `limit_holds`, with `run_limit_notice_changed_at`. The
 background loop's turn for the run limit, before the session's turn, moves
 it and sends each message in the same transaction, so each goes once.
+That transaction also releases the held warns and wakes the SOS that the
+limit sends straight to people, so a full delivery queue does not refuse
+the limit's own messages or a playbook run's result sent at the limit: a
+refusal would roll back those marks and wakes. The messages stay few: each
+needs counted runs to move the notice, or a playbook run an agent's run
+asked for.
 
 While the limit holds, this is a path of its own, not
 [the agent cannot run](#when-the-agent-cannot-run), which ends the session
@@ -1928,7 +1934,9 @@ and stops the active run:
 - **A commit review cannot start**, so each waiting commit gets
   MMHotline's warning, as today, with "The triage agent did not review the
   commit: the triage agent reached its run limit
-  (triage_agent.most_runs_in_24_hours)."
+  (triage_agent.most_runs_in_24_hours)." A commit given to a review run
+  that is still running, such as the review that took the last run, waits
+  for that run's decision instead.
 - **A person's take-over** still gets its hand-over run, which is not
   counted.
 - **Not changed, deliberately:** past the limit a warn meets the ordinary
@@ -2066,7 +2074,9 @@ and is for administrators, as `show` is:
   them, as Claude Code does;
 - how often the limit was reached: a count of MMHotline's own warnings that
   it was, which are alerts from MMHotline with the actor
-  `triage_agent_run_limit`;
+  `triage_agent_run_limit`. A playbook run's result sent to a person at the
+  limit has the actor `triage_agent_run_limit_playbook_run_result`, so it
+  is not counted;
 - the alerts the limit sent straight to people: a count of the
   `passed_over_for_the_run_limit` marks;
 - the warnings held for the agent by how their hold ended: taken over,

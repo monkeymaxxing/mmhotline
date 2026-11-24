@@ -1127,6 +1127,11 @@ The 10,000 pending deliveries have three limits:
 - MMHotline's own SOS is never refused by these limits. This SOS says that
   an alert source stopped checking in, or that MMHotline refuses an alert
   source's SOS alerts. A full queue is exactly when people need it.
+- MMHotline's messages about the triage agent's run limit, and a playbook
+  run's result it sends to a person at the limit, are never refused by
+  these limits either. They go in the transaction that wakes the SOS the
+  limit sends straight to people, and a refusal would roll the wake back
+  ([the run limit](triage-agent.md#once-the-limit-holds)).
 
 Why these numbers:
 
@@ -1138,6 +1143,9 @@ Why these numbers:
   unresolved per alert source. When someone has claimed the incident, a
   new refusal adds no message to that person while an earlier one still
   waits to be sent. The incident history still records each refusal.
+- The run limit's messages stay bounded too: each needs counted agent
+  runs to change the limit's state, or a playbook run that an agent's run
+  asked for.
   So a sender refused again and again cannot fill the queue with MMHotline's
   messages.
 

@@ -24,7 +24,8 @@ import (
 // triage_agent_setup.run_limit_notice, with run_limit_notice_changed_at.
 // It is none, heads_up_sent (the 80% heads-up went out), or limit_holds.
 // DriveTriageAgentRunLimit moves it at each background visit, and sends
-// each message in the transaction that moves it, so each goes once:
+// each message in the transaction that moves it, so each goes once; a full
+// delivery queue does not refuse these messages (runLimitActor):
 //
 //	none or heads_up_sent  -> limit_holds    the count reached the limit
 //	none                   -> heads_up_sent  the count reached 80% (limits of 5 and more)
@@ -370,9 +371,19 @@ func nextRunLimitDeadline(ctx context.Context, tx *sql.Tx, now time.Time) (time.
 	return state.agentRunsAgainAt(), nil
 }
 
-// runLimitActor is the actor of MMHotline's own messages about the limit,
-// which the weekly numbers count.
-const runLimitActor = "triage_agent_run_limit"
+// The actors of MMHotline's own messages at the limit. The weekly numbers
+// count the limit's warnings by runLimitActor, so a playbook run's result
+// sent to a person has an actor of its own. Neither waits for room in the
+// delivery queue (checkPendingDeliveryLimits): each goes in the transaction
+// that moves the notice or marks the result, which also marks the alerts
+// and wakes the SOS that the limit sends straight to people, and a full
+// queue must not roll those back. They stay few: a warning, a heads-up, or
+// "can run again" each needs counted runs to move the notice, and each
+// result needs a playbook run that an agent's run asked for.
+const (
+	runLimitActor                  = "triage_agent_run_limit"
+	runLimitPlaybookRunResultActor = "triage_agent_run_limit_playbook_run_result"
+)
 
 // The words of the messages about the limit: the promise comes first in
 // every one.
@@ -596,7 +607,7 @@ func (a *App) sendPlaybookRunResultsToAPersonForTheRunLimit(ctx context.Context,
 			message += "\n\nThe problem the playbook run was for:\n- " + strings.Join(problem, "\n- ")
 		}
 		title := truncateRunes("Result of "+playbookInInventoryText(r.Playbook, r.Inventory)+": "+approvalStateLabel(r.State), 256)
-		if err = RecordSystemAlert(ctx, tx, runLimitActor, r.IncidentID, severity, title, truncateRunes(message, maximumAlertMessageBytes/4), now); err != nil {
+		if err = RecordSystemAlert(ctx, tx, runLimitPlaybookRunResultActor, r.IncidentID, severity, title, truncateRunes(message, maximumAlertMessageBytes/4), now); err != nil {
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE triage_agent_playbook_runs_waiting_for_a_person SET result_for_the_agent=? WHERE id=?`, resultForTheAgentCouldNotReachTheAgent, r.ID); err != nil {

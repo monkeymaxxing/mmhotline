@@ -472,7 +472,7 @@ func TestRunLimitSendsAFailedFixAfterRun50ToAPersonOnce(t *testing.T) {
 	driveRunLimit(t, r.a)
 	r.drive(t)
 	r.noRunStarts(t)
-	rows, err := r.a.Store.db.Query(`SELECT severity,title,message,incident_id FROM alerts WHERE actor=? AND title LIKE 'Result of %'`, runLimitActor)
+	rows, err := r.a.Store.db.Query(`SELECT severity,title,message,incident_id FROM alerts WHERE actor=?`, runLimitPlaybookRunResultActor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,6 +489,11 @@ func TestRunLimitSendsAFailedFixAfterRun50ToAPersonOnce(t *testing.T) {
 	want := "warn | Result of " + rebootPlaybook + " in the inventory “production”: Ran and failed | " + sos.IncidentID + " | The triage agent will not look at this result: its run limit was reached. Handle it yourself.\n\n" + record.result + "\n\nThe problem the playbook run was for:\n- app002 stopped answering\n  " + r.a.WebURL + "/alerts/" + sos.ID
 	if len(results) != 1 || results[0] != want || record.resultForTheAgent != resultForTheAgentCouldNotReachTheAgent {
 		t.Fatalf("results sent to a person:\n%q\nwant:\n%q\nrecord %+v", results, want, record)
+	}
+	// The result, a warn, is not the limit being reached a second time.
+	usage, err := r.a.TriageAgentUsage(context.Background(), r.p, r.a.Now().Add(-7*24*time.Hour))
+	if err != nil || usage.TimesTheRunLimitWasReached != 1 {
+		t.Fatalf("the run limit was reached %d times; want 1 (%v)", usage.TimesTheRunLimitWasReached, err)
 	}
 }
 
@@ -748,6 +753,47 @@ func TestRunLimitSkipsTheScheduledReview(t *testing.T) {
 	}
 	if text := view.Text(); !strings.Contains(text, "Scheduled software review skipped at 2026-09-29T12:00:00Z: the triage agent's run limit had been reached.") {
 		t.Fatalf("show: %s", text)
+	}
+}
+
+// The limit is reached while the ordinary delivery queue is full: the limit
+// still holds, the SOS that waits for the agent still wakes the person on
+// call, and the limit's warning goes out once, as MMHotline's own SOS does
+// with a full queue (checkPendingDeliveryLimits).
+func TestRunLimitHoldsAndWakesTheSOSWithAFullDeliveryQueue(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	r.addEmail(t)
+	forgetEarlierRuns(t, r.a)
+	// The earlier runs' messages go out first, so the limit's messages
+	// cannot join one still waiting.
+	setRunLimit(t, r.a, "no_limit")
+	fillCountedRuns(t, r.a, r.source, 50, r.a.Now().Add(-23*time.Hour))
+	r.advance(2 * time.Minute)
+	backgroundRounds(t, r.a)
+	setRunLimit(t, r.a, "50")
+	sos := r.sosArrives(t, "The server db02 stopped answering", "db02")
+	if step := countRows(t, r.a, `SELECT count(*) FROM incidents WHERE id=? AND step=?`, sos.IncidentID, triageAgentStep); step != 1 {
+		t.Fatal("the SOS does not wait for the agent")
+	}
+	// Room for no ordinary delivery, with deliveries due long after the
+	// test.
+	if _, err := r.a.Store.db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
+INSERT INTO deliveries(id,notification_key,contact_method_id,contact_method_revision,member_id,contact_method_type,sent_to,purpose,severity,subject,message,state,created_at,next_attempt)
+SELECT 'filler'||i,'filler:'||i,id,1,member_id,'email','x','subscribed_alert','info','s','m','queued',?,? FROM n, (SELECT id,member_id FROM contact_methods WHERE contact_method_type='email')`,
+		maxPendingDeliveries-sosReservedPendingDeliveries-countRows(t, r.a, `SELECT count(*) FROM deliveries WHERE state='sending' OR `+pendingDelivery), r.a.Now().Unix(), r.a.Now().Add(24*time.Hour).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	driveRunLimit(t, r.a)
+	if state := runLimitStateOf(t, r.a); state.notice != runLimitNoticeLimitHolds {
+		t.Fatalf("notice %q; want the limit to hold", state.notice)
+	}
+	if countRows(t, r.a, `SELECT count(*) FROM incidents WHERE id=? AND step=?`, sos.IncidentID, triageAgentStep) != 0 || countRows(t, r.a, `SELECT count(*) FROM deliveries WHERE incident_id=? AND purpose='sos_escalation'`, sos.IncidentID) == 0 {
+		t.Fatal("the full queue held up the SOS's wake")
+	}
+	driveRunLimit(t, r.a)
+	if messages := runLimitMessages(t, r.a); len(messages) != 1 || !strings.HasPrefix(messages[0], "warn | Agent run limit reached.") || countRows(t, r.a, `SELECT count(*) FROM deliveries d JOIN alerts e ON e.id=d.alert_id WHERE e.actor=?`, runLimitActor) == 0 {
+		t.Fatalf("messages about the limit: %q", messages)
 	}
 }
 
