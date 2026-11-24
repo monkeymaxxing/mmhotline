@@ -505,19 +505,25 @@ func queueSOSNotificationAfterItsWait(ctx context.Context, tx *sql.Tx, incidentI
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE incidents SET subscribed_alert_notification_waits_for_the_wake=0 WHERE id=?`, incidentID); err != nil {
+	// The flag goes once everything is queued, so a step stopped by a full
+	// delivery queue, which keeps what it queued, goes on at a later visit.
+	queued := func() error {
+		_, err := tx.ExecContext(ctx, `UPDATE incidents SET subscribed_alert_notification_waits_for_the_wake=0 WHERE id=?`, incidentID)
 		return err
 	}
 	if status == "resolved" && step == triageAgentStep && claimedAt == 0 {
-		return nil
+		return queued()
 	}
 	var sourceID, title, message, notes string
 	var happened int64
 	if err = tx.QueryRowContext(ctx, `SELECT source_id,title,message,notes,happened_at FROM alerts WHERE id=?`, alertID).Scan(&sourceID, &title, &message, &notes, &happened); err != nil {
 		return err
 	}
-	if err = QueueNotification(ctx, tx, Notification{Key: alertID, AlertID: alertID, IncidentID: incidentID, Severity: "sos", Title: title, Message: message, Notes: notes, Purpose: notificationPurpose(sourceID), HappenedAt: deadlineTime(happened), At: now}); err != nil || status != "resolved" {
+	if err = QueueNotification(ctx, tx, Notification{Key: alertID, AlertID: alertID, IncidentID: incidentID, Severity: "sos", Title: title, Message: message, Notes: notes, Purpose: notificationPurpose(sourceID), HappenedAt: deadlineTime(happened), At: now}); err != nil {
 		return err
+	}
+	if status != "resolved" {
+		return queued()
 	}
 	// It resolved after the wait was over and before this step: its
 	// resolved message went only to contact methods told about it then, so
@@ -530,7 +536,10 @@ func queueSOSNotificationAfterItsWait(ctx context.Context, tx *sql.Tx, incidentI
 	if err != nil {
 		return err
 	}
-	return QueueNotification(ctx, tx, Notification{Key: "resolved-after-its-wait:" + incidentID, AlertID: alertID, IncidentID: incidentID, Severity: "resolved-sos", Title: resolvedTitle, Message: resolvedMessage, Purpose: "subscribed_alert", At: now})
+	if err = QueueNotification(ctx, tx, Notification{Key: "resolved-after-its-wait:" + incidentID, AlertID: alertID, IncidentID: incidentID, Severity: "resolved-sos", Title: resolvedTitle, Message: resolvedMessage, Purpose: "subscribed_alert", At: now}); err != nil {
+		return err
+	}
+	return queued()
 }
 
 // triageSessionAlreadyWoke returns an unresolved incident of the open triage

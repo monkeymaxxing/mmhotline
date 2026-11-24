@@ -246,7 +246,8 @@ const releasedAlertsPerVisit = 100
 // transactions that decide a release, and queues each alert in its own
 // transaction. When the delivery queue is full, the alert stays marked and
 // the step tries again at a later visit, which the deliveries that free room
-// bring; nothing else rolls back.
+// bring; nothing else rolls back. An SOS's notification keeps the part
+// queued before the queue was full, and the rest follows.
 func (a *App) DeliverReleasedHeldAlerts(ctx context.Context) error {
 	now := a.Now().UTC()
 	var warns, incidents []string
@@ -273,14 +274,25 @@ func (a *App) DeliverReleasedHeldAlerts(ctx context.Context) error {
 		}
 	}
 	for _, incidentID := range incidents {
-		err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error { return queueSOSNotificationAfterItsWait(ctx, tx, incidentID, now) })
-		if errors.Is(err, errPendingDeliveryFull) {
-			break
-		}
-		// The alert source's share of SOS deliveries is full: another
-		// source's SOS may still fit.
-		if err != nil && !errors.Is(err, errAlertSourcePendingSOSFull) {
+		// A full queue keeps the deliveries queued before it: an SOS can
+		// have more contact methods subscribed than the alert source's
+		// share of SOS deliveries, so it goes in parts as the queue drains,
+		// each contact method once (insertDelivery).
+		var full error
+		err := a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
+			err := queueSOSNotificationAfterItsWait(ctx, tx, incidentID, now)
+			if errors.Is(err, errPendingDeliveryFull) || errors.Is(err, errAlertSourcePendingSOSFull) {
+				full, err = err, nil
+			}
 			return err
+		})
+		if err != nil {
+			return err
+		}
+		// The alert source's share of SOS deliveries being full leaves
+		// room for another source's SOS.
+		if errors.Is(full, errPendingDeliveryFull) {
+			break
 		}
 	}
 	return nil

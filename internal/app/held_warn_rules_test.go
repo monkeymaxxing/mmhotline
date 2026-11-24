@@ -641,6 +641,46 @@ func TestHeldSOSEmailWaitsWithTheWakingStep(t *testing.T) {
 	})
 }
 
+// A held SOS's email to more contact methods than the alert source's share
+// of SOS deliveries goes out in parts as the queue drains, each contact
+// method once: the share never holds back all of it for good.
+func TestHeldSOSEmailToMoreThanTheAlertSourcesShare(t *testing.T) {
+	parallelStartingProcesses(t)
+	r := newHeldWarnRig(t, 15)
+	const emails = maxPendingSOSDeliveriesPerAlertSource + 50
+	for range emails {
+		r.addEmail(t)
+	}
+	sos := r.sosArrives(t, "The server db02 stopped answering", "db02")
+	r.runStarted(t)
+	// A few visits, not until the loop runs out of work: each visit tries
+	// one of the hundreds of emails.
+	r.advance(r.start.Add(5 * time.Minute).Sub(r.a.Now()))
+	for range 3 {
+		r.a.backgroundRound(context.Background(), func(err error) { t.Errorf("background work: %v", err) })
+	}
+	queued := func() (all, distinct int) {
+		all = countRows(t, r.a, `SELECT count(*) FROM deliveries WHERE incident_id=? AND contact_method_type='email' AND severity='sos'`, sos.IncidentID)
+		distinct = countRows(t, r.a, `SELECT count(DISTINCT contact_method_id) FROM deliveries WHERE incident_id=? AND contact_method_type='email' AND severity='sos'`, sos.IncidentID)
+		return all, distinct
+	}
+	if all, _ := queued(); all == 0 || all >= emails {
+		t.Fatalf("%d emails queued at the wake; want the part that fits the share", all)
+	}
+	for round := 0; round < 5; round++ {
+		// The sending service takes what waits.
+		if _, err := r.a.Store.db.Exec(`UPDATE deliveries SET state='delivered',attempts=1,next_attempt=0 WHERE incident_id=? AND contact_method_type='email'`, sos.IncidentID); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.a.DeliverReleasedHeldAlerts(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if all, distinct := queued(); all != emails || distinct != emails {
+		t.Fatalf("%d emails to %d contact methods; want one to each of %d", all, distinct, emails)
+	}
+}
+
 // A run carries only the alerts its prompt shows; the rest wait for the
 // next run. With 120 long alerts the first prompt shows some of them, and
 // the next run carries the next ones.

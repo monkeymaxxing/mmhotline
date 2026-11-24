@@ -2272,7 +2272,9 @@ sends its email and chat to nobody, as it wakes nobody. MMHotline queues
 them in a step of its own after the wake, not in the wake's transaction, so
 the alert source's share of SOS deliveries
 ([notifications](notifications.md)) can never undo a wake: with the share
-full, they wait for room, also across a restart. An SOS that resolves after
+full, those that fit go and the rest wait for room, each contact method's
+once, also across a restart, so a team with more contact methods subscribed
+to SOS than the share still gets them all. An SOS that resolves after
 its wait is over, before that step queues them, sends them followed by its
 resolved message: the resolve told only those who had heard of it then, and
 nobody is left with an SOS that never ends. An SOS that joins a session
