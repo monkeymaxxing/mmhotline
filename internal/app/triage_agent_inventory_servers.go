@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"mmhotline/internal/systemsrepository"
@@ -29,7 +28,8 @@ const inventoryServerSSHPort = 22
 // listInventoryServers runs mmx nodes for each inventory in MMHotline's copy,
 // replaces the listed inventory servers with the servers it printed, and
 // records with the run why any could not be listed; the run goes on without
-// them. It returns the servers for the agent's SSH settings.
+// them. It returns the servers for the agent's SSH settings, or nothing when
+// ctx ended, which the caller checks.
 func (a *App) listInventoryServers(ctx context.Context, runID string) []triageagent.InventoryServer {
 	directory := filepath.Join(a.Store.Dir, systemsrepository.DirectoryName)
 	type inventoryListing struct {
@@ -57,6 +57,11 @@ func (a *App) listInventoryServers(ctx context.Context, runID string) []triageag
 		}
 		return nil
 	})
+	// A run stopped while it waited for the copy's lock or listed the servers
+	// ends before it begins; its caller sees ctx end and keeps no listing.
+	if ctx.Err() != nil {
+		return nil
+	}
 	if err != nil {
 		notListed = append(notListed, err.Error())
 	}
@@ -64,6 +69,7 @@ func (a *App) listInventoryServers(ctx context.Context, runID string) []triageag
 	var servers []triageagent.InventoryServer
 	err = a.Store.WithTransaction(ctx, func(tx *sql.Tx) error {
 		servers = nil
+		seen := map[string]bool{}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM triage_agent_inventory_servers`); err != nil {
 			return err
 		}
@@ -72,7 +78,8 @@ func (a *App) listInventoryServers(ctx context.Context, runID string) []triageag
 				if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO triage_agent_inventory_servers(server_name,inventory) VALUES(?,?)`, server.ServerName, listing.inventory); err != nil {
 					return err
 				}
-				if !slices.ContainsFunc(servers, func(listed triageagent.InventoryServer) bool { return listed.ServerName == server.ServerName }) {
+				if !seen[server.ServerName] {
+					seen[server.ServerName] = true
 					servers = append(servers, server)
 				}
 			}

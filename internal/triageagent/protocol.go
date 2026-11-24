@@ -6,12 +6,21 @@ package triageagent
 import "mmhotline/internal/systemsrepository"
 
 // maximumLineSizeWithoutBundle bounds everything on one run socket line but a
-// systems repository bundle: the prompt, the credential, and the steps.
+// systems repository bundle and the run request's server list: the prompt,
+// the credential, and the steps.
 const maximumLineSizeWithoutBundle = 1 << 20
 
+// MaximumInventoryServersSize bounds the run request's inventory_servers, as
+// JSON, apart from the 1 MiB: at about 100 bytes a server, 1 MiB would stop
+// runs near 8,000 servers, while 16 MiB lists about 160,000. That is far
+// beyond the fleets MMHotline serves, and keeps the request line, which the
+// sandbox reads whole into memory, bounded.
+const MaximumInventoryServersSize = 16 << 20
+
 // MaximumLineSize bounds one JSON line on the run socket: 1 MiB for the rest
-// of the line, plus one systems repository bundle of at most 64 MiB in base64.
-const MaximumLineSize = maximumLineSizeWithoutBundle + (systemsrepository.MaximumBundleSize+2)/3*4
+// of the line, plus one systems repository bundle of at most 64 MiB in base64,
+// plus the server list of a run request.
+const MaximumLineSize = maximumLineSizeWithoutBundle + (systemsrepository.MaximumBundleSize+2)/3*4 + MaximumInventoryServersSize
 
 // The agent a run is for: docs/changing-mmhotline/design/triage-agent.md#the-review-agent.
 const (

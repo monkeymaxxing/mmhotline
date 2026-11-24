@@ -732,6 +732,47 @@ func TestSandboxInvalidRequests(t *testing.T) {
 	}
 }
 
+// The run request's server list has its own bound apart from the 1 MiB, so
+// a fleet of 10,000 servers fits a run request, and a list past the bound is
+// refused with a reason that names it.
+func TestSandboxRunRequestServerList(t *testing.T) {
+	servers := func(count int, name string) string {
+		listed := make([]InventoryServer, count)
+		for index := range listed {
+			listed[index] = InventoryServer{ServerName: fmt.Sprintf("%s%06d.production.eu-central.example.com", name, index), HostKeyAlias: fmt.Sprintf("10.%d.%d.%d", index>>16, (index>>8)&255, index&255)}
+		}
+		encoded, err := json.Marshal(listed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(encoded)
+	}
+	// Without a proxy token the request fails at the check after the size
+	// check, which proves the size check passed.
+	for _, test := range []struct {
+		name, servers, want string
+	}{
+		{"10,000 servers fit", servers(10000, "app"), "proxy_token must be 32 lowercase hexadecimal characters"},
+		{"a list past the bound", servers(MaximumInventoryServersSize/100, "a-long-server-name-for-the-bound-"), "inventory_servers exceeds 16 MiB"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// A prompt near the 1 MiB leaves no room there for the list.
+			line := `{"action":"start","prompt":"` + strings.Repeat("x", maximumLineSizeWithoutBundle-4096) + `","agent_role":"triage_agent","coding_agent":"codex","credential_type":"api_key","credential":"k","model":"opus","reasoning_effort":"high","inventory_servers":` + test.servers + "}\n"
+			var output strings.Builder
+			if err := RunInsideSandbox(context.Background(), strings.NewReader(line), &output, SandboxSettings{}); !errors.Is(err, ErrRunFailed) {
+				t.Fatalf("a refused request must return ErrRunFailed: %v", err)
+			}
+			var event Event
+			if err := json.Unmarshal([]byte(output.String()), &event); err != nil {
+				t.Fatal(err)
+			}
+			if event.Event != "failed" || !strings.Contains(event.Reason, test.want) {
+				t.Fatalf("event: %+v", event)
+			}
+		})
+	}
+}
+
 func TestProxyForwarder(t *testing.T) {
 	// A short socket path also fits macOS's Unix-domain socket path limit.
 	t.Setenv("TMPDIR", "/tmp")
