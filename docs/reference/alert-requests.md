@@ -413,7 +413,7 @@ never meets a `413`.
 | 1,000 new `info` and `warn` alerts per UTC hour, for the whole installation | `info`, `warn`, `resolved-info`, `resolved-warn`; a warn folded into an earlier one does not count | `429` |
 | 1,000 incidents not resolved | A new `sos` that would open an incident; an `sos` that joins an incident, and a `resolved-sos`, still pass | `429`, and MMHotline's own SOS |
 | 10,000 notifications waiting to be sent, of which `info` and `warn` may use 9,000 | Alerts that would queue more | `429`; for an `sos`, also MMHotline's own SOS |
-| 250 SOS notifications waiting to be sent, per alert source | A new `sos` from that source | `429`, and MMHotline's own SOS |
+| 250 SOS notifications of earlier alerts waiting to be sent, per alert source | A new `sos` from that source | `429`, and MMHotline's own SOS |
 | 12 check-ins a minute, per alert source | Check-ins | `429` |
 | 100 alert sources per installation | The settings file's `alert_sources`; `settings apply` also counts disabled sources | Refused by `settings check` and `settings apply` |
 

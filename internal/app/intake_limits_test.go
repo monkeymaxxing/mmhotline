@@ -411,3 +411,38 @@ func TestAlertSourceLimitPerTeam(t *testing.T) {
 		t.Fatalf("101st alert source: %v", err)
 	}
 }
+
+// The alert source's SOS share stops a flood of SOS alerts, not one SOS
+// with more subscriptions than the share: its own deliveries do not count
+// toward its share, so it is accepted and reaches every subscription.
+// Before, it was refused whole, on every retry.
+func TestAnSOSWithMoreSubscriptionsThanTheAlertSourcesShareIsAccepted(t *testing.T) {
+	t.Parallel()
+	a, p, s := alertFixture(t)
+	deliveryTestClock(a)
+	member, err := a.CurrentMember(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const emails = maxPendingSOSDeliveriesPerAlertSource + 50
+	for range emails {
+		id := NewID()
+		if _, err := a.Store.db.Exec(`INSERT INTO contact_methods(id,member_id,contact_method_type,settings_json,sent_to,revision,send_while_unavailable_or_muted,deleted) VALUES(?,?,'email','{}','responder@example.test',1,1,0)`, id, member.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.Store.db.Exec(`INSERT INTO contact_method_subscriptions(contact_method_id,severity) VALUES(?,'sos')`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if w := intakeHTTP(a, p, s, `{"sender_alert_id":"big-team","sender_incident_key":"db02","severity":"sos","title":"db02 stopped answering","message":""}`, a.Now()); w.Code != 200 {
+		t.Fatalf("one SOS to %d subscriptions: %d %s", emails, w.Code, w.Body.String())
+	}
+	if n := scalarTeam(t, a, `SELECT count(DISTINCT d.contact_method_id) FROM deliveries d JOIN alerts e ON e.id=d.alert_id WHERE e.title='db02 stopped answering' AND d.contact_method_type='email' AND d.purpose='subscribed_alert'`); n != emails {
+		t.Fatalf("the SOS's email went to %d contact methods; want %d", n, emails)
+	}
+	// A second SOS from the same alert source now meets the share, which the
+	// first one's waiting deliveries fill: the flood is still refused.
+	if w := intakeHTTP(a, p, s, `{"sender_alert_id":"flood","sender_incident_key":"db03","severity":"sos","title":"db03 stopped answering","message":""}`, a.Now()); w.Code != 429 {
+		t.Fatalf("a second SOS over the share: %d %s", w.Code, w.Body.String())
+	}
+}

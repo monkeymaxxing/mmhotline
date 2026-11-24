@@ -522,10 +522,15 @@ func TestHeldWarnReleaseWithAFullDeliveryQueue(t *testing.T) {
 	if err := r.a.Store.db.QueryRow(`SELECT id,member_id FROM contact_methods WHERE contact_method_type='email'`).Scan(&emailID, &memberID); err != nil {
 		t.Fatal(err)
 	}
+	// The share counts the alert source's other alerts' deliveries, so the
+	// SOS fillers go with another SOS of the same alert source.
+	if _, err := r.a.Store.db.Exec(`INSERT INTO alerts(id,source_id,sender_alert_id,actor,replay_key,incident_id,sender_incident_key,severity,title,message,notes,received_at) SELECT 'filler-sos',source_id,'','test','filler-sos','','','sos','Backlog','','',received_at FROM alerts WHERE id=?`, sos.ID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := r.a.Store.db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
 INSERT INTO deliveries(id,notification_key,alert_id,contact_method_id,contact_method_revision,member_id,contact_method_type,sent_to,purpose,severity,subject,message,state,created_at,next_attempt)
 SELECT 'filler'||i,'filler:'||i,CASE WHEN i<=? THEN ? ELSE '' END,?,1,?,'email','x','subscribed_alert',CASE WHEN i<=? THEN 'sos' ELSE 'info' END,'s','m','queued',?,? FROM n`,
-		maxPendingDeliveries-sosReservedPendingDeliveries, maxPendingSOSDeliveriesPerAlertSource, sos.ID, emailID, memberID, maxPendingSOSDeliveriesPerAlertSource, r.a.Now().Unix(), r.a.Now().Add(24*time.Hour).Unix()); err != nil {
+		maxPendingDeliveries-sosReservedPendingDeliveries, maxPendingSOSDeliveriesPerAlertSource, "filler-sos", emailID, memberID, maxPendingSOSDeliveriesPerAlertSource, r.a.Now().Unix(), r.a.Now().Add(24*time.Hour).Unix()); err != nil {
 		t.Fatal(err)
 	}
 	r.at(t, 5*time.Minute)
@@ -653,8 +658,8 @@ func TestHeldSOSEmailToMoreThanTheAlertSourcesShare(t *testing.T) {
 	}
 	sos := r.sosArrives(t, "The server db02 stopped answering", "db02")
 	r.runStarted(t)
-	// A few visits, not until the loop runs out of work: each visit tries
-	// one of the hundreds of emails.
+	// One SOS's own emails do not count toward its alert source's share,
+	// so all of them go once its wait is over.
 	r.advance(r.start.Add(5 * time.Minute).Sub(r.a.Now()))
 	for range 3 {
 		r.a.backgroundRound(context.Background(), func(err error) { t.Errorf("background work: %v", err) })
@@ -663,9 +668,6 @@ func TestHeldSOSEmailToMoreThanTheAlertSourcesShare(t *testing.T) {
 		all = countRows(t, r.a, `SELECT count(*) FROM deliveries WHERE incident_id=? AND contact_method_type='email' AND severity='sos'`, sos.IncidentID)
 		distinct = countRows(t, r.a, `SELECT count(DISTINCT contact_method_id) FROM deliveries WHERE incident_id=? AND contact_method_type='email' AND severity='sos'`, sos.IncidentID)
 		return all, distinct
-	}
-	if all, _ := queued(); all == 0 || all >= emails {
-		t.Fatalf("%d emails queued at the wake; want the part that fits the share", all)
 	}
 	for round := 0; round < 5; round++ {
 		// The sending service takes what waits.
@@ -763,6 +765,15 @@ func (r *heldWarnRig) fillDeliveryQueue(t *testing.T, count int, severity, alert
 	}
 	if _, err := r.a.Store.db.Exec(`INSERT OR IGNORE INTO contact_methods(id,member_id,contact_method_type,settings_json,sent_to,revision,send_while_unavailable_or_muted,deleted) VALUES('filler',?,'email','{}','filler@example.test',1,1,0)`, member.ID); err != nil {
 		t.Fatal(err)
+	}
+	if severity == "sos" && alertID != "" {
+		// The alert source's share counts its other alerts' deliveries, so
+		// the fillers go with another SOS of the same alert source.
+		filler := "filler-of-" + alertID
+		if _, err := r.a.Store.db.Exec(`INSERT OR IGNORE INTO alerts(id,source_id,sender_alert_id,actor,replay_key,incident_id,sender_incident_key,severity,title,message,notes,received_at) SELECT ?,source_id,'','test',?,'','','sos','Backlog','','',received_at FROM alerts WHERE id=?`, filler, filler, alertID); err != nil {
+			t.Fatal(err)
+		}
+		alertID = filler
 	}
 	if _, err := r.a.Store.db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
 INSERT INTO deliveries(id,notification_key,alert_id,contact_method_id,contact_method_revision,member_id,contact_method_type,sent_to,purpose,severity,subject,message,state,created_at,next_attempt)

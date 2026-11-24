@@ -118,10 +118,16 @@ func checkPendingDeliveryLimits(ctx context.Context, tx *sql.Tx, d Delivery) err
 	// is for an incident already accepted, so it counts but is never
 	// refused. MMHotline's other SOS alerts, such as the triage agent's,
 	// are not from an alert source and keep only the installation limit.
+	// The share counts the alert source's other alerts' deliveries, not this
+	// alert's own: it stops a flood of SOS alerts, and one SOS with more
+	// subscriptions than the share must still reach all of them, or it
+	// would be refused whole on every retry and never delivered. One SOS
+	// stays bounded by the team's contact methods and the installation
+	// limit.
 	if !sos || d.Purpose != "subscribed_alert" || sourceID == "" || sourceID == "system" {
 		return nil
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM deliveries d JOIN alerts a ON a.id=d.alert_id WHERE a.source_id=? AND (d.severity='sos' OR d.purpose='sos_escalation') AND (d.state='sending' OR `+pendingDelivery+`)`, sourceID).Scan(&count); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM deliveries d JOIN alerts a ON a.id=d.alert_id WHERE a.source_id=? AND d.alert_id!=? AND (d.severity='sos' OR d.purpose='sos_escalation') AND (d.state='sending' OR `+pendingDelivery+`)`, sourceID, d.AlertID).Scan(&count); err != nil {
 		return err
 	}
 	if count >= maxPendingSOSDeliveriesPerAlertSource {
