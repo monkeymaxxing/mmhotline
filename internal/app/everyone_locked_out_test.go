@@ -68,7 +68,10 @@ func TestALockOutStopsTheAgentAndTellsPeopleAtOnce(t *testing.T) {
 	}
 	// The cut run's failure or the lock-out itself wakes the person on call,
 	// whichever MMHotline reads first; the history names the lock-out.
-	if history := r.history(t, sos.IncidentID); !inOrder(history, "Held for the triage agent", "Everyone is locked out: the file "+everyoneLockedOutFile+" exists", "waking the person on call", "Contacting Responder (on call)") {
+	history := r.history(t, sos.IncidentID)
+	lockOutPrefix := "Everyone is locked out: the file " + everyoneLockedOutFile + " exists"
+	if !inOrder(history, "Held for the triage agent", lockOutPrefix+"; waking the person on call", "Contacting Responder (on call)") &&
+		!inOrder(history, "Held for the triage agent", lockOutPrefix, "waking the person on call", "Contacting Responder (on call)") {
 		t.Fatalf("history: %q", history)
 	}
 	r.reachedSomeone(t, loadWarning)
