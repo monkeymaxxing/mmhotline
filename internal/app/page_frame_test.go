@@ -174,6 +174,49 @@ func TestTheMenuFollowsTheRole(t *testing.T) {
 	}
 }
 
+// The menu groups day-to-day links, folds Settings closed by default and opens
+// it on Settings pages (and their subpages), labels the playbook rules link
+// "Playbook rules", and places personal account links in .nav-account.
+func TestTheMenuZonesAndCollapsibleSettings(t *testing.T) {
+	t.Parallel()
+	h := newWorkflowRig(t)
+	admin := h.browser()
+	admin.addPerson("admin@example.test", "Daniel Reyes")
+
+	dashboard := admin.get("/dashboard", 200)
+	if !strings.Contains(dashboard, `<details class="nav-settings">`) || strings.Contains(dashboard, `<details class="nav-settings" open`) {
+		t.Fatalf("Settings should be closed on /dashboard: %s", dashboard)
+	}
+	if got := menuLinkText(dashboard, "/agent-playbook-rules"); got != "Playbook rules" {
+		t.Fatalf("playbook rules menu label = %q, want %q", got, "Playbook rules")
+	}
+	if !strings.Contains(dashboard, `class="nav-section nav-divider nav-account"`) || !strings.Contains(dashboard, `<p class="group">Signed in as Daniel Reyes</p>`) {
+		t.Fatalf("personal account section missing .nav-account on /dashboard")
+	}
+
+	contacts := admin.get("/contact-methods", 200)
+	if !strings.Contains(contacts, `<details class="nav-settings">`) || strings.Contains(contacts, `<details class="nav-settings" open`) {
+		t.Fatalf("Settings should stay closed on /contact-methods")
+	}
+
+	for _, test := range []struct {
+		path    string
+		current string
+	}{
+		{"/alert-sources", `href="/alert-sources" aria-current="page"`},
+		{"/agent-playbook-rules", `href="/agent-playbook-rules" aria-current="page"`},
+		{"/sending-services/pushover", `href="/sending-services" aria-current="true"`},
+	} {
+		page := admin.get(test.path, 200)
+		if !strings.Contains(page, `<details class="nav-settings" open`) {
+			t.Errorf("Settings should auto-open on %s", test.path)
+		}
+		if !strings.Contains(page, test.current) {
+			t.Errorf("%s did not mark active Settings link %s", test.path, test.current)
+		}
+	}
+}
+
 // Pages load the one stylesheet, and the Content Security Policy allows no
 // other style.
 func TestPagesLoadTheStylesheetUnderAStrictStylePolicy(t *testing.T) {

@@ -83,21 +83,29 @@ are a warning about the environment, not work in progress.
 - **The menu.** A side menu on a wide window; on a phone, a top bar with
   **Menu**. The Menu button opens the links listed below for the side menu.
   The side menu and the phone's top bar name MMHotline, with the team name
-  below MMHotline. Dashboard, Alerts, Approvals, On call, and Status page
-  come first.
+  below MMHotline. The menu is organized into three visually separated zones
+  so day-to-day actions stand out while rarely-used setup pages stay out of
+  the way:
 
-  Approvals shows the number of approval requests and unreviewed refused
-  commits waiting for a person. A warned run is not counted because the warned
-  run goes ahead unless someone stops the run.
+  1. **Day-to-day pages** at the top: Dashboard, Alerts, Approvals, On call,
+     and Status page. Approvals shows the number of approval requests and
+     unreviewed refused commits waiting for a person. A warned run is not
+     counted because the warned run goes ahead unless someone stops the run.
+  2. **Settings** below a hairline divider, folded in a collapsible disclosure
+     (`Settings`) that stays closed by default on day-to-day pages and opens
+     automatically whenever the current page (or one of its subpages) is inside
+     Settings. Its quieter sub-links are Alert sources, People, Sending
+     services and Triage agent for administrators, and **Playbook rules**
+     (linking to `/agent-playbook-rules`, shortened from the page title so
+     every menu link stays on one line).
+  3. **Personal account** (**Signed in as** the person's name) below a
+     hairline divider and anchored at the bottom of the desktop sidebar (and
+     kept compact in the phone menu), holding Contact methods and
+     Availability.
 
-  The group "Settings" holds Alert sources, People, Sending services and
-  Triage agent for administrators, and Rules for running the agent's playbooks.
-
-  The group "Signed in as" the person's name holds Contact methods and
-  Availability. The link to
-  the page shown, or to the page's part of MMHotline, such as Alerts
-  on one alert's page, is marked. A person who is not signed in as a member
-  sees no menu.
+  The link to the page shown, or to the page's part of MMHotline, such as
+  Alerts on one alert's page, is marked with `aria-current` and a left accent
+  bar. A person who is not signed in as a member sees no menu.
 - **The red bar.** While an SOS incident waits for a claim, including while
   it is held for the triage agent, a red bar at the very top of every page
   names the SOS incident, says the incident is not claimed, gives the

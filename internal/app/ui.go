@@ -145,11 +145,16 @@ func (a *App) readPageFrame(ctx context.Context, p Principal, path string) (page
 	return frame, err
 }
 
-// menuGroup is one group of the menu, under its heading; the first group
-// has none.
+// menuGroup is one zone of the menu. The first group holds day-to-day links
+// with no heading; Collapsible groups fold under a <details> summary and open
+// automatically when one of their links is current; Footer groups sit after a
+// divider and anchor at the bottom of the desktop sidebar.
 type menuGroup struct {
-	Heading string
-	Links   []menuLink
+	Heading     string
+	Links       []menuLink
+	Collapsible bool
+	Open        bool
+	Footer      bool
 }
 
 // menuLink is one link of the menu. Current is aria-current's value: "page"
@@ -181,12 +186,19 @@ func pageMenu(m Member, path string, approvalsWaiting int) []menuGroup {
 	if m.Role == RoleAdministrator {
 		settings = append(settings, link("/sending-services", "Sending services"), link("/triage-agent", "Triage agent"))
 	}
-	settings = append(settings, link("/agent-playbook-rules", "Rules for running the agent's playbooks"))
+	settings = append(settings, link("/agent-playbook-rules", "Playbook rules"))
+	settingsOpen := false
+	for _, l := range settings {
+		if l.Current != "" {
+			settingsOpen = true
+			break
+		}
+	}
 	return []menuGroup{
 		{Links: []menuLink{link("/dashboard", "Dashboard"), link("/alerts", "Alerts"), approvals, link("/on-call", "On call"), link("/status-page", "Status page")}},
-		{Heading: "Settings", Links: settings},
+		{Heading: "Settings", Links: settings, Collapsible: true, Open: settingsOpen},
 		// The On call link marks the on-call page as current.
-		{Heading: "Signed in as " + m.Name, Links: []menuLink{link("/contact-methods", "Contact methods"), {Href: "/on-call#your-availability", Label: "Availability"}}},
+		{Heading: "Signed in as " + m.Name, Links: []menuLink{link("/contact-methods", "Contact methods"), {Href: "/on-call#your-availability", Label: "Availability"}}, Footer: true},
 	}
 }
 

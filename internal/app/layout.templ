@@ -92,31 +92,56 @@ templ brand(teamName string) {
 	</div>
 }
 
-// sideMenu is the menu: links in groups, each group but the first under its
-// heading, with a count beside a link when above zero.
+// sideMenu is the three-zone navigation menu: primary day-to-day links, a
+// collapsible Settings section (auto-opened on Settings pages), and the
+// personal account section anchored at the bottom of the desktop sidebar.
 templ sideMenu(menu []menuGroup) {
 	if len(menu) > 0 {
 		<nav class="nav" aria-label="Main">
 			for _, group := range menu {
-				if group.Heading != "" {
-					<p class="group">{ group.Heading }</p>
-				}
-				for _, link := range group.Links {
-					<a
-						href={ link.Href }
-						if link.Current != "" {
-							aria-current={ link.Current }
+				if group.Collapsible {
+					<div class="nav-section nav-divider">
+						<details class="nav-settings" open?={ group.Open }>
+							<summary>{ group.Heading }</summary>
+							<div class="nav-sub">
+								@sideMenuLinks(group.Links)
+							</div>
+						</details>
+					</div>
+				} else if group.Footer {
+					<div class="nav-section nav-divider nav-account">
+						if group.Heading != "" {
+							<p class="group">{ group.Heading }</p>
 						}
-					>
-						if link.Count > 0 {
-							{ link.Label } <span class="count">{ link.Count }</span>
-						} else {
-							{ link.Label }
+						@sideMenuLinks(group.Links)
+					</div>
+				} else {
+					<div class="nav-section">
+						if group.Heading != "" {
+							<p class="group">{ group.Heading }</p>
 						}
-					</a>
+						@sideMenuLinks(group.Links)
+					</div>
 				}
 			}
 		</nav>
+	}
+}
+
+templ sideMenuLinks(links []menuLink) {
+	for _, link := range links {
+		<a
+			href={ link.Href }
+			if link.Current != "" {
+				aria-current={ link.Current }
+			}
+		>
+			if link.Count > 0 {
+				{ link.Label } <span class="count">{ link.Count }</span>
+			} else {
+				{ link.Label }
+			}
+		</a>
 	}
 }
 
