@@ -49,9 +49,14 @@ templ downAlarmPanel(frame pageFrame, alarm DownAlarmView, csrf string, notice s
 				</ul>
 			}
 		</div>
-		<div class="panel-foot">
-			<p class="line-warn"><strong>THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.</strong></p>
-			<form method="post" action="/mmhotline-down-alarm/send-test" class="row"><input type="hidden" name="csrf" value={ csrf }/><button class="btn small">Send a test now</button><span>Each person above gets a test alert now. For a Pushover notification, MMHotline checks Pushover's receipt and cancels the repeats.</span></form>
+		<div class="panel-foot down-alarm-foot">
+			<details class="fold">
+				<summary>Test the alarm</summary>
+				<div class="stack down-alarm-test">
+					<p class="line-warn small"><strong>THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.</strong></p>
+					<form method="post" action="/mmhotline-down-alarm/send-test" class="row"><input type="hidden" name="csrf" value={ csrf }/><button class="btn small">Send a test now</button><span class="small muted">Each person above gets a test alert now. For a Pushover notification, MMHotline checks Pushover's receipt and cancels the repeats.</span></form>
+				</div>
+			</details>
 			<details class="fold">
 				<summary>Where the MMHotline-down alarm is set up</summary>
 				@settingsFileNoticeLine(notice) {

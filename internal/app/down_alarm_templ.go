@@ -226,20 +226,20 @@ func downAlarmPanel(frame pageFrame, alarm DownAlarmView, csrf string, notice se
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div class=\"panel-foot\"><p class=\"line-warn\"><strong>THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.</strong></p><form method=\"post\" action=\"/mmhotline-down-alarm/send-test\" class=\"row\"><input type=\"hidden\" name=\"csrf\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div class=\"panel-foot down-alarm-foot\"><details class=\"fold\"><summary>Test the alarm</summary><div class=\"stack down-alarm-test\"><p class=\"line-warn small\"><strong>THE PHONE MAY SOUND ONCE MORE. THERE IS NOTHING TO DO.</strong></p><form method=\"post\" action=\"/mmhotline-down-alarm/send-test\" class=\"row\"><input type=\"hidden\" name=\"csrf\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templruntime.NewAttributeExpression(csrf).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 54, Col: 121}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 57, Col: 123}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\"><button class=\"btn small\">Send a test now</button><span>Each person above gets a test alert now. For a Pushover notification, MMHotline checks Pushover's receipt and cancels the repeats.</span></form><details class=\"fold\"><summary>Where the MMHotline-down alarm is set up</summary>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\"><button class=\"btn small\">Send a test now</button><span class=\"small muted\">Each person above gets a test alert now. For a Pushover notification, MMHotline checks Pushover's receipt and cancels the repeats.</span></form></div></details> <details class=\"fold\"><summary>Where the MMHotline-down alarm is set up</summary>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -301,7 +301,7 @@ func downAlarmTestErrorBody(reason string) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(reason)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 72, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 77, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -345,7 +345,7 @@ func downAlarmTestResultBody(lines []downAlarmTestLine) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(line.ContactMethodType)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 85, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 90, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
@@ -358,7 +358,7 @@ func downAlarmTestResultBody(lines []downAlarmTestLine) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(line.PersonName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 85, Col: 56}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 90, Col: 56}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -371,7 +371,7 @@ func downAlarmTestResultBody(lines []downAlarmTestLine) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(line.Outcome)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 85, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/down_alarm.templ`, Line: 90, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {

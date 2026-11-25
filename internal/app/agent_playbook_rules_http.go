@@ -40,7 +40,7 @@ func (a *App) renderAgentPlaybookRulesPage(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	renderPage(w, 200, "Rules for running the agent's playbooks", frame, nil, agentPlaybookRulesPageBody(frame, agentPlaybookRulesPageData{
+	renderPage(w, 200, "Playbook rules", frame, nil, agentPlaybookRulesPageBody(frame, agentPlaybookRulesPageData{
 		Inventories:                            inventories,
 		ServicesWhoseChangesAPersonMustApprove: services,
 		AcceptedTasksRules:                     actionkinds.AcceptedTasksRules,

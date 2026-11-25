@@ -28,14 +28,15 @@ templ sourcesPageBody(frame pageFrame, data sourcesPageData) {
 								} else {
 									<p class="small muted">The settings file no longer lists this source, so the source's signing secrets no longer work. Earlier alerts and check-ins stay.</p>
 								}
-								<p class="small"><a href={ "/alert-sources/" + source.ID }>Check-ins and planned downtime</a></p>
-								<p class={ sourceRejectedClass(source.RejectedTotal) }>Rejected requests in the last 24 hours: { strconv.FormatInt(source.RejectedTotal, 10) }</p>
-								if len(source.RejectedReasons) > 0 {
-									<ul class="bullets small">
-										for _, rejected := range source.RejectedReasons {
-											<li>{ rejected.Reason }: { strconv.FormatInt(rejected.Count, 10) }</li>
-										}
-									</ul>
+								if source.RejectedTotal > 0 {
+									<p class={ sourceRejectedClass(source.RejectedTotal) }>Rejected requests in the last 24 hours: { strconv.FormatInt(source.RejectedTotal, 10) }</p>
+									if len(source.RejectedReasons) > 0 {
+										<ul class="bullets small">
+											for _, rejected := range source.RejectedReasons {
+												<li>{ rejected.Reason }: { strconv.FormatInt(rejected.Count, 10) }</li>
+											}
+										</ul>
+									}
 								}
 								<details class="fold">
 									<summary>Connection details</summary>

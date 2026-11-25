@@ -164,8 +164,8 @@ func TestAgentPlaybookRulesPage(t *testing.T) {
 	h.app.UseSettingsFile("/etc/mmhotline/mmhotline_settings.yml", nil)
 	admin := h.browser()
 	admin.addPerson("admin@example.test", "Administrator")
-	if !strings.Contains(admin.get("/triage-agent", 200), `<a href="/agent-playbook-rules">rules for running the agent's playbooks</a>`) {
-		t.Fatal("the triage agent page does not link the rules for running the agent's playbooks")
+	if !strings.Contains(admin.get("/triage-agent", 200), `<a href="/agent-playbook-rules">Playbook rules</a>`) {
+		t.Fatal("the triage agent page does not link Playbook rules")
 	}
 	inventories := filepath.Join(h.app.Store.Dir, "systems_repository", "inventories")
 	if err := os.MkdirAll(inventories, 0o755); err != nil {
@@ -191,7 +191,7 @@ func TestAgentPlaybookRulesPage(t *testing.T) {
 	other.identify(member.SignInEmailAddress)
 	page := other.get("/agent-playbook-rules", 200)
 	// Every member reads what each kind accepts, as the triage agent reads it.
-	for _, text := range []string{"Playbooks listed by name", "playbooks/every_server.yml Act, then report", "Each listed playbook takes its own rule instead of the rules of its kinds of action", "The inventory “production”", "The inventory “staging”", "The inventory “retired”", "no inventories/retired.yml", "No rule saved. A person must approve check only tasks", "Get permission, then act (1 approval)", "Get permission, then act (2 approvals)", "by the mmhotline command, run by fixture", "Act, then report", "Each playbook uses the strictest rule", "Where the rules are set", "/etc/mmhotline/mmhotline_settings.yml", "What MMHotline counts as each kind of action", "the task's module is one of MMX's core modules listed below", "Start or restart a service", "systemd_service", "Arguments: name, state, restart_now, run_only_once_marker_file, in_systemd_of_user_account", "systemd_service.state must be running", "name: caddy", "show: Caddy answers again."} {
+	for _, text := range []string{"Playbooks listed by name", "playbooks/every_server.yml Act, then report", "Each listed playbook takes its own rule instead of the rules of its kinds of action", "The inventory “production”", "The inventory “staging”", "The inventory “retired”", "no inventories/retired.yml", "Default (no rule saved)", "Get permission, then act (1 approval)", "Get permission, then act (2 approvals)", "by the mmhotline command, run by fixture", "Act, then report", "Each playbook uses the strictest rule", "Where the rules are set", "/etc/mmhotline/mmhotline_settings.yml", "What MMHotline counts as each kind of action", "the task's module is one of MMX's core modules listed below", "Start or restart a service", "systemd_service", "Arguments: name, state, restart_now, run_only_once_marker_file, in_systemd_of_user_account", "systemd_service.state must be running", "name: caddy", "show: Caddy answers again."} {
 		if !strings.Contains(settingsPageText(page), text) {
 			t.Fatalf("member's page lacks %q: %s", text, page)
 		}

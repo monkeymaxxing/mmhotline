@@ -482,6 +482,8 @@ pre.step { padding: 8px 10px; font-size: 12px; display: -webkit-box; -webkit-lin
 .plain { padding-left: 18px; }
 .finding { font-size: 19px; line-height: 1.4; font-weight: 650; }
 .panel-foot form { margin: 0; }
+.down-alarm-foot { flex-direction: column; align-items: stretch; gap: 8px; }
+.down-alarm-test { gap: 10px; }
 #incident-deliveries > p + p { margin-top: 6px; }
 @media (max-width: 760px) {
   /* On a phone the stages read top to bottom. */
@@ -514,6 +516,7 @@ pre.step { padding: 8px 10px; font-size: 12px; display: -webkit-box; -webkit-lin
 }
 
 /* Alerts and alert sources. */
+.alert-filter-form { padding: 12px 16px; }
 .alert-filters { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: 12px; }
 .source-connection { display: flex; flex-direction: column; gap: 10px; }
 .source-downtime { display: flex; flex-direction: column; gap: 12px; }

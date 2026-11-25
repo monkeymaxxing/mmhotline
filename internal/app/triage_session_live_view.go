@@ -137,7 +137,7 @@ func (a *App) readTriageSessionLiveView(ctx context.Context, tx *sql.Tx, session
 	if err = tx.QueryRowContext(ctx, `SELECT coalesce((SELECT e.title FROM triage_session_alerts s JOIN alerts e ON e.id=s.alert_id WHERE s.triage_session_id=?1 ORDER BY e.sequence LIMIT 1),''),(SELECT count(*) FROM triage_session_alerts WHERE triage_session_id=?1)`, s.ID).Scan(&firstTitle, &alerts); err != nil {
 		return nil, err
 	}
-	view.About = firstTitle
+	view.About = humanizeAlertTitle(firstTitle)
 	switch {
 	case alerts == 2:
 		view.About += ", and 1 more alert"
@@ -263,9 +263,9 @@ func (a *App) TriageSessionPageFor(ctx context.Context, p Principal, sessionID s
 			incidents[incident.ID] = incident
 		}
 		for _, alert := range session.Alerts {
-			row := TriageSessionPageAlert{ID: alert.ID, Title: alert.Title, Severity: alert.Severity, ReceivedAt: alert.ReceivedAt, IncidentID: alert.IncidentID}
+			row := TriageSessionPageAlert{ID: alert.ID, Title: humanizeAlertTitle(alert.Title), Severity: alert.Severity, ReceivedAt: alert.ReceivedAt, IncidentID: alert.IncidentID}
 			if incident, ok := incidents[alert.IncidentID]; ok {
-				row.IncidentTitle, row.IncidentStatus = incident.Title, incident.Status
+				row.IncidentTitle, row.IncidentStatus = humanizeAlertTitle(incident.Title), incident.Status
 			}
 			page.Alerts = append(page.Alerts, row)
 		}

@@ -20,8 +20,9 @@ import (
 // incidentPage is what the incident page shows one member, the reader, whom
 // it calls "you".
 type incidentPage struct {
-	CSRF     string
-	Incident Incident
+	CSRF         string
+	Incident     Incident
+	DisplayTitle string
 	// SentBy names who raised the SOS: an alert source, the person who
 	// raised it by hand, the triage agent, or MMHotline.
 	SentBy string
@@ -150,7 +151,7 @@ func (a *App) incidentPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	renderPage(w, 200, "SOS incident: "+page.Incident.Title, frame, incidentHeading(frame, page), incidentBody(frame, page))
+	renderPage(w, 200, "SOS incident: "+page.DisplayTitle, frame, incidentHeading(frame, page), incidentBody(frame, page))
 }
 
 // readIncidentPage reads incident id's page for member p, through the same
@@ -161,7 +162,7 @@ func (a *App) readIncidentPage(ctx context.Context, p Principal, id string) (inc
 	if err != nil {
 		return page, err
 	}
-	page.Incident, page.ReturnToIncidentID = i, i.ID
+	page.Incident, page.DisplayTitle, page.ReturnToIncidentID = i, humanizeAlertTitle(i.Title), i.ID
 	members, err := a.membersForHistory(ctx, p)
 	if err != nil {
 		return page, err

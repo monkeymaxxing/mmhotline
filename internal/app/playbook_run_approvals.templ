@@ -8,8 +8,26 @@ import (
 // approvalsPageBody lists, first and amber, the approval requests that wait
 // for a person, each with Review; then the warned runs with their run time
 // and Stop, one press, because the run goes ahead by itself; then, quiet,
-// what was decided or run lately. Each section is live, so it stays current.
+// what was decided or run lately. Empty sections stay hidden (and a single
+// calm all-clear box replaces an empty queue), while keeping every live
+// section id in the page so refresh.js updates them without a reload.
 templ approvalsPageBody(frame pageFrame, data approvalsPageData) {
+	{{ nothingWaiting := len(data.Commits) == 0 && len(data.Waiting) == 0 && len(data.Warned) == 0 }}
+	<section
+		id="approvals-all-clear"
+		data-live
+		if nothingWaiting {
+			class="panel all-clear-box"
+			aria-labelledby="approvals-all-clear-heading"
+		} else {
+			hidden
+		}
+	>
+		if nothingWaiting {
+			<h2 id="approvals-all-clear-heading"><span class="tag ok">All clear</span></h2>
+			<p class="say">Nothing is waiting for approval.</p>
+		}
+	</section>
 	@commitReviewsList(frame, data.Commits)
 	<section
 		id="open-approvals"
@@ -17,16 +35,14 @@ templ approvalsPageBody(frame pageFrame, data approvalsPageData) {
 		if len(data.Waiting) > 0 {
 			class="panel warn"
 		} else {
-			class="panel"
+			hidden
 		}
 	>
-		<div class="panel-head">
-			<h2>Waiting for a person</h2>
-			if len(data.Waiting) > 0 {
-				<span class="tag warn">{ len(data.Waiting) } waiting</span>
-			}
-		</div>
 		if len(data.Waiting) > 0 {
+			<div class="panel-head">
+				<h2>Waiting for a person</h2>
+				<span class="tag warn">{ len(data.Waiting) } waiting</span>
+			</div>
 			<ul class="items">
 				for _, request := range data.Waiting {
 					<li>
@@ -40,17 +56,21 @@ templ approvalsPageBody(frame pageFrame, data approvalsPageData) {
 				}
 			</ul>
 			<p class="panel-foot">Open a playbook run request to read the proposed changes, then approve or refuse the request. Any team member may decide.</p>
-		} else {
-			<div class="panel-body">
-				<p class="muted">No playbook run waits for a person's approval.</p>
-			</div>
 		}
 	</section>
-	<section id="warned-playbook-runs" data-live class="panel">
-		<div class="panel-head">
-			<h2>Runs unless someone presses Stop</h2>
-		</div>
+	<section
+		id="warned-playbook-runs"
+		data-live
 		if len(data.Warned) > 0 {
+			class="panel"
+		} else {
+			hidden
+		}
+	>
+		if len(data.Warned) > 0 {
+			<div class="panel-head">
+				<h2>Runs unless someone presses Stop</h2>
+			</div>
 			<ul class="items">
 				for _, request := range data.Warned {
 					<li>
@@ -70,17 +90,21 @@ templ approvalsPageBody(frame pageFrame, data approvalsPageData) {
 				}
 			</ul>
 			<p class="panel-foot">MMHotline starts each playbook run at the scheduled time. Press Stop before the scheduled time to cancel the playbook run.</p>
-		} else {
-			<div class="panel-body">
-				<p class="muted">No playbook run waits for its run time.</p>
-			</div>
 		}
 	</section>
-	<section id="decided-approvals" data-live class="panel quiet">
-		<div class="panel-head">
-			<h2>Decided or run lately</h2>
-		</div>
+	<section
+		id="decided-approvals"
+		data-live
 		if len(data.Decided) > 0 {
+			class="panel quiet"
+		} else {
+			hidden
+		}
+	>
+		if len(data.Decided) > 0 {
+			<div class="panel-head">
+				<h2>Decided or run lately</h2>
+			</div>
 			<ul class="items">
 				for _, request := range data.Decided {
 					<li>
@@ -91,10 +115,6 @@ templ approvalsPageBody(frame pageFrame, data approvalsPageData) {
 					</li>
 				}
 			</ul>
-		} else {
-			<div class="panel-body">
-				<p class="faint">No playbook run was decided, stopped, or run yet.</p>
-			</div>
 		}
 	</section>
 	@commitsTheTriageAgentApproved(frame, data.ApprovedByTheTriageAgent)
@@ -106,7 +126,7 @@ func forTheSOS(incidentTitle string) string {
 	if incidentTitle == "" {
 		return ""
 	}
-	return " · for the SOS " + incidentTitle
+	return " · for the SOS " + humanizeAlertTitle(incidentTitle)
 }
 
 // approvalAskedVerb is how the Approvals page says a request began.
@@ -147,7 +167,7 @@ templ approvalRequestHeading(frame pageFrame, title string, request ApprovalRequ
 		</div>
 		<h1>{ request.Question() }</h1>
 		if request.IncidentID != "" {
-			<p class="meta">{ approvalMetaAskedText(request) } at { frame.Clock(request.AskedAt()) }, { frame.RelativeTime(request.AskedAt()) }, for the SOS <a href={ "/incidents/" + request.IncidentID }>{ request.IncidentTitle }</a>.</p>
+			<p class="meta">{ approvalMetaAskedText(request) } at { frame.Clock(request.AskedAt()) }, { frame.RelativeTime(request.AskedAt()) }, for the SOS <a href={ "/incidents/" + request.IncidentID }>{ humanizeAlertTitle(request.IncidentTitle) }</a>.</p>
 		} else {
 			<p class="meta">{ approvalMetaAskedText(request) } at { frame.Clock(request.AskedAt()) }, { frame.RelativeTime(request.AskedAt()) }.</p>
 		}
@@ -318,7 +338,7 @@ templ approvalRequestPageBody(frame pageFrame, data approvalRequestPageData) {
 								<li><code>{ task.Path }</code> ({ task.Action }) { task.Reason }</li>
 							}
 						</ul>
-						<p class="faint small">An administrator changes the list in <code>services_whose_changes_a_person_must_approve</code> in MMHotline's settings file, and the <a href="/agent-playbook-rules">Rules for running the agent's playbooks</a> page shows the list.</p>
+						<p class="faint small">An administrator changes the list in <code>services_whose_changes_a_person_must_approve</code> in MMHotline's settings file, and the <a href="/agent-playbook-rules">Playbook rules</a> page shows the list.</p>
 					</div>
 				</section>
 			}
@@ -460,7 +480,7 @@ templ approvalRequestPageBody(frame pageFrame, data approvalRequestPageData) {
 					}
 				</div>
 				<div class="panel-foot">
-					<a href="/agent-playbook-rules">Rules for running the agent's playbooks</a>
+					<a href="/agent-playbook-rules">Playbook rules</a>
 				</div>
 			</section>
 			if request.Review != "" {

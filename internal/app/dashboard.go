@@ -269,14 +269,14 @@ func (a *App) readDashboard(ctx context.Context, p Principal) (dashboardView, er
 				if err != nil {
 					return err
 				}
-				view.Handled = append(view.Handled, handledIncidentView{ID: i.ID, Title: i.Title, CreatedAt: i.CreatedAt, ClaimedAt: i.ClaimedAt, ClaimedBy: capitalize(claimedBy)})
+				view.Handled = append(view.Handled, handledIncidentView{ID: i.ID, Title: humanizeAlertTitle(i.Title), CreatedAt: i.CreatedAt, ClaimedAt: i.ClaimedAt, ClaimedBy: capitalize(claimedBy)})
 				continue
 			}
 			step, err := nextIncidentStep(ctx, tx, i)
 			if err != nil {
 				return err
 			}
-			waiting := waitingIncidentView{ID: i.ID, Title: i.Title, Revision: i.Revision, CreatedAt: i.CreatedAt, HeldForTriageAgent: step.HeldForTriageAgent, Countdown: viewIncidentCountdown(step, m.ID, zone, now)}
+			waiting := waitingIncidentView{ID: i.ID, Title: humanizeAlertTitle(i.Title), Revision: i.Revision, CreatedAt: i.CreatedAt, HeldForTriageAgent: step.HeldForTriageAgent, Countdown: viewIncidentCountdown(step, m.ID, zone, now)}
 			if !step.HeldForTriageAgent && !step.At.IsZero() {
 				wakeable, _, err := wakeableMembers(ctx, tx, i.TargetMemberIDs)
 				if err != nil {
@@ -371,6 +371,7 @@ func readLastSOS(ctx context.Context, tx *sql.Tx, viewerID string) (*lastSOSView
 	if err != nil {
 		return nil, err
 	}
+	last.Title = humanizeAlertTitle(last.Title)
 	last.ResolvedAt = time.Unix(resolvedAt, 0).UTC()
 	if actor == "member:"+viewerID {
 		last.ResolvedBy = "you"
@@ -469,7 +470,7 @@ func (a *App) viewAlert(ctx context.Context, p Principal, e Alert, summary *tria
 	if err != nil {
 		return v, err
 	}
-	v.IncidentTitle, v.Outcome = i.Title, "Related SOS incident"
+	v.IncidentTitle, v.Outcome = humanizeAlertTitle(i.Title), "Related SOS incident"
 	switch e.Severity {
 	case "sos":
 		v.Outcome = "Joined SOS incident"
@@ -487,6 +488,11 @@ func (a *App) viewAlert(ctx context.Context, p Principal, e Alert, summary *tria
 type alertsPageData struct {
 	Query, Severity, From, Until, Next string
 	Alerts                             []alertView
+}
+
+// HasFilters reports whether any alert-history filter is active.
+func (d alertsPageData) HasFilters() bool {
+	return d.Query != "" || d.Severity != "" || d.From != "" || d.Until != ""
 }
 
 func (a *App) alertsPage(w http.ResponseWriter, r *http.Request) {

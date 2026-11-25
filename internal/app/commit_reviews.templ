@@ -37,13 +37,22 @@ templ commitReviewsList(frame pageFrame, commits []CommitReview) {
 
 // commitsTheTriageAgentApproved lists the commits the triage agent marked
 // reviewed, newest first, each with its report's title, so a person can
-// read what the agent let through.
+// read what the agent let through. Stays hidden when empty so refresh.js can
+// fill it without cluttering a quiet page.
 templ commitsTheTriageAgentApproved(frame pageFrame, commits []CommitReview) {
-	<section id="commits-the-triage-agent-approved" data-live class="panel quiet">
-		<div class="panel-head">
-			<h2>Commits the triage agent approved</h2>
-		</div>
+	<section
+		id="commits-the-triage-agent-approved"
+		data-live
 		if len(commits) > 0 {
+			class="panel quiet"
+		} else {
+			hidden
+		}
+	>
+		if len(commits) > 0 {
+			<div class="panel-head">
+				<h2>Commits the triage agent approved</h2>
+			</div>
 			<ul class="items">
 				for _, commit := range commits {
 					<li>
@@ -59,10 +68,6 @@ templ commitsTheTriageAgentApproved(frame pageFrame, commits []CommitReview) {
 					</li>
 				}
 			</ul>
-		} else {
-			<div class="panel-body">
-				<p class="faint">The triage agent has approved no commit.</p>
-			</div>
 		}
 	</section>
 }

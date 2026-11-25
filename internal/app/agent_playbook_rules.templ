@@ -10,7 +10,7 @@ import (
 // playbooks, which the settings file sets.
 templ agentPlaybookRulesPageBody(frame pageFrame, data agentPlaybookRulesPageData) {
 	<div class="settings-page stack">
-		<p class="muted">The rules for running the agent's playbooks decide which fixes the triage agent may run without a person's approval.</p>
+		<p class="muted">Decides which fixes the triage agent may run without a person's approval.</p>
 		<section class="panel" id="services-whose-changes-a-person-must-approve">
 			<div class="panel-head">
 				<h2>Services whose changes a person must approve</h2>
@@ -29,8 +29,6 @@ templ agentPlaybookRulesPageBody(frame pageFrame, data agentPlaybookRulesPageDat
 				}
 				if data.ServicesWhoseChangesAPersonMustApprove.ChangedAt != nil {
 					<p class="faint small">Changed { frame.Clock(*data.ServicesWhoseChangesAPersonMustApprove.ChangedAt) } by { data.ServicesWhoseChangesAPersonMustApprove.ChangedBy }.</p>
-				} else {
-					<p class="faint small">Never set.</p>
 				}
 			</div>
 		</section>
@@ -50,7 +48,7 @@ templ agentPlaybookRulesPageBody(frame pageFrame, data agentPlaybookRulesPageDat
 							if kind.ChangedAt != nil {
 								<strong>{ kind.ActionKindTitle }</strong><span>{ kind.RuleTitle }</span><span class="faint small">Changed { frame.Clock(*kind.ChangedAt) } by { kind.ChangedBy }</span>
 							} else {
-								<strong>{ kind.ActionKindTitle }</strong><span>{ kind.RuleTitle }</span><span class="faint small">No rule saved. A person must approve { strings.ToLower(kind.ActionKindTitle) } tasks until the settings file lists a rule.</span>
+								<strong>{ kind.ActionKindTitle }</strong><span>{ kind.RuleTitle }</span><span class="faint small">Default (no rule saved)</span>
 							}
 						</li>
 					}

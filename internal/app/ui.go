@@ -235,7 +235,7 @@ func readWaitingSOSBar(ctx context.Context, tx *sql.Tx, m Member, path string, z
 	if err != nil {
 		return nil, err
 	}
-	return &waitingSOSBar{ID: i.ID, Title: i.Title, Countdown: viewIncidentCountdown(step, m.ID, zone, now), More: waiting - 1}, nil
+	return &waitingSOSBar{ID: i.ID, Title: humanizeAlertTitle(i.Title), Countdown: viewIncidentCountdown(step, m.ID, zone, now), More: waiting - 1}, nil
 }
 
 // teamTimeZone is the team's time zone, in which pages show times: the

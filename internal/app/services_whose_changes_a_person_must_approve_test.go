@@ -86,7 +86,7 @@ func TestAgentPlaybookRulesPageShowsServicesWhoseChangesAPersonMustApprove(t *te
 	h := newWorkflowRig(t)
 	admin := h.browser()
 	admin.addPerson("admin@example.test", "Administrator")
-	if page := admin.get("/agent-playbook-rules", 200); !strings.Contains(page, "Services whose changes a person must approve") || !strings.Contains(page, "No services are listed. The rules below decide") || !strings.Contains(page, "Never set.") {
+	if page := admin.get("/agent-playbook-rules", 200); !strings.Contains(page, "Services whose changes a person must approve") || !strings.Contains(page, "No services are listed. The rules below decide") {
 		t.Fatalf("the page before anyone set the list: %s", page)
 	}
 	if err := h.app.SetServicesWhoseChangesAPersonMustApprove(context.Background(), Principal{UnixUser: "fixture"}, []string{"pgautofailover"}); err != nil {

@@ -394,3 +394,66 @@ func TestResolvedSOSNotificationUsesIncidentTriageReportTitle(t *testing.T) {
 		t.Fatalf("no resolved-sos Pushover message titled %q; all messages: %+v", wantTitle, r.fake.PushoverMessages())
 	}
 }
+
+func TestUIPolishAcrossPages(t *testing.T) {
+	t.Parallel()
+	h := newWorkflowRig(t)
+	admin := h.browser()
+	p := admin.addPerson("admin@example.test", "Solo Admin")
+	source, err := createAlertSource(context.Background(), h.app, p, "Monitoring")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Empty Approvals page shows one calm All clear box and keeps empty live sections hidden.
+	approvalsPage := admin.get("/approvals", 200)
+	if !strings.Contains(approvalsPage, "Nothing is waiting for approval.") {
+		t.Fatalf("empty approvals page missing all-clear message:\n%s", approvalsPage)
+	}
+	for _, emptyText := range []string{"No playbook run waits for a person&#39;s approval.", "No playbook run waits for its run time.", "The triage agent has approved no commit."} {
+		if strings.Contains(approvalsPage, emptyText) {
+			t.Fatalf("empty approvals page still renders noisy empty box %q", emptyText)
+		}
+	}
+
+	// Solo-team On call page omits the empty Hand over early card and multi-person handover note.
+	onCallPage := admin.get("/on-call", 200)
+	if strings.Contains(onCallPage, "Hand over early") || strings.Contains(onCallPage, "To hand over early") {
+		t.Fatalf("solo-team on-call page should omit Hand over early:\n%s", onCallPage)
+	}
+
+	// Alert sources hides 0 rejected requests and does not duplicate the source link.
+	sourcesPage := admin.get("/alert-sources", 200)
+	if strings.Contains(sourcesPage, "Rejected requests in the last 24 hours") {
+		t.Fatalf("alert sources page should hide 0 rejected requests:\n%s", sourcesPage)
+	}
+	if strings.Contains(sourcesPage, "Check-ins and planned downtime") {
+		t.Fatalf("alert sources page should not duplicate the source link:\n%s", sourcesPage)
+	}
+
+	// Alerts page shows Clear filters only when a filter is active.
+	if strings.Contains(admin.get("/alerts", 200), "Clear filters") {
+		t.Fatal("unfiltered alerts page should not show Clear filters")
+	}
+	if !strings.Contains(admin.get("/alerts?q=desk01", 200), "Clear filters") {
+		t.Fatal("filtered alerts page should show Clear filters")
+	}
+
+	// Raw check slugs are humanized across Dashboard, red SOS bar, and Incident page.
+	sos := admitSignedAlert(t, h.app, source, "sos", "app001: systemd/failed_units failed", "app001-systemd")
+	if sos.IncidentID == "" {
+		t.Fatal("expected SOS alert to open an incident")
+	}
+	dashText := liveSectionText(admin.get("/dashboard", 200), "incident-list")
+	if !strings.Contains(dashText, "app001: Failed units failed") || strings.Contains(dashText, "systemd/failed_units") {
+		t.Fatalf("dashboard waiting SOS was not humanized: %q", dashText)
+	}
+	barText := liveSectionText(admin.get("/alerts", 200), "sos-waiting")
+	if !strings.Contains(barText, "app001: Failed units failed") || strings.Contains(barText, "systemd/failed_units") {
+		t.Fatalf("red SOS bar was not humanized: %q", barText)
+	}
+	incPage := admin.get("/incidents/"+sos.IncidentID, 200)
+	if !strings.Contains(incPage, "<h1>app001: Failed units failed</h1>") || !strings.Contains(incPage, "Original alert: app001: systemd/<wbr>failed_<wbr>units failed") {
+		t.Fatalf("incident page heading/original alert unexpected:\n%s", incPage)
+	}
+}

@@ -161,9 +161,13 @@ whole lines and scroll inside the example, so a phone never splits a key.
 Inline keys can wrap after an underscore.
 
 The Triage agent page leads with setup and sign-in status. Setup test output,
-software review details, and network details stay folded to keep actions visible.
-The page of rules for running the agent's playbooks lists each action's rule and change details together.
+software review details, commit review help, an unconfigured review agent, and
+network details stay folded to keep actions visible.
+The Playbook rules page lists each action's rule and change details together
+(showing `Default (no rule saved)` when an action kind uses the default).
 The list stacks on phones, so the change details never disappear past the edge.
+On Alert sources, rejected-request counts appear only when at least one request
+was rejected in the last 24 hours.
 The Status page settings show the public link, each open notice with its
 impact, components, planned window, and updates, a form to add an update, and
 a folded list of recently resolved notices. A form posts a new notice with a

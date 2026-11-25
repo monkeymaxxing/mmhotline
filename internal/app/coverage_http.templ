@@ -91,6 +91,9 @@ templ coverageBody(view coveragePageView) {
 						if view.OnCallNow.Why != "" {
 							<p class="faint small">{ view.OnCallNow.Why }</p>
 						}
+						if view.Taking.ViewerIsOnCall && !view.Taking.CanGiveBack && len(view.Team) > 1 {
+							<p class="faint small">To hand over early, ask a teammate to sign in and choose Take on call.</p>
+						}
 					</div>
 				</div>
 				<div class="oncall-order">
@@ -157,47 +160,46 @@ templ coverageBody(view coveragePageView) {
 					</form>
 				</div>
 			</section>
-			<section class="panel">
-				<div class="panel-head">
-					<h2>
-						if view.Taking.ViewerIsOnCall {
-							Hand over early
-						} else {
-							Take on call
+			if view.Taking.CanTake || view.Taking.CanGiveBack {
+				<section class="panel">
+					<div class="panel-head">
+						<h2>
+							if view.Taking.ViewerIsOnCall {
+								Hand over early
+							} else {
+								Take on call
+							}
+						</h2>
+					</div>
+					<div class="panel-body">
+						if view.Taking.YouAreOnCall != "" {
+							<p class="small muted">{ view.Taking.YouAreOnCall }</p>
 						}
-					</h2>
-				</div>
-				<div class="panel-body">
-					if view.Taking.YouAreOnCall != "" {
-						<p class="small muted">{ view.Taking.YouAreOnCall }</p>
-						<p class="small muted">To hand over sooner, ask the next responder to sign in and choose Take on call on the On call page. MMHotline then wakes the next responder first, until the time chosen by the next responder.</p>
-					}
-					if view.Taking.Holder != "" {
-						<p class="small muted">{ view.Taking.Holder }</p>
-					}
-					if view.Taking.CanTake {
-						<p class="small muted">Taking on call makes MMHotline wake you first for a new SOS, until the time you choose.</p>
-						<form method="post" action="/on-call">
-							<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="action" value="claim_on_call"/><input type="hidden" name="revision" value={ strconv.FormatInt(view.Taking.Revision, 10) }/><input type="hidden" name="take_from_member_id" value={ view.Taking.TakeFromMemberID }/><label class="field">For how long<input name="duration" value={ view.Duration } aria-describedby="take-on-call-duration-help"/></label>
-							<p class="faint small" id="take-on-call-duration-help">For example 30m, 2h, or 3d, up to 30 days.</p>
-							<button class="btn block">
-								if view.Taking.TakeFromName != "" {
-									Take on call from { view.Taking.TakeFromName }
-								} else {
-									Take on call
-								}
-							</button>
-						</form>
-					} else if !view.Taking.ViewerIsOnCall {
-						<p class="small muted">Make yourself available before taking on call.</p>
-					}
-					if view.Taking.CanGiveBack {
-						<form method="post" action="/on-call">
-							<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="action" value="end_on_call_claim"/><input type="hidden" name="revision" value={ strconv.FormatInt(view.Taking.Revision, 10) }/><button class="btn block">Give on call back to the schedule</button>
-						</form>
-					}
-				</div>
-			</section>
+						if view.Taking.Holder != "" {
+							<p class="small muted">{ view.Taking.Holder }</p>
+						}
+						if view.Taking.CanTake {
+							<p class="small muted">Taking on call makes MMHotline wake you first for a new SOS, until the time you choose.</p>
+							<form method="post" action="/on-call">
+								<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="action" value="claim_on_call"/><input type="hidden" name="revision" value={ strconv.FormatInt(view.Taking.Revision, 10) }/><input type="hidden" name="take_from_member_id" value={ view.Taking.TakeFromMemberID }/><label class="field">For how long<input name="duration" value={ view.Duration } aria-describedby="take-on-call-duration-help"/></label>
+								<p class="faint small" id="take-on-call-duration-help">For example 30m, 2h, or 3d, up to 30 days.</p>
+								<button class="btn block">
+									if view.Taking.TakeFromName != "" {
+										Take on call from { view.Taking.TakeFromName }
+									} else {
+										Take on call
+									}
+								</button>
+							</form>
+						}
+						if view.Taking.CanGiveBack {
+							<form method="post" action="/on-call">
+								<input type="hidden" name="csrf" value={ view.CSRF }/><input type="hidden" name="action" value="end_on_call_claim"/><input type="hidden" name="revision" value={ strconv.FormatInt(view.Taking.Revision, 10) }/><button class="btn block">Give on call back to the schedule</button>
+							</form>
+						}
+					</div>
+				</section>
+			}
 			<section class="panel">
 				<div class="panel-head">
 					<h2>Mute the team</h2>

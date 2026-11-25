@@ -26,7 +26,10 @@ templ incidentHeading(frame pageFrame, page incidentPage) {
 				<span class="tag sos">SOS</span><span class="tag">Resolved</span>
 			}
 		</div>
-		<h1>{ page.Incident.Title }</h1>
+		<h1>@withBreaksAfterSeparators(page.DisplayTitle)</h1>
+		if page.DisplayTitle != "" && page.DisplayTitle != page.Incident.Title {
+			<p class="small faint alert-original">Original alert: @withBreaksAfterSeparators(page.Incident.Title)</p>
+		}
 		<p id="incident-opened" data-live class="meta faint">Opened { frame.Clock(page.Incident.CreatedAt) }, { frame.RelativeTime(page.Incident.CreatedAt) } · sent by { page.SentBy }</p>
 		if page.ApprovalRequestID != "" {
 			<p class="meta">MMHotline raised this SOS to wake the person on call: a playbook run waits for the team's approval. <a href={ "/approvals/" + page.ApprovalRequestID }>Open the approval request</a></p>

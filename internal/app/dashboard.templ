@@ -26,7 +26,7 @@ func alertSeverityTag(severity string) string {
 
 // alertsBody is the alert history: the filter form, then the alerts.
 templ alertsBody(frame pageFrame, data alertsPageData) {
-	<form method="get" action="/alerts" class="panel panel-body alert-pages">
+	<form method="get" action="/alerts" class="panel panel-body alert-pages alert-filter-form">
 		<div class="alert-filters">
 			<label class="field">Search title or message<input type="search" name="q" value={ data.Query } maxlength="256"/></label><label class="field">Severity<select name="severity"><option value="">All severities</option>
 					for _, option := range alertSeverityOptions {
@@ -39,7 +39,12 @@ templ alertsBody(frame pageFrame, data alertsPageData) {
 					}
 				</select></label><label class="field">From date<input type="date" name="from" value={ data.From }/></label><label class="field">Through date<input type="date" name="until" value={ data.Until }/></label>
 		</div>
-		<div class="row spread"><button class="btn">Filter alerts</button></div>
+		<div class="row">
+			<button class="btn">Filter alerts</button>
+			if data.HasFilters() {
+				<a class="btn quiet" href="/alerts">Clear filters</a>
+			}
+		</div>
 	</form>
 	<section class="panel alert-pages" aria-label="Alert history">
 		if len(data.Alerts) > 0 {
@@ -286,7 +291,7 @@ templ dashboardBody(frame pageFrame, view dashboardView) {
 										}
 									</span>
 								</div>
-								<a href={ "/incidents/" + incident.ID } class="title">{ incident.Title }</a>
+								<a href={ "/incidents/" + incident.ID } class="title">@withBreaksAfterSeparators(incident.Title)</a>
 								<div class="countdown">
 									<div class="row spread small">
 										if incident.Countdown.TimeLeft != "" {
@@ -357,7 +362,7 @@ templ dashboardBody(frame pageFrame, view dashboardView) {
 						<li>
 							<div class="what">
 								<div class="row"><span class="tag work">Claimed</span><span class="faint small">{ incident.ClaimedBy } claimed the incident at { frame.Clock(incident.ClaimedAt) }. Opened { frame.Clock(incident.CreatedAt) }.</span></div>
-								<a href={ "/incidents/" + incident.ID } class="title">{ incident.Title }</a>
+								<a href={ "/incidents/" + incident.ID } class="title">@withBreaksAfterSeparators(incident.Title)</a>
 							</div>
 						</li>
 					}
@@ -375,7 +380,7 @@ templ dashboardBody(frame pageFrame, view dashboardView) {
 						<li>
 							<div class="what">
 								<div class="row"><span class="tag warn">Warning</span><span class="faint small">Received { frame.Clock(held.Received) }. Held until { frame.Clock(held.HeldUntil) }.</span></div>
-								<a href={ "/alerts/" + held.AlertID } class="title">@withBreaksAfterSeparators(held.Title)</a>
+								<a href={ "/alerts/" + held.AlertID } class="title">@withBreaksAfterSeparators(humanizeAlertTitle(held.Title))</a>
 								<p class="small muted">
 									if held.Released {
 										{ held.ReleasedSentence() }
@@ -414,7 +419,7 @@ templ dashboardBody(frame pageFrame, view dashboardView) {
 				<h2 id="all-clear-heading"><span class="tag ok">All clear</span></h2>
 				<p class="say">Nothing needs a person.</p>
 				if last := view.LastSOS; last != nil {
-					<p class="faint small">The last SOS was resolved at { frame.Clock(last.ResolvedAt) } by { last.ResolvedBy }: <a href={ "/incidents/" + last.ID }>{ last.Title }</a></p>
+					<p class="faint small">The last SOS was resolved at { frame.Clock(last.ResolvedAt) } by { last.ResolvedBy }: <a href={ "/incidents/" + last.ID }>@withBreaksAfterSeparators(last.Title)</a></p>
 				}
 			</section>
 		}

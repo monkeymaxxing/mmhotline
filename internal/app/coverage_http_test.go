@@ -87,7 +87,7 @@ func TestOnCallPageSaysWhoIsOnCallAndWhomAnSOSWakes(t *testing.T) {
 		"On call now Daniel Reyes You Until 2 Nov 09:00, in 2 days. Then Priya Natarajan.",
 		"Who an SOS wakes, in order You no claim in 5 minutes → Priya Natarajan no claim in 5 minutes → everyone else who is available: Maya Okafor MMHotline keeps waking everyone who is available until someone claims the incident.")
 	mustContain(t, "Daniel's page", pageText(page), "Handover every Monday at 09:00 · 5 minutes to claim an SOS",
-		"You are on call until 2 Nov 09:00. To hand over sooner, ask the next responder to sign in and choose Take on call on the On call page.")
+		"To hand over early, ask a teammate to sign in and choose Take on call.")
 	if strings.Contains(page, `value="claim_on_call"`) {
 		t.Fatal("the person on call is offered Take on call")
 	}
