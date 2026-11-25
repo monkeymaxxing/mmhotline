@@ -436,11 +436,14 @@ func readOnCall(ctx context.Context, tx *sql.Tx, viewerID string, now time.Time)
 	return view, nil
 }
 
-// alertView adds the incident's name and the alert's effect for the history
-// and detail pages. Stored alerts and the incident remain the source of truth.
+// alertView adds the plain-English display title, triage agent summary,
+// incident name, and alert effect for the history and detail pages. Stored
+// alerts and the incident remain the source of truth.
 type alertView struct {
 	Alert
+	DisplayTitle           string
 	IncidentTitle, Outcome string
+	TriageSummary          *triageSummary
 	// HeldWarn is what the triage agent's wait did to a warn, nil when the
 	// warn was not held.
 	HeldWarn *HeldWarn
@@ -449,8 +452,13 @@ type alertView struct {
 // ReceivedLater says how late the alert arrived, when that matters.
 func (v alertView) ReceivedLater() string { return receivedLater(v.HappenedAt, v.ReceivedAt) }
 
-func (a *App) viewAlert(ctx context.Context, p Principal, e Alert) (alertView, error) {
-	v := alertView{Alert: e, Outcome: "No SOS incident"}
+func (a *App) viewAlert(ctx context.Context, p Principal, e Alert, summary *triageSummary) (alertView, error) {
+	v := alertView{
+		Alert:         e,
+		DisplayTitle:  displayAlertTitle(e, summary),
+		Outcome:       "No SOS incident",
+		TriageSummary: summary,
+	}
 	if e.IncidentID == "" {
 		if e.Severity == "resolved-sos" {
 			v.Outcome = "No unresolved SOS incident matched the sender incident key. Nobody was notified."
@@ -519,9 +527,14 @@ func (a *App) alertsPage(w http.ResponseWriter, r *http.Request) {
 		HTTPError(w, err)
 		return
 	}
+	summaries, err := a.triageSummariesForAlerts(r.Context(), p, alerts)
+	if err != nil {
+		HTTPError(w, err)
+		return
+	}
 	data := alertsPageData{Query: filter.Query, Severity: filter.Severity, From: q.Get("from"), Until: q.Get("until")}
 	for _, e := range alerts {
-		v, err := a.viewAlert(r.Context(), p, e)
+		v, err := a.viewAlert(r.Context(), p, e, summaries[e.ID])
 		if err != nil {
 			HTTPError(w, err)
 			return
@@ -549,7 +562,12 @@ func (a *App) alertPage(w http.ResponseWriter, r *http.Request) {
 		HTTPError(w, err)
 		return
 	}
-	view, err := a.viewAlert(r.Context(), p, e)
+	summary, err := a.triageSummaryForAlert(r.Context(), p, e)
+	if err != nil {
+		HTTPError(w, err)
+		return
+	}
+	view, err := a.viewAlert(r.Context(), p, e, summary)
 	if err != nil {
 		HTTPError(w, err)
 		return
@@ -562,7 +580,7 @@ func (a *App) alertPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	renderPage(w, 200, e.Title, frame, alertHeading(e.Title), alertBody(frame, view))
+	renderPage(w, 200, view.DisplayTitle, frame, alertHeading(view.DisplayTitle, view.Title), alertBody(frame, view))
 }
 
 // Refresh only live status sections, [data-live][id], retaining active forms

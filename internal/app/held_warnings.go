@@ -602,21 +602,51 @@ func (a *App) heldWarnOfAlert(ctx context.Context, p Principal, alertID string) 
 // resolved-warn to nobody.
 const resolvedWarnOfUnsentWarnsNote = "MMHotline sent nothing: the warnings this message resolves were held for the triage agent and never sent, so nobody needs to hear that they ended."
 
+// warnKeptQuietFromWarnSubscribers is the condition on alerts a and
+// held_warn_alerts h for a held warn that never reached warn/sos subscribers:
+// either it resolved while held, or a triage agent report took it over at info
+// and no warn/sos report covered it. A warn taken over by a warn/sos report or
+// a playbook run request DID notify people, so its resolution is sent.
+const warnKeptQuietFromWarnSubscribers = `(h.ended_at>0 AND (
+ h.outcome='resolved'
+ OR (
+  h.outcome='taken_over'
+  AND h.taken_over_by='report'
+  AND (
+   EXISTS(SELECT 1 FROM alerts ra WHERE '/alerts/'||ra.id=h.taken_over_link AND ra.severity='info')
+   OR EXISTS(
+    SELECT 1 FROM triage_agent_covered_alerts c
+    JOIN triage_agent_requests q ON q.run_id=c.run_id AND q.request_id=c.item_id
+    JOIN alerts ra ON ra.id=q.report_alert_id
+    WHERE c.alert_id=a.id AND c.item_kind='report' AND ra.severity='info'
+   )
+  )
+  AND NOT EXISTS(
+   SELECT 1 FROM triage_agent_covered_alerts c
+   JOIN triage_agent_requests q ON q.run_id=c.run_id AND q.request_id=c.item_id
+   JOIN alerts ra ON ra.id=q.report_alert_id
+   WHERE c.alert_id=a.id AND c.item_kind='report' AND ra.severity IN ('warn','sos')
+  )
+ )
+))`
+
 // resolvesOnlyWarnsNeverSent reports whether the resolved-warn alert e ends
-// only warns MMHotline held and never sent (their alert resolved while held,
-// or the triage agent took them over): the warns of its alert source and
-// sender_incident_key since the previous resolved-warn of that key. It then
-// notes why on the alert, which notifies nobody: a resolved message tells the
-// end of something the person was told about. A resolved-warn with no such
-// warn, or with any warn MMHotline sent or still holds, is sent as usual.
+// only warns that never reached warn subscribers (their alert resolved while
+// held, or the triage agent took them over at info without sending a warn/sos
+// report): the warns of its alert source and sender_incident_key since the
+// previous resolved-warn of that key. It then notes why on the alert, which
+// notifies nobody: a resolved message tells the end of something the person was
+// told about. A resolved-warn with no such warn, or with any warn MMHotline
+// sent, still holds, or took over at warn/sos or via a playbook run request,
+// is sent as usual.
 func resolvesOnlyWarnsNeverSent(ctx context.Context, tx *sql.Tx, e Alert) (bool, error) {
 	if e.Severity != "resolved-warn" || e.SenderIncidentKey == "" {
 		return false, nil
 	}
 	var unsent, other int
 	err := tx.QueryRowContext(ctx, `SELECT
- COALESCE(SUM(h.outcome IN ('resolved','taken_over') AND h.ended_at>0),0),
- COALESCE(SUM(h.alert_id IS NULL OR h.outcome NOT IN ('resolved','taken_over') OR h.ended_at=0),0)
+ COALESCE(SUM(`+warnKeptQuietFromWarnSubscribers+`),0),
+ COALESCE(SUM(h.alert_id IS NULL OR NOT `+warnKeptQuietFromWarnSubscribers+`),0)
  FROM alerts a LEFT JOIN held_warn_alerts h ON h.alert_id=a.id
  WHERE `+warnsOfResolution,
 		e.SourceID, e.SenderIncidentKey, e.Sequence).Scan(&unsent, &other)

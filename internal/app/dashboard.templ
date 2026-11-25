@@ -49,8 +49,14 @@ templ alertsBody(frame pageFrame, data alertsPageData) {
 						<div class="what">
 							<div class="row">
 								<span class={ alertSeverityTag(alert.Severity) }>{ severityLabel(alert.Severity) }</span><span class="small faint">Received { frame.Clock(alert.ReceivedAt) }, { frame.RelativeTime(alert.ReceivedAt) }</span>
+								if alert.TriageSummary != nil {
+									<span class="tag work nodot">Explained by triage agent</span>
+								}
 							</div>
-							<a class="title" href={ "/alerts/" + alert.ID }>@withBreaksAfterSeparators(alert.Title)</a>
+							<a class="title" href={ "/alerts/" + alert.ID }>@withBreaksAfterSeparators(alert.DisplayTitle)</a>
+							if alert.DisplayTitle != alert.Title {
+								<p class="small faint">Original alert: @withBreaksAfterSeparators(alert.Title)</p>
+							}
 							<p class="small muted">
 								if alert.IncidentID != "" {
 									{ alert.Outcome }: <a href={ "/incidents/" + alert.IncidentID }>@withBreaksAfterSeparators(alert.IncidentTitle)</a>
@@ -74,17 +80,55 @@ templ alertsBody(frame pageFrame, data alertsPageData) {
 	</section>
 }
 
-// alertHeading is the one alert's heading: breadcrumbs, then the title.
-templ alertHeading(title string) {
+// alertHeading is the one alert's heading: breadcrumbs, the plain-English
+// title, and the original raw alert title quietly underneath when they differ.
+templ alertHeading(title, originalTitle string) {
 	<div>
 		<p class="crumbs"><a href="/alerts">Alert history</a> / Alert</p>
 		<h1>{ title }</h1>
+		if originalTitle != "" && originalTitle != title {
+			<p class="small faint alert-original">Original alert: @withBreaksAfterSeparators(originalTitle)</p>
+		}
 	</div>
 }
 
-// alertBody is the one alert: its severity, outcome, message, and IDs.
+// alertBody is the one alert: triage summary when available, then severity,
+// outcome, message, and IDs.
 templ alertBody(frame pageFrame, alert alertView) {
 	<div class="stack alert-pages">
+		if summary := alert.TriageSummary; summary != nil {
+			<section id="triage-agent-summary" class="panel" aria-labelledby="triage-agent-summary-heading">
+				<div class="panel-head">
+					<h2 id="triage-agent-summary-heading">Triage agent summary</h2>
+					if summary.Severity != "" {
+						<span class={ alertSeverityTag(summary.Severity) }>{ severityLabel(summary.Severity) }</span>
+					}
+				</div>
+				<div class="panel-body">
+					if summary.Title != "" {
+						<p class="finding">{ summary.Title }</p>
+					}
+					if summary.Message != "" {
+						<div class="result">{ summary.Message }</div>
+					}
+					if !summary.ReceivedAt.IsZero() {
+						<p class="small faint">Reported by the triage agent at { frame.Clock(summary.ReceivedAt) }, { frame.RelativeTime(summary.ReceivedAt) }.</p>
+					}
+				</div>
+				if summary.ReportAlertID != "" || summary.SessionID != "" {
+					<div class="panel-foot">
+						<div class="row">
+							if summary.ReportAlertID != "" {
+								<a href={ "/alerts/" + summary.ReportAlertID }>View triage report</a>
+							}
+							if summary.SessionID != "" {
+								<a href={ "/triage-sessions/" + summary.SessionID }>Triage session</a>
+							}
+						</div>
+					</div>
+				}
+			</section>
+		}
 		<section class="panel">
 			<div class="panel-head">
 				<span class={ alertSeverityTag(alert.Severity) }>{ severityLabel(alert.Severity) }</span><span class="small faint">Received { frame.Clock(alert.ReceivedAt) }, { frame.RelativeTime(alert.ReceivedAt) }</span>
@@ -134,7 +178,7 @@ templ alertBody(frame pageFrame, alert alertView) {
 				}
 			</div>
 		</section>
-		<details class="more" open>
+		<details class="more" open?={ alert.TriageSummary == nil }>
 			<summary>Full alert message</summary>
 			<div class="body">
 				if alert.Message != "" {

@@ -216,6 +216,9 @@ func QueueNotification(ctx context.Context, tx *sql.Tx, n Notification) error {
 			n.Message = triageAgentReportNotificationMessage(message)
 		}
 	}
+	if err = applyPlainEnglishNotification(ctx, tx, &n); err != nil {
+		return err
+	}
 	for _, c := range contactMethods {
 		if len(n.Recipients) > 0 && !containsMember(n.Recipients, c.MemberID) {
 			continue

@@ -2477,9 +2477,22 @@ reaches people at the end of the wait, at most 30 minutes after it arrived,
 and a warn is not urgent by definition, which is why only a warn is held and
 an SOS keeps the shorter, claimable wait.
 
-Info alerts are unchanged, an SOS keeps
-[its own wait](#an-sos-waits-for-the-agent), and resolved messages are
-unchanged: they are already silent on Pushover. A warn from MMHotline or one
+Info alerts are unchanged, and an SOS keeps
+[its own wait](#an-sos-waits-for-the-agent). A `resolved-warn` alert sends
+nothing when every warning it resolves in the current incident cycle was held
+and never reached `warn` subscribers—either resolved while held, or taken over
+only by an `info` report of the triage agent—so people whose phones never
+buzzed for the warning do not get a surprise resolved notification. When any
+warning in the cycle was delivered, taken over by a `warn` or `sos` report, or
+taken over by a playbook run request, the `resolved-warn` notification goes
+out. Outgoing `resolved-warn` and `resolved-sos` notifications lead with the
+triage agent's plain-English title (`Resolved: <triage title>`) when a triage
+summary exists (preserving a server replacement's “Your site works again: …”
+partner title), and uncovered non-system notifications humanize raw
+`check_group/check_name` monitoring slugs; whenever a notification title
+differs from the raw alert title, the original raw title is appended at the
+bottom of the notification body (`Original alert: …`) while the stored alert
+keeps its raw title verbatim. A warn from MMHotline or one
 made by hand is never held, and neither is a warn that arrives while a
 person has taken the open session over, where the agent works on nothing
 more, or while the [run limit](#the-run-limit) holds.

@@ -504,29 +504,51 @@ memory of the process that sends every alert.
 
 “Alert history” at `/alerts` lists alerts newest first, with severity labels
 Info, Warning, SOS, Resolved info, Resolved warning, and Resolved SOS. Each
-entry is a wrapping list item: severity, full title, receipt time using the
-frame's `clock` and relative time, and the named incident the alert opened,
-joined, resolved, or relates to. A source notice linked to an incident is
-“Related SOS incident”, because a notice does not open or join an incident.
-Alerts without an incident say “No SOS incident”. Notices are labelled
-“Notice from MMHotline”. Lists keep titles readable on a phone without
+entry is a wrapping list item: severity, plain-English display title, receipt
+time using the frame's `clock` and relative time, and the named incident the
+alert opened, joined, resolved, or relates to. A source notice linked to an
+incident is “Related SOS incident”, because a notice does not open or join an
+incident. Alerts without an incident say “No SOS incident”. Notices are
+labelled “Notice from MMHotline”. Lists keep titles readable on a phone without
 squeezing dates into narrow table columns.
+
+Non-system alerts lead with plain English while keeping the exact raw title in
+the database:
+
+- When the triage agent has reported on the alert (directly via covered alerts,
+  on a prior alert of the same `(source_id, sender_incident_key)` cycle for a
+  resolved alert, or via a `triage_agent_report` incident action), `/alerts`
+  and `/alerts/{alert_id}` lead with the report's plain-English headline
+  (prefixed with “Resolved: ” for `resolved-*` alerts when not already
+  prefixed). `/alerts` marks such rows with “Explained by triage agent”.
+- When no triage agent summary exists yet, raw `check_group/check_name`
+  monitoring slugs inside non-system alert titles are humanized into plain
+  words (for example, `disks/root_disk_usage` reads “Root disk usage”), while
+  ordinary human titles, URLs, and file paths stay unchanged.
+- Whenever the displayed title differs from the stored raw alert title,
+  “Original alert: …” appears quietly underneath so technical details remain
+  scannable.
 
 Search title/message, filter severity and receipt dates in the team's time
 zone, initially show 30 alerts, and load more without losing filters.
 A through date includes the whole local calendar day, including a day when
 the clocks change, so filtering matches the times the person reads.
 
-Alert details at `/alerts/{alert_id}` lead with severity, receipt time,
-meaning, and the alert's effect on a named incident. A late alert names the
-sender's event time and receipt time in the team's time zone, and the delay
-in minutes. “Full alert message” folds the full message, and “Alert IDs and
-sender details” folds “Alert ID”, “Alert source ID”, “Sender alert ID”, and
-“Sender incident key”. These facts stay available without crowding the
-alert's outcome. An unmatched resolution says no unresolved SOS incident
-matched the sender incident key and nobody was notified. An SOS incident
-has its own page, which [the incident page](incidents.md#the-incident-page)
-describes. Ordinary alert details do not show fictitious open/claimed states.
+Alert details at `/alerts/{alert_id}` lead with the plain-English title (with
+the original raw title quietly underneath when they differ). When a triage
+agent summary exists, a “Triage agent summary” panel appears at the top with
+the plain-English headline, the full report text, and links to “View triage
+report” and “Triage session”. Below that come severity, receipt time, meaning,
+and the alert's effect on a named incident. A late alert names the sender's
+event time and receipt time in the team's time zone, and the delay in minutes.
+“Full alert message” folds the raw message—closed by default when a triage
+agent summary is shown, and open otherwise—and “Alert IDs and sender details”
+folds “Alert ID”, “Alert source ID”, “Sender alert ID”, and “Sender incident
+key”. These facts stay available without crowding the alert's outcome. An
+unmatched resolution says no unresolved SOS incident matched the sender
+incident key and nobody was notified. An SOS incident has its own page, which
+[the incident page](incidents.md#the-incident-page) describes. Ordinary alert
+details do not show fictitious open/claimed states.
 
 ## Schedule
 

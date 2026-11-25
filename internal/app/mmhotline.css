@@ -501,6 +501,7 @@ pre.step { padding: 8px 10px; font-size: 12px; display: -webkit-box; -webkit-lin
 .source-connection { display: flex; flex-direction: column; gap: 10px; }
 .source-downtime { display: flex; flex-direction: column; gap: 12px; }
 .alert-pages .title { overflow-wrap: anywhere; }
+.alert-original { margin-top: 6px; }
 .alert-pages .tag { height: auto; min-height: 22px; white-space: normal; }
 .alert-pages .tag::before { flex-shrink: 0; }
 @media (max-width: 760px) {
