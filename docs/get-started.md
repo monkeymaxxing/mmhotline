@@ -74,13 +74,13 @@ in your own.
 
 1. **Download the release and check it.** On the server, paste this
    block. It picks the archive for the server's processor, downloads it with
-   its checksum file, checks it, and unpacks it into `~/mmhotline-0.8.0`.
+   its checksum file, checks it, and unpacks it into `~/mmhotline-0.8.1`.
    It does not install anything yet.
 
    ```sh
    (
    set -eu
-   version=0.8.0
+   version=0.8.1
    case "$(uname -sm)" in
      "Linux x86_64")  arch=amd64 ;;
      "Linux aarch64") arch=arm64 ;;
@@ -97,24 +97,24 @@ in your own.
    )
    ```
 
-   **Check:** it prints `mmhotline-0.8.0-linux-amd64.tar.gz: OK` (`arm64`
+   **Check:** it prints `mmhotline-0.8.1-linux-amd64.tar.gz: OK` (`arm64`
    on an ARM server). Reason: the check proves the download is the
    release, unchanged.
 
-   IF IT PRINTS `FAILED`, DELETE THE FOLDER `~/mmhotline-0.8.0` AND DO NOT RUN THE PROGRAM.
+   IF IT PRINTS `FAILED`, DELETE THE FOLDER `~/mmhotline-0.8.1` AND DO NOT RUN THE PROGRAM.
 
    The block cannot move your shell. Go to the unpacked folder yourself,
    and stay there for the steps that run `./mmhotline`:
 
    ```sh
-   cd ~/mmhotline-0.8.0/mmhotline-0.8.0-linux-*/
+   cd ~/mmhotline-0.8.1/mmhotline-0.8.1-linux-*/
    ```
 
    Optionally, prove that GitHub built the archive from this repository,
    with the GitHub command line tool (`gh`):
 
    ```sh
-   gh attestation verify ~/mmhotline-0.8.0/mmhotline-0.8.0-linux-*.tar.gz --repo monkeymaxxing/mmhotline
+   gh attestation verify ~/mmhotline-0.8.1/mmhotline-0.8.1-linux-*.tar.gz --repo monkeymaxxing/mmhotline
    ```
 
    By hand: `uname -sm` prints `Linux x86_64` for the `amd64` archive or
@@ -236,7 +236,7 @@ in your own.
 
 4. **Check the settings file.**
 
-   RUN THIS IN THE UNPACKED FOLDER, `~/mmhotline-0.8.0/mmhotline-0.8.0-linux-*/`. IF YOU ARE ELSEWHERE, `./mmhotline` IS NOT FOUND.
+   RUN THIS IN THE UNPACKED FOLDER, `~/mmhotline-0.8.1/mmhotline-0.8.1-linux-*/`. IF YOU ARE ELSEWHERE, `./mmhotline` IS NOT FOUND.
 
    ```sh
    sudo ./mmhotline settings check --settings-file /etc/mmhotline/mmhotline_settings.yml
@@ -268,7 +268,7 @@ in your own.
    `Next:` line when `web_url` starts with `https://` (with
    `http://localhost:8480`, nothing follows), and
    `mmhotline version` prints the release, such as
-   `mmhotline 0.8.0 (COMMIT, linux/amd64, modified=false)`, with the
+   `mmhotline 0.8.1 (COMMIT, linux/amd64, modified=false)`, with the
    release's full commit hash in place of `COMMIT`.
 
    The install copied the program to `/usr/local/bin/mmhotline` and
