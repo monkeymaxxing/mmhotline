@@ -336,22 +336,43 @@ Show each server of the [fleet view](#the-monitoring-tools-fleet-view) once,
 regardless of group membership, so no failing server is left out.
 A server needs attention when the monitoring tool reports a per-server
 exit code other than 0 in the fleet view's `nodes[].exit_code`.
-Servers needing attention come first, as red tiles with names,
-groups, and reasons. For a silent server, first show
-"Silent: its last report arrived at 09:50". Then show each check needing
-attention, such as "disk/root_disk_usage failing since 09:58: 96% used,
-limit 90%".
-For a silent server, prefix each check with "Last known: ".
+Servers needing attention come first, sorted by worst alert severity (`sos`
+urgent first, then `warn` warning, then `info` notice) and then alphabetically
+by server name.
 
-When a server needing attention is neither silent nor has checks needing
-attention, show
+Each server needing attention gets a card styled for its worst severity: red
+for urgent (`sos`), amber for warning (`warn`), and neutral for info (`info`),
+with an explicit severity tag ("Urgent", "Warning", or "Info") beside the
+server name and group so color is never the sole indicator, and normal readable
+body text inside the card. A server's severity is the worst among its silence
+severity (when `state` is `silent`, from `silence_alert_severity` or
+`report.alert_severity_when_this_node_goes_silent`, defaulting safely to `sos`
+when missing) and each attention check's `alert_severity` (defaulting safely to
+`sos` when missing or unrecognized so older monitoring tools never downgrade
+urgent issues). When a server needing attention is neither silent nor has
+checks needing attention, show
 "Needs attention (exit code 3) without a failing check; the fleet view on
-this server shows why."
-Healthy servers follow as small chips with names
-and groups. Sort the failing list and healthy list by server name.
-The heading counts all servers and servers needing attention:
-"3 of 5 need attention", or "All 5 healthy" in green. Problems appear first
-as red tiles, while healthy servers use small chips below the tiles.
+this server shows why.", treated as `warn` for exit code 3 (unknown monitoring
+health) and `sos` otherwise.
+
+For a silent server, first show
+"Silent: the server's last report arrived at 09:50" (or "Silent: no report
+since the server joined" when no report has arrived), and prefix each
+last-known check heading with "Last known: ". Group checks that share a check
+key under one plain heading (for example, `disk/root_disk_usage` reads "Root
+disk usage" and `systemd_units/no_systemd_unit_has_failed` reads "No systemd
+unit has failed"), trim a repeated finding prefix from the message, and insert
+wrap opportunities after underscores and slashes so long identifiers do not
+break mid-word. Each card footer links to that server's alert history
+(`/alerts?q=<server>`) and, when raw check keys or trailing parenthetical URL
+references exist, folds them under "Technical details".
+
+Healthy servers follow as small chips with names and groups, sorted by server
+name. The heading badge uses the matching severity color and plain wording:
+"Healthy" or "All 5 healthy" in green when all servers are healthy; single-
+severity counts such as "1 of 4 urgent", "2 of 4 have warnings", or "1 of 4
+has a notice"; or mixed counts such as "2 urgent · 1 warning" (including
+notices only when present).
 
 When the fleet hub sets findings aside after an investigation, one faint
 line follows the chips: "Set aside after an investigation: 1 finding on 2
@@ -460,10 +481,11 @@ unlisted JSON field.
 | `nodes` | Required list of the fleet's servers; JSON without `nodes` is refused. An empty list shows “The fleet view lists no servers yet.” |
 | `nodes[].name` | The server's name on its tile or chip |
 | `nodes[].state` | `silent` adds the silence line |
-| `nodes[].exit_code` | 0 is healthy, a chip; any other value makes the server a red tile that needs attention |
+| `nodes[].exit_code` | 0 is healthy, a chip; any other value makes the server a card that needs attention |
 | `nodes[].this_node_is_in_node_groups` | The groups shown with the server, in plain words; empty or missing shows none |
 | `nodes[].last_report_received_at` | The time in a silent server's line |
-| `nodes[].report.summary.attention[]` | Each check that needs attention: `check`, `finding` (a failed unit, when present), `state`, `since`, and `message` |
+| `nodes[].silence_alert_severity`, `nodes[].report.alert_severity_when_this_node_goes_silent` | The severity (`sos`, `warn`, `info`) of a silent server when `state` is `silent`; missing defaults to `sos` |
+| `nodes[].report.summary.attention[]` | Each check that needs attention: `check`, `finding` (a failed unit or CVE, when present), `state`, `alert_severity` (`sos`, `warn`, `info`; missing defaults to `sos`), `since`, and `message` |
 | `set_aside_finding_count`, `nodes_with_set_aside_findings` | The set-aside line, when the count is above 0; missing (MMWatchdog before 0.2.0) shows none |
 
 The command's exit status is ignored: a fleet view exits nonzero while a

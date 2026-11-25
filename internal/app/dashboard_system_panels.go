@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -81,19 +82,72 @@ type checklistItemView struct {
 	Question string
 }
 
-// ServersSummary counts the servers and those that need attention, for the
-// part's heading: "1 of 5 needs attention", "All 5 healthy".
-func (p systemPanels) ServersSummary() string {
-	failing, all := len(p.ServersNeedingAttention), len(p.ServersNeedingAttention)+len(p.HealthyServers)
-	switch {
-	case failing == 1:
-		return "1 of " + strconv.Itoa(all) + " needs attention"
-	case failing > 1:
-		return strconv.Itoa(failing) + " of " + strconv.Itoa(all) + " need attention"
-	case all == 1:
-		return "Healthy"
+// ServersSeverity returns the worst severity among ServersNeedingAttention
+// ("sos", "warn", or "info"), or "" when all servers are healthy.
+func (p systemPanels) ServersSeverity() string {
+	worst := ""
+	for _, server := range p.ServersNeedingAttention {
+		severity := normalizeAttentionSeverity(server.Severity)
+		if attentionSeverityRank(severity) > attentionSeverityRank(worst) {
+			worst = severity
+		}
 	}
-	return "All " + strconv.Itoa(all) + " healthy"
+	return worst
+}
+
+// ServersSummary counts the servers and those that need attention, for the
+// part's heading: "Healthy", "All 5 healthy", "2 of 4 have warnings",
+// "2 urgent · 1 warning".
+func (p systemPanels) ServersSummary() string {
+	all := len(p.ServersNeedingAttention) + len(p.HealthyServers)
+	if len(p.ServersNeedingAttention) == 0 {
+		if all == 1 {
+			return "Healthy"
+		}
+		return "All " + strconv.Itoa(all) + " healthy"
+	}
+	var sos, warn, info int
+	for _, server := range p.ServersNeedingAttention {
+		switch normalizeAttentionSeverity(server.Severity) {
+		case "sos":
+			sos++
+		case "warn":
+			warn++
+		case "info":
+			info++
+		}
+	}
+	switch {
+	case sos > 0 && warn == 0 && info == 0:
+		return strconv.Itoa(sos) + " of " + strconv.Itoa(all) + " urgent"
+	case warn > 0 && sos == 0 && info == 0:
+		if warn == 1 {
+			return "1 of " + strconv.Itoa(all) + " has a warning"
+		}
+		return strconv.Itoa(warn) + " of " + strconv.Itoa(all) + " have warnings"
+	case info > 0 && sos == 0 && warn == 0:
+		if info == 1 {
+			return "1 of " + strconv.Itoa(all) + " has a notice"
+		}
+		return strconv.Itoa(info) + " of " + strconv.Itoa(all) + " have notices"
+	default:
+		var parts []string
+		if sos > 0 {
+			parts = append(parts, strconv.Itoa(sos)+" urgent")
+		}
+		if warn > 0 {
+			parts = append(parts, countedNoun(warn, "warning", "warnings"))
+		}
+		if info > 0 {
+			parts = append(parts, countedNoun(info, "notice", "notices"))
+		}
+		return strings.Join(parts, " · ")
+	}
+}
+
+// ServerAlertsURL links to the alert history filtered for a server's name.
+func ServerAlertsURL(name string) string {
+	return "/alerts?q=" + url.QueryEscape(name)
 }
 
 // ChecklistDone counts the checklist's items that need nobody now.
@@ -420,25 +474,209 @@ func addVerificationInterval(t time.Time, interval string) (time.Time, bool) {
 	}
 }
 
-// attentionLine says what one check of a server that needs attention found.
-// clock writes a time as the page shows it.
-func attentionLine(serverSilent bool, check fleetViewAttention, clock func(time.Time) string) string {
-	var line string
-	if serverSilent {
-		line = "Last known: "
+// serverCheckGroup groups attention entries that share a check key under one
+// plain heading.
+type serverCheckGroup struct {
+	RawCheck string
+	Title    string
+	Findings []serverFindingView
+}
+
+// serverFindingView is one formatted finding or check status inside a
+// serverCheckGroup.
+type serverFindingView struct {
+	Finding   string
+	State     string
+	Severity  string
+	Since     time.Time
+	Message   string
+	Reference string
+}
+
+// plainCheckName turns a check key such as "disk/root_disk_usage" or
+// "installed_packages/known_exploited_flaws" into a plain heading.
+func plainCheckName(raw string) string {
+	name := strings.TrimSpace(raw)
+	if i := strings.LastIndex(name, "/"); i >= 0 && i+1 < len(name) {
+		name = name[i+1:]
 	}
-	line += check.Check
-	if check.Finding != "" {
-		line += ", " + check.Finding
+	return capitalize(strings.ReplaceAll(name, "_", " "))
+}
+
+// groupServerChecks groups matching check keys in first-seen order and cleans
+// each finding's message for display on a server card.
+func groupServerChecks(checks []fleetViewAttention) []serverCheckGroup {
+	var groups []serverCheckGroup
+	indexByCheck := make(map[string]int, len(checks))
+	for _, check := range checks {
+		message, reference := splitTrailingURLReference(check.Message)
+		message = trimFindingPrefix(check.Finding, message)
+		finding := serverFindingView{
+			Finding:   strings.TrimSpace(check.Finding),
+			State:     strings.TrimSpace(check.State),
+			Severity:  normalizeAttentionSeverity(check.AlertSeverity),
+			Since:     check.Since,
+			Message:   message,
+			Reference: reference,
+		}
+		rawCheck := strings.TrimSpace(check.Check)
+		if rawCheck != "" {
+			if idx, ok := indexByCheck[rawCheck]; ok {
+				groups[idx].Findings = append(groups[idx].Findings, finding)
+				continue
+			}
+			indexByCheck[rawCheck] = len(groups)
+		}
+		groups = append(groups, serverCheckGroup{
+			RawCheck: rawCheck,
+			Title:    plainCheckName(rawCheck),
+			Findings: []serverFindingView{finding},
+		})
 	}
-	line += " " + check.State
-	if !check.Since.IsZero() {
-		line += " since " + clock(check.Since)
+	return groups
+}
+
+// hasTechnicalDetails reports whether a card has raw check keys or split
+// reference details worth showing in its Technical details fold.
+func hasTechnicalDetails(groups []serverCheckGroup) bool {
+	for _, group := range groups {
+		if group.RawCheck != "" {
+			return true
+		}
+		for _, finding := range group.Findings {
+			if finding.Reference != "" {
+				return true
+			}
+		}
 	}
-	if check.Message != "" {
-		line += ": " + check.Message
+	return false
+}
+
+// splitTrailingURLReference splits a trailing parenthetical containing an
+// http(s) URL, such as " (CISA: ...; https://...)", out of a check message so
+// the main card stays scannable while keeping the reference in Technical details.
+func splitTrailingURLReference(message string) (body, reference string) {
+	trimmed := strings.TrimSpace(message)
+	end := len(trimmed)
+	if strings.HasSuffix(trimmed, ").") {
+		end--
 	}
-	return line
+	if end == 0 || trimmed[end-1] != ')' {
+		return trimmed, ""
+	}
+	depth, open := 0, -1
+	for i := end - 1; i >= 0; i-- {
+		switch trimmed[i] {
+		case ')':
+			depth++
+		case '(':
+			depth--
+			if depth == 0 {
+				open = i
+			}
+		}
+		if open >= 0 {
+			break
+		}
+	}
+	if open < 0 {
+		return trimmed, ""
+	}
+	inside := strings.TrimSpace(trimmed[open+1 : end-1])
+	if !strings.Contains(inside, "https://") && !strings.Contains(inside, "http://") {
+		return trimmed, ""
+	}
+	body = strings.TrimSpace(trimmed[:open])
+	if body == "" {
+		return trimmed, ""
+	}
+	return body, inside
+}
+
+// trimFindingPrefix removes a repeated finding identifier from the start of a
+// check message so the finding name is not printed twice.
+func trimFindingPrefix(finding, message string) string {
+	finding = strings.TrimSpace(finding)
+	message = strings.TrimSpace(message)
+	if finding == "" || message == "" {
+		return message
+	}
+	const systemdPrefix = "systemd unit "
+	if len(message) >= len(systemdPrefix) && strings.EqualFold(message[:len(systemdPrefix)], systemdPrefix) {
+		if rest, ok := stripLeadingToken(message[len(systemdPrefix):], finding); ok {
+			return rest
+		}
+	}
+	if rest, ok := stripLeadingToken(message, finding); ok {
+		return rest
+	}
+	if first, _, hasSpace := strings.Cut(finding, " "); hasSpace && first != "" {
+		if rest, ok := stripLeadingToken(message, first); ok {
+			return rest
+		}
+	}
+	return message
+}
+
+func stripLeadingToken(message, token string) (string, bool) {
+	if !strings.HasPrefix(message, token) {
+		return message, false
+	}
+	rest := message[len(token):]
+	switch {
+	case rest == "":
+		return "", true
+	case rest[0] == ' ':
+		return strings.TrimSpace(rest), true
+	case rest[0] == ':':
+		return strings.TrimSpace(rest[1:]), true
+	default:
+		return message, false
+	}
+}
+
+func findingStatusWhen(finding serverFindingView, clock func(time.Time) string) string {
+	switch {
+	case finding.State != "" && !finding.Since.IsZero():
+		return finding.State + " since " + clock(finding.Since)
+	case !finding.Since.IsZero():
+		return "since " + clock(finding.Since)
+	default:
+		return finding.State
+	}
+}
+
+func serverTagClass(severity string) string {
+	switch normalizeAttentionSeverity(severity) {
+	case "sos":
+		return "tag sos"
+	case "warn":
+		return "tag warn"
+	default:
+		return "tag"
+	}
+}
+
+func serverCardClass(severity string) string {
+	switch normalizeAttentionSeverity(severity) {
+	case "sos":
+		return "server sos"
+	case "warn":
+		return "server warn"
+	default:
+		return "server info"
+	}
+}
+
+func serverSeverityLabel(severity string) string {
+	switch normalizeAttentionSeverity(severity) {
+	case "sos":
+		return "Urgent"
+	case "warn":
+		return "Warning"
+	default:
+		return "Info"
+	}
 }
 
 // copyQuestionScript copies an item's question. It listens on the document,

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -67,8 +68,10 @@ type fleetViewNode struct {
 	// several, or in none.
 	NodeGroups           []string  `json:"this_node_is_in_node_groups"`
 	LastReportReceivedAt time.Time `json:"last_report_received_at"`
+	SilenceAlertSeverity string    `json:"silence_alert_severity"`
 	Report               *struct {
-		Summary struct {
+		AlertSeverityWhenThisNodeGoesSilent string `json:"alert_severity_when_this_node_goes_silent"`
+		Summary                             struct {
 			Attention []fleetViewAttention `json:"attention"`
 		} `json:"summary"`
 	} `json:"report"`
@@ -76,11 +79,12 @@ type fleetViewNode struct {
 
 // fleetViewAttention is one check on a server that needs attention.
 type fleetViewAttention struct {
-	Check   string    `json:"check"`
-	Finding string    `json:"finding"`
-	State   string    `json:"state"`
-	Since   time.Time `json:"since"`
-	Message string    `json:"message"`
+	Check         string    `json:"check"`
+	Finding       string    `json:"finding"`
+	State         string    `json:"state"`
+	AlertSeverity string    `json:"alert_severity"`
+	Since         time.Time `json:"since"`
+	Message       string    `json:"message"`
 }
 
 // fleetServer is one server of the fleet view as the dashboard shows it.
@@ -89,6 +93,9 @@ type fleetServer struct {
 	// Groups names its node groups in plain words, such as "App servers,
 	// Frankfurt"; "" for a server in none.
 	Groups string
+	// Severity is the worst alert severity among the server's silence and
+	// attention checks ("sos", "warn", or "info"); "" for healthy servers.
+	Severity string
 	// A server that needs attention, whose exit code is not 0, shows why:
 	// its silence, with when its last report arrived, the checks of its last
 	// report that need attention, or, with neither, its exit code.
@@ -139,9 +146,69 @@ func decodeFleetView(output []byte) (fleetView, error) {
 	return view, nil
 }
 
-// fleetServers lists the fleet view's servers that need attention and the
-// healthy ones, each sorted by name. A server is listed once, whatever
-// groups it is in, so no failing server is left out of the picture.
+// normalizeAttentionSeverity maps an alert_severity field to "sos", "warn",
+// or "info". Missing or unrecognized values default safely to "sos" so urgent
+// issues from older monitoring tools are never downgraded.
+func normalizeAttentionSeverity(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "sos":
+		return "sos"
+	case "warn":
+		return "warn"
+	case "info":
+		return "info"
+	default:
+		return "sos"
+	}
+}
+
+func attentionSeverityRank(severity string) int {
+	switch severity {
+	case "sos":
+		return 3
+	case "warn":
+		return 2
+	case "info":
+		return 1
+	default:
+		return 0
+	}
+}
+
+// serverSeverity returns the worst alert severity among a server's silence
+// state and attention checks. A server with neither silence nor checks is
+// "warn" for exit code 3 (unknown monitoring health) and "sos" otherwise.
+func serverSeverity(node fleetViewNode, silent bool, checks []fleetViewAttention) string {
+	if !silent && len(checks) == 0 {
+		if node.ExitCode == 3 {
+			return "warn"
+		}
+		return "sos"
+	}
+	worst := ""
+	consider := func(s string) {
+		s = normalizeAttentionSeverity(s)
+		if attentionSeverityRank(s) > attentionSeverityRank(worst) {
+			worst = s
+		}
+	}
+	if silent {
+		silenceSeverity := strings.TrimSpace(node.SilenceAlertSeverity)
+		if silenceSeverity == "" && node.Report != nil {
+			silenceSeverity = strings.TrimSpace(node.Report.AlertSeverityWhenThisNodeGoesSilent)
+		}
+		consider(silenceSeverity)
+	}
+	for _, check := range checks {
+		consider(check.AlertSeverity)
+	}
+	return worst
+}
+
+// fleetServers lists the fleet view's servers that need attention (sorted by
+// worst severity first, then by name) and the healthy ones (sorted by name).
+// A server is listed once, whatever groups it is in, so no failing server is
+// left out of the picture.
 func fleetServers(view fleetView) (needAttention, healthy []fleetServer) {
 	for _, node := range view.Nodes {
 		server := fleetServer{Name: node.Name, Groups: plainGroupNames(node.NodeGroups), ExitCode: node.ExitCode}
@@ -153,10 +220,17 @@ func fleetServers(view fleetView) (needAttention, healthy []fleetServer) {
 		if node.Report != nil {
 			server.Checks = node.Report.Summary.Attention
 		}
+		server.Severity = serverSeverity(node, server.Silent, server.Checks)
 		needAttention = append(needAttention, server)
 	}
 	byName := func(a, b fleetServer) int { return strings.Compare(a.Name, b.Name) }
-	slices.SortStableFunc(needAttention, byName)
+	bySeverityThenName := func(a, b fleetServer) int {
+		if order := cmp.Compare(attentionSeverityRank(b.Severity), attentionSeverityRank(a.Severity)); order != 0 {
+			return order
+		}
+		return strings.Compare(a.Name, b.Name)
+	}
+	slices.SortStableFunc(needAttention, bySeverityThenName)
 	slices.SortStableFunc(healthy, byName)
 	return needAttention, healthy
 }

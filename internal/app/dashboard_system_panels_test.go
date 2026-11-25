@@ -192,11 +192,33 @@ func TestDashboardShowsServersChangesAndChecklist(t *testing.T) {
 	pageInOrder(t, page, `id="incident-list"`, `id="system-servers"`, `id="system-changes"`, `id="system-checklist"`)
 	// The team has no schedule, so times are in UTC, to the minute, with the
 	// day when it is not today.
-	pageInOrder(t, liveSectionText(page, "system-servers"), "Servers", "3 of 5 need attention",
-		"app002", "App servers", "disk/root_disk_usage failing since 09:58: 96% used, limit 90%", "systemd/every_systemd_unit, caddy.service failing since 09:59: failed",
-		"db01", "Database servers", "Silent: the server's last report arrived at 09:50", "Last known: postgresql/replication_lag failing since 09:45: lag 40s",
-		"stray01", "Needs attention (exit code 3) without a failing check; the fleet view on this server shows why.",
+	serversNoWBR := strings.ReplaceAll(page, "<wbr>", "")
+	serversText := liveSectionText(serversNoWBR, "system-servers")
+	pageInOrder(t, serversText, "Servers", "2 urgent · 1 warning",
+		"app002", "App servers", "Urgent",
+		"Root disk usage", "96% used, limit 90% · failing since 09:58",
+		"Every systemd unit", "caddy.service — failed · failing since 09:59",
+		"View alerts", "Technical details", "disk/root_disk_usage", "systemd/every_systemd_unit",
+		"db01", "Database servers", "Urgent",
+		"Silent: the server's last report arrived at 09:50",
+		"Last known: Replication lag", "lag 40s · failing since 09:45",
+		"View alerts", "Technical details", "postgresql/replication_lag",
+		"stray01", "Warning",
+		"Needs attention (exit code 3) without a failing check; the fleet view on this server shows why.",
+		"View alerts",
 		"app001 App servers, Frankfurt", "util01 Util server")
+	serversHTML := page[strings.Index(page, `id="system-servers"`):strings.Index(page, `id="system-changes"`)]
+	serversUnfolded := foldedDetails.ReplaceAllString(strings.ReplaceAll(serversHTML, "<wbr>", ""), "")
+	for _, rawKey := range []string{"disk/root_disk_usage", "systemd/every_systemd_unit", "postgresql/replication_lag"} {
+		if strings.Contains(serversUnfolded, rawKey) {
+			t.Fatalf("raw check key %q appeared outside Technical details:\n%s", rawKey, serversUnfolded)
+		}
+	}
+	for _, link := range []string{`href="/alerts?q=app002"`, `href="/alerts?q=db01"`, `href="/alerts?q=stray01"`} {
+		if !strings.Contains(serversHTML, link) {
+			t.Fatalf("missing server alerts link %s:\n%s", link, serversHTML)
+		}
+	}
 	changes := liveSectionText(page, "system-changes")
 	pageInOrder(t, changes, "Recent changes to the systems repository", "Change number 10 · ", "Change number 2 · ", "Change number 1 · ")
 	checklist := liveSectionText(page, "system-checklist")
@@ -242,6 +264,181 @@ func TestDashboardShowsServersChangesAndChecklist(t *testing.T) {
 	if servers := liveSectionText(page, "system-servers"); servers != "Servers Healthy app001 App servers Set aside after an investigation: 1 finding on 2 servers. sudo mmwatchdog fleet set-aside-findings on the fleet hub lists them." {
 		t.Fatalf("the set-aside findings line: %q", servers)
 	}
+}
+
+func TestDashboardServersSeverityAndGrouping(t *testing.T) {
+	parallelStartingProcesses(t)
+	now := time.Date(2026, 10, 27, 10, 0, 30, 0, time.UTC)
+
+	renderServers := func(t *testing.T, fleetJSON string) (sectionHTML, sectionText, unfoldedText string) {
+		t.Helper()
+		a := foundationApp(t)
+		person := memberFixture(t, a, "dashboard@example.test")
+		a.Now = func() time.Time { return now }
+		startFakeFleetView(t, a, fleetJSON)
+		page := dashboardPage(t, a, person.Principal.SignInEmailAddress)
+		start := strings.Index(page, `<section id="system-servers"`)
+		end := strings.Index(page[start:], `</section>`)
+		if start < 0 || end < 0 {
+			t.Fatalf("missing system-servers section in:\n%s", page)
+		}
+		sectionHTML = page[start : start+end+len("</section>")]
+		noWBR := strings.ReplaceAll(sectionHTML, "<wbr>", "")
+		sectionText = liveSectionText(noWBR, "system-servers")
+		unfoldedText = liveSectionText(foldedDetails.ReplaceAllString(noWBR, ""), "system-servers")
+		return sectionHTML, sectionText, unfoldedText
+	}
+
+	t.Run("warnings only show in amber", func(t *testing.T) {
+		sectionHTML, sectionText, _ := renderServers(t, `{
+		  "nodes": [
+		    {"name": "app001", "state": "reporting", "exit_code": 0, "this_node_is_in_node_groups": ["app_servers"]},
+		    {"name": "util01", "state": "reporting", "exit_code": 0, "this_node_is_in_node_groups": ["util_server"]},
+		    {"name": "app002", "state": "reporting", "exit_code": 1, "this_node_is_in_node_groups": ["app_servers"], "report": {"summary": {"attention": [{"check": "disk/root_disk_usage", "state": "failing", "alert_severity": "warn", "since": "2026-10-27T09:58:00Z", "message": "82% used"}]}}},
+		    {"name": "db01", "state": "reporting", "exit_code": 1, "this_node_is_in_node_groups": ["database_servers"], "report": {"summary": {"attention": [{"check": "installed_packages/known_exploited_flaws", "finding": "CVE-2026-46300 openssh", "state": "failing", "alert_severity": "warn", "since": "2026-10-27T08:10:00Z", "message": "CVE-2026-46300 affects openssh"}]}}}
+		  ]
+		}`)
+		if !strings.Contains(sectionHTML, `<span class="tag warn">2 of 4 have warnings</span>`) {
+			t.Fatalf("expected amber warning summary tag:\n%s", sectionHTML)
+		}
+		if strings.Contains(sectionHTML, `tag sos`) || strings.Contains(sectionHTML, `server sos`) {
+			t.Fatalf("warning-only servers must not render in SOS red:\n%s", sectionHTML)
+		}
+		if strings.Count(sectionHTML, `class="server warn"`) != 2 {
+			t.Fatalf("expected two amber warning cards:\n%s", sectionHTML)
+		}
+		pageInOrder(t, sectionText, "2 of 4 have warnings", "app002", "Warning", "db01", "Warning", "app001", "util01")
+	})
+
+	t.Run("mixed urgent warning and notice sorts by severity then name", func(t *testing.T) {
+		sectionHTML, sectionText, _ := renderServers(t, `{
+		  "nodes": [
+		    {"name": "alpha01", "state": "reporting", "exit_code": 1, "report": {"summary": {"attention": [{"check": "disk/root_disk_usage", "state": "failing", "alert_severity": "warn", "message": "82% used"}]}}},
+		    {"name": "beta01", "state": "reporting", "exit_code": 1, "report": {"summary": {"attention": [{"check": "updates/reboot_required", "state": "failing", "alert_severity": "info", "message": "reboot needed"}]}}},
+		    {"name": "zebra01", "state": "reporting", "exit_code": 1, "report": {"summary": {"attention": [{"check": "disk/root_disk_usage", "state": "failing", "alert_severity": "sos", "message": "98% used"}]}}},
+		    {"name": "util01", "state": "reporting", "exit_code": 0}
+		  ]
+		}`)
+		if !strings.Contains(sectionHTML, `<span class="tag sos">1 urgent · 1 warning · 1 notice</span>`) {
+			t.Fatalf("expected mixed severity header badge:\n%s", sectionHTML)
+		}
+		pageInOrder(t, sectionHTML, `class="server sos"`, "zebra01", `class="server warn"`, "alpha01", `class="server info"`, "beta01")
+		pageInOrder(t, sectionText, "zebra01", "Urgent", "alpha01", "Warning", "beta01", "Info", "util01")
+	})
+
+	t.Run("info only shows neutral notice", func(t *testing.T) {
+		sectionHTML, _, _ := renderServers(t, `{
+		  "nodes": [
+		    {"name": "app001", "state": "reporting", "exit_code": 1, "report": {"summary": {"attention": [{"check": "updates/reboot_required", "state": "failing", "alert_severity": "info", "message": "kernel update pending"}]}}},
+		    {"name": "app002", "state": "reporting", "exit_code": 0}
+		  ]
+		}`)
+		if !strings.Contains(sectionHTML, `<span class="tag">1 of 2 has a notice</span>`) {
+			t.Fatalf("expected neutral notice header badge:\n%s", sectionHTML)
+		}
+		if !strings.Contains(sectionHTML, `class="server info"`) || !strings.Contains(sectionHTML, `<span class="tag">Info</span>`) {
+			t.Fatalf("expected neutral info server card:\n%s", sectionHTML)
+		}
+	})
+
+	t.Run("silent server respects silence_alert_severity and fallback", func(t *testing.T) {
+		sectionHTML, sectionText, _ := renderServers(t, `{
+		  "nodes": [
+		    {"name": "s1-warn-direct", "state": "silent", "exit_code": 1, "silence_alert_severity": "warn", "last_report_received_at": "2026-10-27T09:50:00Z"},
+		    {"name": "s2-warn-fallback", "state": "silent", "exit_code": 1, "last_report_received_at": "2026-10-27T09:50:00Z", "report": {"alert_severity_when_this_node_goes_silent": "warn", "summary": {"attention": []}}},
+		    {"name": "s3-sos-direct", "state": "silent", "exit_code": 1, "silence_alert_severity": "sos", "last_report_received_at": "2026-10-27T09:50:00Z"},
+		    {"name": "s4-empty-defaults-sos", "state": "silent", "exit_code": 1, "last_report_received_at": "2026-10-27T09:50:00Z"}
+		  ]
+		}`)
+		if !strings.Contains(sectionHTML, `<span class="tag sos">2 urgent · 2 warnings</span>`) {
+			t.Fatalf("expected 2 urgent and 2 warnings:\n%s", sectionHTML)
+		}
+		pageInOrder(t, sectionHTML,
+			`class="server sos"`, "s3-sos-direct",
+			`class="server sos"`, "s4-empty-defaults-sos",
+			`class="server warn"`, "s1-warn-direct",
+			`class="server warn"`, "s2-warn-fallback",
+		)
+		pageInOrder(t, sectionText,
+			"s3-sos-direct", "Urgent", "Silent: the server's last report arrived at 09:50",
+			"s4-empty-defaults-sos", "Urgent",
+			"s1-warn-direct", "Warning",
+			"s2-warn-fallback", "Warning",
+		)
+	})
+
+	t.Run("groups findings cleans prefixes splits URL references and inserts word breaks", func(t *testing.T) {
+		sectionHTML, sectionText, unfoldedText := renderServers(t, `{
+		  "nodes": [
+		    {"name": "app002", "state": "reporting", "exit_code": 1, "this_node_is_in_node_groups": ["app_servers"], "report": {"summary": {"attention": [
+		      {"check": "installed_packages/known_exploited_flaws", "finding": "CVE-2026-46300 openssh", "state": "failing", "alert_severity": "warn", "since": "2026-10-27T08:12:00Z", "message": "CVE-2026-46300 affects openssh 9.6p1 (CISA: Remote code execution; https://nvd.nist.gov/vuln/detail/CVE-2026-46300)"},
+		      {"check": "installed_packages/known_exploited_flaws", "finding": "CVE-2026-46301 curl", "state": "failing", "alert_severity": "warn", "since": "2026-10-27T08:12:00Z", "message": "CVE-2026-46301 affects curl 8.5.0 (https://nvd.nist.gov/vuln/detail/CVE-2026-46301)"},
+		      {"check": "systemd_units/no_systemd_unit_has_failed", "finding": "compare_every_server_with_the_repository.service", "state": "failing", "alert_severity": "warn", "since": "2026-10-27T09:59:00Z", "message": "systemd unit compare_every_server_with_the_repository.service failed"},
+		      {"check": "systemd_units/no_systemd_unit_has_failed", "finding": "caddy.service", "state": "failing", "alert_severity": "warn", "since": "2026-10-27T09:59:00Z", "message": "caddy.service exited with status 1"}
+		    ]}}},
+		    {"name": "app001", "state": "reporting", "exit_code": 0}
+		  ]
+		}`)
+		if strings.Count(unfoldedText, "Known exploited flaws") != 1 {
+			t.Fatalf("expected Known exploited flaws heading once, got:\n%s", unfoldedText)
+		}
+		if strings.Count(unfoldedText, "No systemd unit has failed") != 1 {
+			t.Fatalf("expected No systemd unit has failed heading once, got:\n%s", unfoldedText)
+		}
+		pageInOrder(t, unfoldedText,
+			"1 of 2 has a warning",
+			"app002", "App servers", "Warning",
+			"Known exploited flaws",
+			"CVE-2026-46300 openssh — affects openssh 9.6p1 · failing since 08:12",
+			"CVE-2026-46301 curl — affects curl 8.5.0 · failing since 08:12",
+			"No systemd unit has failed",
+			"compare_every_server_with_the_repository.service — failed · failing since 09:59",
+			"caddy.service — exited with status 1 · failing since 09:59",
+			"View alerts",
+		)
+		for _, clutter := range []string{
+			"installed_packages/known_exploited_flaws",
+			"systemd_units/no_systemd_unit_has_failed",
+			"https://nvd.nist.gov",
+			"CISA: Remote code execution",
+			"systemd unit compare_every_server_with_the_repository.service",
+			"CVE-2026-46300 openssh — CVE-2026-46300",
+			"caddy.service — caddy.service",
+		} {
+			if strings.Contains(unfoldedText, clutter) {
+				t.Fatalf("clutter %q leaked into unfolded card body:\n%s", clutter, unfoldedText)
+			}
+		}
+		pageInOrder(t, sectionText,
+			"Technical details",
+			"installed_packages/known_exploited_flaws",
+			"CVE-2026-46300 openssh: CISA: Remote code execution; https://nvd.nist.gov/vuln/detail/CVE-2026-46300",
+			"CVE-2026-46301 curl: https://nvd.nist.gov/vuln/detail/CVE-2026-46301",
+			"systemd_units/no_systemd_unit_has_failed",
+		)
+		if !strings.Contains(sectionHTML, "compare_<wbr>every_<wbr>server_<wbr>with_<wbr>the_<wbr>repository.service") {
+			t.Fatalf("expected <wbr> break opportunities in long unit name:\n%s", sectionHTML)
+		}
+		if !strings.Contains(sectionHTML, `href="/alerts?q=app002"`) {
+			t.Fatalf("expected View alerts link for app002:\n%s", sectionHTML)
+		}
+	})
+
+	t.Run("older fleet JSON without alert_severity defaults safely to urgent", func(t *testing.T) {
+		sectionHTML, sectionText, _ := renderServers(t, `{
+		  "nodes": [
+		    {"name": "app001", "state": "reporting", "exit_code": 0},
+		    {"name": "app002", "state": "reporting", "exit_code": 1, "report": {"summary": {"attention": [{"check": "disk/root_disk_usage", "state": "failing", "since": "2026-10-27T09:58:00Z", "message": "96% used"}]}}}
+		  ]
+		}`)
+		if !strings.Contains(sectionHTML, `<span class="tag sos">1 of 2 urgent</span>`) {
+			t.Fatalf("expected 1 of 2 urgent header tag:\n%s", sectionHTML)
+		}
+		if !strings.Contains(sectionHTML, `class="server sos"`) {
+			t.Fatalf("expected SOS card when alert_severity is omitted:\n%s", sectionHTML)
+		}
+		pageInOrder(t, sectionText, "1 of 2 urgent", "app002", "Urgent", "Root disk usage", "96% used · failing since 09:58")
+	})
 }
 
 // The checklist's setup items count toward done and give the next step. The

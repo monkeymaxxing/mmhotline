@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"regexp"
 	"slices"
 	"strings"
@@ -11,9 +12,9 @@ import (
 // FuzzFleetView reads fuzzed output of the fleet view command, which runs as
 // root and prints the monitoring tool's fleet view. A refusal gives no view.
 // From a view, the dashboard lists each server once: those whose exit code
-// is not 0 as needing attention, the others as healthy, each list sorted by
-// name, so no failing server is left out of the picture
-// (docs/changing-mmhotline/design/interface.md#the-monitoring-tools-fleet-view).
+// is not 0 as needing attention (sorted by worst severity, then name), the
+// others as healthy (sorted by name), so no failing server is left out of the
+// picture (docs/changing-mmhotline/design/interface.md#the-monitoring-tools-fleet-view).
 func FuzzFleetView(f *testing.F) {
 	for _, seed := range []string{
 		fleetViewFixture,
@@ -44,17 +45,29 @@ func FuzzFleetView(f *testing.F) {
 			t.Fatalf("%d servers need attention and %d are healthy, of %d with %d failing", len(needAttention), len(healthy), len(view.Nodes), failing)
 		}
 		byName := func(a, b fleetServer) int { return strings.Compare(a.Name, b.Name) }
-		if !slices.IsSortedFunc(needAttention, byName) || !slices.IsSortedFunc(healthy, byName) {
+		bySeverityThenName := func(a, b fleetServer) int {
+			if order := cmp.Compare(attentionSeverityRank(b.Severity), attentionSeverityRank(a.Severity)); order != 0 {
+				return order
+			}
+			return strings.Compare(a.Name, b.Name)
+		}
+		if !slices.IsSortedFunc(needAttention, bySeverityThenName) || !slices.IsSortedFunc(healthy, byName) {
 			t.Fatalf("servers out of order: %+v, %+v", needAttention, healthy)
 		}
 		for _, server := range needAttention {
 			if server.ExitCode == 0 {
 				t.Fatalf("the healthy server %q is listed as needing attention", server.Name)
 			}
+			if server.Severity != "sos" && server.Severity != "warn" && server.Severity != "info" {
+				t.Fatalf("server %q has invalid severity %q", server.Name, server.Severity)
+			}
 		}
 		for _, server := range healthy {
 			if server.ExitCode != 0 {
 				t.Fatalf("the failing server %q is listed as healthy", server.Name)
+			}
+			if server.Severity != "" {
+				t.Fatalf("healthy server %q has severity %q", server.Name, server.Severity)
 			}
 		}
 	})

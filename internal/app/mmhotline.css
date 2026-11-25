@@ -261,12 +261,33 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; margin:
 .items .title { font-size: 16px; font-weight: 650; color: var(--text); }
 .items .do { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* Servers: a problem gets a full tile; healthy servers are small chips. */
-.servers { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.server { border: 1px solid var(--sos-border); background: var(--sos-bg); border-radius: 10px; padding: 12px 14px; }
-.server .name { display: flex; align-items: center; gap: 8px; font-weight: 650; }
-.server .name::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--sos-solid); }
-.server .why { font-size: 13px; color: var(--sos); margin-top: 2px; }
+/* Servers: a server needing attention gets a severity-styled card with readable
+   body text; healthy servers are small chips. */
+.servers { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 14px; align-items: start; }
+.server { display: flex; flex-direction: column; gap: 10px; min-width: 0; border: 1px solid var(--border);
+  background: var(--surface); border-radius: 10px; padding: 14px 16px; color: var(--text); }
+.server.sos { border-color: var(--sos-border); background: color-mix(in srgb, var(--sos-bg) 55%, var(--surface)); }
+.server.warn { border-color: var(--warn-border); background: color-mix(in srgb, var(--warn-bg) 55%, var(--surface)); }
+.server.info { border-color: var(--border-strong); background: var(--surface-2); }
+.server-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 12px; }
+.server-id { min-width: 0; }
+.server .name { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 650; line-height: 1.3; }
+.server .name::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.server.sos .name::before { background: var(--sos-solid); }
+.server.warn .name::before { background: var(--warn-solid); }
+.server-body { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.45; color: var(--text-2); }
+.server-silent { color: var(--text); font-weight: 500; }
+.server-check-title { font-weight: 600; color: var(--text); }
+.server-check-detail { margin-top: 2px; }
+.server-findings { margin: 4px 0 0; padding-left: 1.15rem; }
+.server-findings li + li { margin-top: 4px; }
+.server-finding-name { font-weight: 600; color: var(--text); }
+.server-when { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.server-foot { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px;
+  padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.server-tech[open] { flex-basis: 100%; }
+.server-tech-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.server-tech-list code { overflow-wrap: break-word; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border-radius: 999px;
   border: 1px solid var(--border); font-size: 13px; color: var(--text-2); background: var(--surface); }

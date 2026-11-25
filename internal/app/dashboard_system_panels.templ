@@ -1,6 +1,9 @@
 package app
 
-import "strconv"
+import (
+	"strconv"
+	"time"
+)
 
 // unavailablePartLines says why a part has nothing to show, with the
 // technical cause folded away.
@@ -33,15 +36,54 @@ templ checklistItemBlock(frame pageFrame, item checklistItemView) {
 	</div>
 }
 
+// serverFindingText renders a single check status that has no separate finding
+// identifier, such as root disk usage.
+templ serverFindingText(finding serverFindingView, clock func(time.Time) string) {
+	{{ when := findingStatusWhen(finding, clock) }}
+	<p class="server-check-detail">
+		if finding.Message != "" {
+			@withBreaksAfterSeparators(finding.Message)
+			if when != "" {
+				{ " " }<span class="server-when">· { when }</span>
+			}
+		} else if when != "" {
+			<span class="server-when">{ capitalize(when) }</span>
+		}
+	</p>
+}
+
+// serverFindingLine renders one bulleted finding under a grouped check heading.
+templ serverFindingLine(finding serverFindingView, clock func(time.Time) string) {
+	{{ when := findingStatusWhen(finding, clock) }}
+	if finding.Finding != "" {
+		<span class="server-finding-name">@withBreaksAfterSeparators(finding.Finding)</span>
+		if finding.Message != "" {
+			{ " — " }
+			@withBreaksAfterSeparators(finding.Message)
+		}
+		if when != "" {
+			{ " " }<span class="server-when">· { when }</span>
+		}
+	} else if finding.Message != "" {
+		@withBreaksAfterSeparators(finding.Message)
+		if when != "" {
+			{ " " }<span class="server-when">· { when }</span>
+		}
+	} else if when != "" {
+		<span class="server-when">{ capitalize(when) }</span>
+	}
+}
+
 // systemPanelsBody is the servers, then what changed beside the checklist.
-// A failing server gets a red tile with why; a healthy one a small chip. The
-// checklist shows its next item, and folds the others.
+// A server needing attention gets a severity-styled card with grouped checks;
+// healthy servers follow as small chips. The checklist shows its next item,
+// and folds the others.
 templ systemPanelsBody(frame pageFrame, panels systemPanels) {
 	<section id="system-servers" data-live class="panel" aria-labelledby="servers-heading">
 		<div class="panel-head">
 			<h2 id="servers-heading">Servers</h2>
 			if len(panels.ServersNeedingAttention) > 0 {
-				<span class="tag sos">{ panels.ServersSummary() }</span>
+				<span class={ serverTagClass(panels.ServersSeverity()) }>{ panels.ServersSummary() }</span>
 			} else if len(panels.HealthyServers) > 0 {
 				<span class="tag ok">{ panels.ServersSummary() }</span>
 			}
@@ -53,26 +95,95 @@ templ systemPanelsBody(frame pageFrame, panels systemPanels) {
 				if len(panels.ServersNeedingAttention) > 0 {
 					<div class="servers">
 						for _, server := range panels.ServersNeedingAttention {
-							<div class="server">
-								<div class="name">{ server.Name }</div>
-								if server.Groups != "" {
-									<div class="faint small">{ server.Groups }</div>
-								}
-								if server.Silent {
-									<div class="why">
-										if server.LastReportReceivedAt.IsZero() {
-											Silent: no report since the server joined
-										} else {
-											Silent: the server's last report arrived at { frame.Clock(server.LastReportReceivedAt) }
+							{{ checkGroups := groupServerChecks(server.Checks) }}
+							<div class={ serverCardClass(server.Severity) }>
+								<div class="server-head">
+									<div class="server-id">
+										<div class="name">{ server.Name }</div>
+										if server.Groups != "" {
+											<div class="faint small">{ server.Groups }</div>
 										}
 									</div>
-								}
-								for _, check := range server.Checks {
-									<div class="why">{ attentionLine(server.Silent, check, frame.Clock) }</div>
-								}
-								if !server.Silent && len(server.Checks) == 0 {
-									<div class="why">Needs attention (exit code { server.ExitCode }) without a failing check; the fleet view on this server shows why.</div>
-								}
+									<span class={ serverTagClass(server.Severity) }>{ serverSeverityLabel(server.Severity) }</span>
+								</div>
+								<div class="server-body">
+									if server.Silent {
+										<p class="server-silent">
+											if server.LastReportReceivedAt.IsZero() {
+												Silent: no report since the server joined
+											} else {
+												Silent: the server's last report arrived at { frame.Clock(server.LastReportReceivedAt) }
+											}
+										</p>
+									}
+									for _, group := range checkGroups {
+										<div class="server-check">
+											if group.Title != "" {
+												<div class="server-check-title">
+													if server.Silent {
+														Last known: { group.Title }
+													} else {
+														{ group.Title }
+													}
+												</div>
+											} else if server.Silent {
+												<div class="server-check-title">Last known:</div>
+											}
+											if len(group.Findings) == 1 && group.Findings[0].Finding == "" {
+												@serverFindingText(group.Findings[0], frame.Clock)
+											} else {
+												<ul class="server-findings">
+													for _, finding := range group.Findings {
+														<li>@serverFindingLine(finding, frame.Clock)</li>
+													}
+												</ul>
+											}
+										</div>
+									}
+									if !server.Silent && len(server.Checks) == 0 {
+										<p class="server-check-detail">Needs attention (exit code { server.ExitCode }) without a failing check; the fleet view on this server shows why.</p>
+									}
+								</div>
+								<div class="server-foot">
+									<a class="small" href={ ServerAlertsURL(server.Name) }>View alerts</a>
+									if hasTechnicalDetails(checkGroups) {
+										<details class="fold server-tech">
+											<summary>Technical details</summary>
+											<ul class="server-tech-list small">
+												for _, group := range checkGroups {
+													if group.RawCheck != "" {
+														<li>
+															<code>@withBreaksAfterSeparators(group.RawCheck)</code>
+															for _, finding := range group.Findings {
+																if finding.Reference != "" {
+																	<div class="faint">
+																		if finding.Finding != "" {
+																			@withBreaksAfterSeparators(finding.Finding + ": " + finding.Reference)
+																		} else {
+																			@withBreaksAfterSeparators(finding.Reference)
+																		}
+																	</div>
+																}
+															}
+														</li>
+													} else {
+														for _, finding := range group.Findings {
+															if finding.Reference != "" {
+																<li class="faint">
+																	if finding.Finding != "" {
+																		@withBreaksAfterSeparators(finding.Finding + ": " + finding.Reference)
+																	} else {
+																		@withBreaksAfterSeparators(finding.Reference)
+																	}
+																</li>
+															}
+														}
+													}
+												}
+											</ul>
+										</details>
+									}
+								</div>
 							</div>
 						}
 					</div>
