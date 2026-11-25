@@ -1,5 +1,13 @@
 # MMHotline development
 
+## Product goal
+
+Self-hosted, low-noise on-call alerting and agent-first triage in the team's
+own accounts (with zero hosted dependencies): reach the right person reliably
+when action is needed, let the triage agent investigate first, and minimize
+human work across building, understanding, operating, and recovering the
+system. Reject operational theater.
+
 [Design plan](docs/changing-mmhotline/design/README.md) owns product principles, status, and
 remaining work. [Acceptance contracts](docs/changing-mmhotline/acceptance.md) define the workflows
 required for completion and review. The [documentation map](docs/changing-mmhotline/documentation-map.md)
